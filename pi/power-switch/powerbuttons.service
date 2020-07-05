@@ -1,0 +1,11 @@
+# 
+[Unit]
+Description=Power Buttons
+
+[Service]
+Type=simple
+User=root
+ExecStart=/usr/bin/python3 /home/pi/git/moon-unit/power-switch/powerswitch.py
+
+[Install]
+WantedBy=multi-user.target
