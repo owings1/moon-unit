@@ -1,0 +1,18 @@
+stages:
+  - test
+
+variables:
+  DOCKER_IMAGEPATH: "$CI_REGISTRY_IMAGE"
+
+test:
+  stage: test
+  tags:
+    - arm-shell
+  variables:
+    DOCKER_IMAGETAG: "$CI_JOB_ID"
+  before_script:
+    - docker build -t "${DOCKER_IMAGE_PATH}:${DOCKER_IMAGETAG}" .
+  script:
+    - docker run --rm "${DOCKER_IMAGE_PATH}:${DOCKER_IMAGETAG}" npm test
+  after_script:
+    - docker rmi "${DOCKER_IMAGE_PATH}:${DOCKER_IMAGETAG}"
