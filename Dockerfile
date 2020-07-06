@@ -1,5 +1,6 @@
 FROM node:alpine
 
+RUN apk --no-cache add python3 alpine-sdk linux-headers
 EXPOSE 8080
 
 WORKDIR /app
