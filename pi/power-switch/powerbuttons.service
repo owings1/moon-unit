@@ -1,11 +1,14 @@
-# 
+# sudo cp powerbuttons.service /etc/systemd/system/
+# sudo systemctl daemon-reload
+# sudo systemctl enable powerbuttons.service
+# sudo systemctl start powerbuttons.service
 [Unit]
 Description=Power Buttons
 
 [Service]
 Type=simple
 User=root
-ExecStart=/usr/bin/python3 /home/pi/git/moon-unit/power-switch/powerswitch.py
+ExecStart=/usr/bin/python3 /home/pi/git/moon-unit/pi/power-switch/powerswitch.py
 
 [Install]
 WantedBy=multi-user.target
