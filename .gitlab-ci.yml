@@ -5,6 +5,8 @@ variables:
   DOCKER_IMAGEPATH: "$CI_REGISTRY_IMAGE"
 
 test:
+  # disabled
+  when: manual
   stage: test
   tags:
     - arm-shell
