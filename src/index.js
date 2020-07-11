@@ -76,26 +76,86 @@ class SerialDevice {
     }
 }
 
+const bodyParser = require('body-parser')
 
-const device = new SerialDevice(process.env.MC_SERIAL_PORT)
+class Server {
 
-device.open().then(() => {
+    defaults() {
+        return {
+            
+        }
+    }
 
-    device.request(':01 1 1 1600;').then(res => {
+    constructor(mc, opts) {
+        this.mc = mc
+        this.opts = merge(this.defaults(), opts)
+        this.app = express()
+        this.initApp(app)
+        this.httpServer = null
+        this.port = null
+    }
+
+    initApp(app) {
+
+        app.post('/devices/motor-controller', bodyParser.json(), (req, res) => {
+            if (!req.body.command) {
+                res.status(400).json({error: 'missing command'})
+                return
+            }
+            this.mc.request(req.body)
+                .then(resp => res.status(200).json(resp))
+                .catch(error => {
+                    console.error(error)
+                    res.status(500).json({error})
+                })
+        })
+
+        app.use((req, res) => res.status(404).json({error: 'not found'}))
+    }
+
+    listen(port) {
+        return new Promise((resolve, reject) => {
+            try {
+                this.httpServer = this.app.listen(port, () => {
+                    this.port = this.httpServer.address().port
+                    console.log('Listening on port', this.port)
+                    resolve()
+                })
+            } catch (err) {
+                reject(err)
+            }
+        })
+        
+    }
+
+    close() {
+        if (this.httpServer) {
+            this.httpServer.close()
+        }
+    }
+}
+
+const mc = new SerialDevice(process.env.MC_SERIAL_PORT)
+
+mc.open().then(() => {
+
+    mc.request(':01 1 1 1600;').then(res => {
         console.log(1, res)
     })
 
-    device.request(':01 1 2 1600;').then(res => {
-        console.log(2, res)
-    })
-
-    device.request(':01 1 1 1600;').then(res => {
-        console.log(3, res)
-    })
-
-    device.request(':01 1 2 1600;').then(res => {
-        console.log(4, res)
-        device.close()
-    })
+    const server = new Server(mc)
+    server.listen(process.env.HTTP_LISTEN_PORT || '8080')
+    //device.request(':01 1 2 1600;').then(res => {
+    //    console.log(2, res)
+    //})
+    //
+    //device.request(':01 1 1 1600;').then(res => {
+    //    console.log(3, res)
+    //})
+    //
+    //device.request(':01 1 2 1600;').then(res => {
+    //    console.log(4, res)
+    //    device.close()
+    //})
 })
 
