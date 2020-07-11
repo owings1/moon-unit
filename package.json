@@ -13,6 +13,7 @@
   },
   "author": "Doug Owings <doug@dougowings.net>",
   "dependencies": {
+    "body-parser": "^1.19.0",
     "ejs": "^3.1.3",
     "express": "^4.17.1",
     "merge": "^1.2.1",
