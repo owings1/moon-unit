@@ -2,72 +2,99 @@
 
 const SerialPort = require('serialport')
 const Readline = require('@serialport/parser-readline')
+const merge = require('merge')
 
-const device = new SerialPort(process.env.MC_SERIAL_PORT, {
-    baudRate: 115200,
-    autoOpen: false
-})
+class SerialDevice {
 
-const parser = device.pipe(new Readline)
-const openDelay = 2000
-const workerDelay = 100
-
-const queue = []
-
-var isBusy = false
-
-const workerHandle = setInterval(() => {
-
-    if (isBusy || !queue.length) {
-        return
+    defaults() {
+        return {
+            baudRate: 115200,
+            autoOpen: false.
+            openDelay: 2000,
+            workerDelay: 100
+        }
     }
 
-    isBusy = true
+    constructor(path, opts) {
+        this.opts = merge(this.defaults(), opts)
+        this.device = new SerialPort(path, opts)
+        this.parser = this.device.pipe(new Readline)
+        this.queue = []
+        this.busy = false
+        this.workerHandle = null
+    }
 
-    job = queue.pop()
-
-    parser.once('data', resText => {
-        // handle device response
-        console.log('Receieved response:', resText)
-        job.handler({
-            status: parseInt(resText.substring(1))
+    open() {
+        return new Promise((resolve, reject) => {
+            this.device.open(err => {
+                if (err) {
+                    reject(err)
+                    return
+                }
+                this.initWorker()
+                console.log('Opened, delaying', openDelay, 'ms')
+                setTimeout(resolve, this.opts.openDelay)
+            })
         })
-        isBusy = false
-    })
+    }
 
-    // send command to device
-    device.write(job.body)
+    close() {
+        return new Promise(resolve => {
+            console.log('Closing')
+            this.device.close(resolve)
+        })
+    }
 
-}, workerDelay)
+    request(body) {
+        return new Promise((resolve, reject) => {
+            console.log('Enqueuing command', body)
+            this.queue.unshift({body, handler: resolve})
+        })
+    }
 
-function enqueue(body, handler) {
-    console.log('Enqueuing command', body)
-    queue.unshift({body, handler})
+    loop() {
+        if (this.busy || !this.queue.length) {
+            return
+        }
+        this.busy = true
+        const {body, handler} = this.queue.pop()
+        this.parser.once('data', resText => {
+            // handle device response
+            console.log('Receieved response:', resText)
+            handler({
+                status : parseInt(resText.substring(1))
+            })
+            this.busy = false
+        })
+        this.device.write(body)
+    }
+
+    initWorker() {
+        clearInterval(this.workerHandle)
+        this.workerHandle = setInterval(() => this.loop(), this.opts.workerDelay)
+    }
 }
 
-device.open(err => {
-    if (err) {
-        console.error(err)
-        return
-    }
-    console.log('Opened, delaying', openDelay, 'ms')
-    setTimeout(() => {
-        enqueue(':01 1 1 1600;', res => {
-            console.log(1, res)
-        })
-        enqueue(':01 1 2 1600;', res => {
-            console.log(2, res)
-        })
-        enqueue(':01 1 1 1600;', res => {
-            console.log(3, res)
-        })
-        enqueue(':01 1 2 1600;', res => {
-            console.log(4, res)
-            setTimeout(() => {
-                console.log('Closing')
-                clearInterval(workerHandle)
-                device.close()
-            }, 2000)
-        })
-    }, openDelay)
+
+const device = new SerialDevice(process.env.MC_SERIAL_PORT)
+
+device.open().then(() => {
+
+    device.request(':01 1 1 1600;').then(res => {
+        console.log(1, res)
+    })
+
+    device.request(':01 1 2 1600;'.then(res => {
+        console.log(2, res)
+    })
+
+    device.request(':01 1 1 1600;'.then(res => {
+        console.log(3, res)
+    })
+
+    device.request(':01 1 2 1600;'.then(res => {
+        console.log(4, res)
+        setTimeout(() => device.close(), 2000)
+    })
 })
+

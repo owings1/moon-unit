@@ -13,7 +13,10 @@
   },
   "author": "Doug Owings <doug@dougowings.net>",
   "dependencies": {
+    "ejs": "^3.1.3",
     "express": "^4.17.1",
+    "merge": "^1.2.1",
+    "node-fetch": "^2.6.0",
     "serialport": "^9.0.0"
   }
 }
