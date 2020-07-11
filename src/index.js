@@ -1,30 +1,73 @@
-console.log('hello world')
+
 
 const SerialPort = require('serialport')
 const Readline = require('@serialport/parser-readline')
 
-const mc = new SerialPort(process.env.MC_SERIAL_PORT, {
+const device = new SerialPort(process.env.MC_SERIAL_PORT, {
     baudRate: 115200,
     autoOpen: false
 })
 
-const parser_mc = mc.pipe(new Readline)
+const parser = device.pipe(new Readline)
+const openDelay = 2000
+const workerDelay = 100
 
-mc.open(err => {
+const queue = []
+
+var isBusy = false
+
+const workerHandle = setInterval(() => {
+
+    if (isBusy || !queue.length) {
+        return
+    }
+
+    isBusy = true
+
+    job = queue.pop()
+
+    parser.once('data', resText => {
+        // handle device response
+        console.log('Receieved response:', resText)
+        job.handler({
+            status: parseInt(resText.substring(1))
+        })
+        isBusy = false
+    })
+
+    // send command to device
+    device.write(job.body)
+
+}, workerDelay)
+
+function enqueue(body, handler) {
+    console.log('Enqueuing command', body)
+    queue.unshift({body, handler})
+}
+
+device.open(err => {
     if (err) {
         console.error(err)
         return
     }
-    console.log('Opened, delaying 2 seconds')
+    console.log('Opened, delaying', openDelay, 'ms')
     setTimeout(() => {
-        console.log('Writing command')
-        parser_mc.once('data', resText => {
-            console.log('Received response:', resText)
+        enqueue(':01 1 1 1600;', res => {
+            console.log(1, res)
         })
-        mc.write(':01 1 1 1600;', () => {
-            setTimeout(() => mc.close(), 2000)
-            //mc.close()
+        enqueue(':01 1 2 1600;', res => {
+            console.log(2, res)
         })
-        
-    }, 2000)
+        enqueue(':01 1 1 1600;', res => {
+            console.log(3, res)
+        })
+        enqueue(':01 1 2 1600;', res => {
+            console.log(4, res)
+            setTimeout(() => {
+                console.log('Closing')
+                clearInterval(workerHandle)
+                device.close()
+            }, 2000)
+        })
+    }, openDelay)
 })
