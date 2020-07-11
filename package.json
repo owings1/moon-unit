@@ -13,6 +13,7 @@
   },
   "author": "Doug Owings <doug@dougowings.net>",
   "dependencies": {
+    "express": "^4.17.1",
     "serialport": "^9.0.0"
   }
 }
