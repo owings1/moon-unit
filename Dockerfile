@@ -1,6 +1,6 @@
 FROM node:alpine
 
-RUN apk --no-cache add python3 alpine-sdk linux-headers
+RUN apk --no-cache add python3 alpine-sdk linux-headers udev
 RUN addgroup node dialout
 EXPOSE 8080
 
