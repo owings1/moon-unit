@@ -9,6 +9,8 @@ RUN chown node:node /app
 
 USER node
 
+RUN npm install serialport --build-from-source
+
 COPY package.json .
 COPY package-lock.json .
 COPY scripts scripts
