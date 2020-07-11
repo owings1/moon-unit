@@ -9,7 +9,7 @@ class SerialDevice {
     defaults() {
         return {
             baudRate: 115200,
-            autoOpen: false.
+            autoOpen: false,
             openDelay: 2000,
             workerDelay: 100
         }
@@ -17,7 +17,7 @@ class SerialDevice {
 
     constructor(path, opts) {
         this.opts = merge(this.defaults(), opts)
-        this.device = new SerialPort(path, opts)
+        this.device = new SerialPort(path, this.opts)
         this.parser = this.device.pipe(new Readline)
         this.queue = []
         this.busy = false
@@ -32,7 +32,7 @@ class SerialDevice {
                     return
                 }
                 this.initWorker()
-                console.log('Opened, delaying', openDelay, 'ms')
+                console.log('Opened, delaying', this.opts.openDelay, 'ms')
                 setTimeout(resolve, this.opts.openDelay)
             })
         })
@@ -41,6 +41,7 @@ class SerialDevice {
     close() {
         return new Promise(resolve => {
             console.log('Closing')
+            clearInterval(this.workerHandle)
             this.device.close(resolve)
         })
     }
@@ -84,17 +85,17 @@ device.open().then(() => {
         console.log(1, res)
     })
 
-    device.request(':01 1 2 1600;'.then(res => {
+    device.request(':01 1 2 1600;').then(res => {
         console.log(2, res)
     })
 
-    device.request(':01 1 1 1600;'.then(res => {
+    device.request(':01 1 1 1600;').then(res => {
         console.log(3, res)
     })
 
-    device.request(':01 1 2 1600;'.then(res => {
+    device.request(':01 1 2 1600;').then(res => {
         console.log(4, res)
-        setTimeout(() => device.close(), 2000)
+        device.close()
     })
 })
 
