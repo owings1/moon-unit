@@ -77,6 +77,7 @@ class SerialDevice {
 }
 
 const bodyParser = require('body-parser')
+const express = require('express')
 
 class Server {
 
@@ -90,7 +91,7 @@ class Server {
         this.mc = mc
         this.opts = merge(this.defaults(), opts)
         this.app = express()
-        this.initApp(app)
+        this.initApp(this.app)
         this.httpServer = null
         this.port = null
     }
@@ -102,8 +103,8 @@ class Server {
                 res.status(400).json({error: 'missing command'})
                 return
             }
-            this.mc.request(req.body)
-                .then(resp => res.status(200).json(resp))
+            this.mc.request(req.body.command)
+                .then(respons => res.status(200).json({response}))
                 .catch(error => {
                     console.error(error)
                     res.status(500).json({error})
@@ -139,12 +140,12 @@ const mc = new SerialDevice(process.env.MC_SERIAL_PORT)
 
 mc.open().then(() => {
 
-    mc.request(':01 1 1 1600;').then(res => {
-        console.log(1, res)
-    })
-
     const server = new Server(mc)
     server.listen(process.env.HTTP_LISTEN_PORT || '8080')
+
+    //mc.request(':01 1 1 1600;').then(res => {
+    //    console.log(1, res)
+    //})
     //device.request(':01 1 2 1600;').then(res => {
     //    console.log(2, res)
     //})
