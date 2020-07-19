@@ -16,7 +16,7 @@
 #define enablePin_m1 7
 #define enablePin_m2 10
 #define maxSpeed_m1 2000L
-#define maxSpeed_m2 2000L
+#define maxSpeed_m2 1000L
 #define degreesPerStep_m1 0.45
 #define degreesPerStep_m2 0.045
 #define maxAcceleration 4000L

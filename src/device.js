@@ -120,3 +120,9 @@ class DeviceService {
         app.use((req, res) => res.status(404).json({error: 'not found'}))
     }
 }
+
+module.exports = DeviceService
+
+if (require.main === module) {
+    new DeviceService(process.env.DEVICE_SERIAL_PORT).listen(process.env.HTTP_LISTEN_PORT || '8080')
+}
