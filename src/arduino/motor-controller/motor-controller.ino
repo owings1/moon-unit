@@ -287,11 +287,7 @@ boolean runMotorsIfNeeded() {
     isRun = true;
   }
   if (stepper_m2.distanceToGo() != 0) {
-    int distanceToGo = stepper_m2.distanceToGo();
-    if (
-      (distanceToGo > 0 && isLimitCw_m2) ||
-      (distanceToGo < 0 && isLimitAcw_m2)
-    ) {
+    if (!motorCanMove(2, stepper_m2.distanceToGo())) {
       long oldAcceleration_m2 = acceleration_m2;
       setAcceleration(2, maxAcceleration);
       stepper_m2.stop();
