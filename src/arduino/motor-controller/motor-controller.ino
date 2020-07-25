@@ -1,6 +1,10 @@
-// - add commands
-//    - set acceleration
-//    - move motor by degress
+// TODO:
+//  - add limit switch support for m1
+//  - have separate maxAcceleration values for m1 and m2
+//  - add command to move both motors at once
+//  - auto home function: move to limit, then back a fixed amount
+//  - write real encoder/lcd interface
+//  - cancel/stop motor interrupt
 
 #include <AccelStepper.h>
 #include <MultiStepper.h>
@@ -20,9 +24,17 @@
 #define maxSpeed_m1 2000L
 #define maxSpeed_m2 1000L
 #define degreesPerStep_m1 0.45
-#define degreesPerStep_m2 0.045
-#define maxAcceleration 4000L
+#define degreesPerStep_m2 0.001125
+#define maxAcceleration 10000L
 #define motorSleepTimeout 2000L
+
+// limit switches
+boolean isLimitCw_m2 = false;
+boolean isLimitAcw_m2 = false;
+
+// track the acceleration value set in stepper objects.
+long acceleration_m1;
+long acceleration_m2;
 
 unsigned long lastMotorActionTime = millis();
 boolean isMotorEnabled = false;
@@ -67,6 +79,9 @@ void setup() {
 
 void loop() {
 
+  isLimitCw_m2  = digitalRead(limitPinCw_m2)  == HIGH;
+  isLimitAcw_m2 = digitalRead(limitPinAcw_m2) == HIGH;
+
   static int pos = 0;
 
   int newPos = encoder.getPosition();
@@ -78,18 +93,12 @@ void loop() {
     // if we are not taking input, this will ignore changes to knob position
     pos = newPos;
   }
+
   if (!runMotorsIfNeeded()) {
     updateDisplay();
     checkDisplaySleep();
     checkMotorSleep();
     takeCommand(Serial, Serial);
-    // temp
-    Serial.print("limitPinCw_m2: ");
-    Serial.println(digitalRead(limitPinCw_m2), DEC);
-    Serial.print("limitPinAcw_m2: ");
-    Serial.println(digitalRead(limitPinAcw_m2), DEC);
-    delay(100);
-    // end temp
   }
 }
 
@@ -147,9 +156,7 @@ void takeCommand(Stream &input, Stream &output) {
 
     // Set max speed for motor
 
-    // TODO: make DRY
-
-    // first param is the motor id, 1 or 2
+    // first param is the motor id
 
     int motorId = readMotorIdFromInput(input);
     if (motorId == 0) {
@@ -176,9 +183,7 @@ void takeCommand(Stream &input, Stream &output) {
 
     // Set acceleration for motor
 
-    // TODO: make DRY
-
-    // first param is the motor id, 1 or 2
+    // first param is the motor id
 
     int motorId = readMotorIdFromInput(input);
     if (motorId == 0) {
@@ -193,19 +198,14 @@ void takeCommand(Stream &input, Stream &output) {
       return;
     }
 
-    if (motorId == 1) {
-      // TODO: figure out why we couldn't dynamically assign this, as above
-      stepper_m1.setAcceleration(min(newAccel, maxAcceleration));
-    } else if (motorId == 2) {
-      stepper_m2.setAcceleration(min(newAccel, maxAcceleration));
-    }
+    setAcceleration(motorId, newAccel);
 
     output.write("=00\n");
 
   } else if (command.equals("04")) {
     // Move a motor n degrees in a direction
 
-    // first param is the motor id, 1 or 2
+    // first param is the motor id
 
     int motorId = readMotorIdFromInput(input);
     if (motorId == 0) {
@@ -223,7 +223,7 @@ void takeCommand(Stream &input, Stream &output) {
       return;
     }
 
-    // third param is how many steps
+    // third param is how many degrees
 
     float howMuch = input.readStringUntil(';').toFloat() * dirMult;
     if (howMuch == 0) {
@@ -234,7 +234,6 @@ void takeCommand(Stream &input, Stream &output) {
     // perform action
 
     jumpOneByDegrees(motorId, howMuch);
-
 
     output.write("=00\n");
   } else {
@@ -267,6 +266,15 @@ boolean shouldUpdateDisplay() {
   return displayUpdateNeeded;
 }
 
+boolean motorCanMove(int motorId, long howMuch) {
+  if (motorId == 1) {
+    return true;
+  }
+  if (motorId == 2) {
+    return (howMuch > 0 && !isLimitCw_m2) || (howMuch < 0 && !isLimitAcw_m2);
+  }
+}
+
 boolean runMotorsIfNeeded() {
   boolean isRun = false;
   if (stepper_m1.distanceToGo() != 0) {
@@ -275,7 +283,21 @@ boolean runMotorsIfNeeded() {
     isRun = true;
   }
   if (stepper_m2.distanceToGo() != 0) {
-    stepper_m2.run();
+    int distanceToGo = stepper_m2.distanceToGo();
+    if (
+      (distanceToGo > 0 && isLimitCw_m2) ||
+      (distanceToGo < 0 && isLimitAcw_m2)
+    ) {
+      long oldAcceleration_m2 = acceleration_m2;
+      setAcceleration(2, maxAcceleration);
+      stepper_m2.stop();
+      while (stepper_m2.distanceToGo() != 0) {
+        stepper_m2.run();
+      }
+      setAcceleration(2, oldAcceleration_m2);
+    } else {
+      stepper_m2.run();
+    }
     registerMotorAction();
     isRun = true;
   }
@@ -294,7 +316,7 @@ void takeKnobInput(int oldPos, int newPos) {
   }
 }
 
-void onSwitchChange() {
+void onEncoderSwitchChange() {
   if (!shouldTakeInput()) {
     // ignore switch input
     return;
@@ -309,34 +331,37 @@ void onSwitchChange() {
 }
 
 void jumpBoth(long howMuch) {
-  stepper_m1.move(howMuch);
-  stepper_m2.move(howMuch);
-  enableMotors();
+  jumpOne(1, howMuch);
+  jumpOne(2, howMuch);
 }
 
 void jumpOne(int motorId, long howMuch) {
-  if (motorId == 1) {
-    stepper_m1.move(howMuch);
-  } else if (motorId == 2) {
-    stepper_m2.move(howMuch);
+  if (motorCanMove(motorId, howMuch)) {
+    if (motorId == 1) {
+      stepper_m1.move(howMuch);
+    } else if (motorId == 2) {
+      stepper_m2.move(howMuch);
+    }
+    enableMotors();
   }
-  
-  enableMotors();
 }
 
 void jumpOneByDegrees(int motorId, float howMuch) {
+
   long steps;
-  
   if (motorId == 1) {
     steps = howMuch / degreesPerStep_m1;
-    stepper_m1.move(steps);
+    if (motorCanMove(motorId, steps)) {
+      stepper_m1.move(steps);
+      enableMotors();
+    }
   } else if (motorId == 2) {
     steps = howMuch / degreesPerStep_m2;
-    stepper_m2.move(steps);
-  } else {
-    return;
+    if (motorCanMove(motorId, steps)) {
+      stepper_m2.move(steps);
+      enableMotors();
+    }
   }
-  enableMotors();
 }
 
 void enableMotors() {
@@ -382,6 +407,16 @@ void registerDisplayAction() {
   lastDisplayActionTime = millis();
 }
 
+void setAcceleration(int motorId, long value) {
+  if (motorId == 1) {
+    acceleration_m1 = min(value, maxAcceleration);
+    stepper_m1.setAcceleration(acceleration_m1);
+  } else if (motorId == 2) {
+    acceleration_m2 = min(value, maxAcceleration);
+    stepper_m2.setAcceleration(acceleration_m2);
+  }
+}
+
 void setupMotors() {
 
   // Declare pins as output:
@@ -404,8 +439,8 @@ void setupMotors() {
   // AccelStepper
   stepper_m1.setMaxSpeed(maxSpeed_m1);
   stepper_m2.setMaxSpeed(maxSpeed_m2);
-  stepper_m1.setAcceleration(maxAcceleration);
-  stepper_m2.setAcceleration(maxAcceleration);
+  setAcceleration(1, maxAcceleration);
+  setAcceleration(2, maxAcceleration);
 }
 
 void checkMotorSleep() {
@@ -456,7 +491,7 @@ ISR(PCINT1_vect) {
 void debounceInterrupt() {
   //Serial.println("Debounce interrupt");
   if ((long)(micros() - debounceLastMicros) >= debouncing_time * 1000) {
-    onSwitchChange();
+    onEncoderSwitchChange();
     debounceLastMicros = micros();
   }
 }
