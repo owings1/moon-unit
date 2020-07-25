@@ -15,6 +15,8 @@
 #define stepPin_m2 9
 #define enablePin_m1 7
 #define enablePin_m2 10
+#define limitPinCw_m2 3
+#define limitPinAcw_m2 4
 #define maxSpeed_m1 2000L
 #define maxSpeed_m2 1000L
 #define degreesPerStep_m1 0.45
@@ -81,6 +83,13 @@ void loop() {
     checkDisplaySleep();
     checkMotorSleep();
     takeCommand(Serial, Serial);
+    // temp
+    Serial.print("limitPinCw_m2: ");
+    Serial.println(digitalRead(limitPinCw_m2), DEC);
+    Serial.print("limitPinAcw_m2: ");
+    Serial.println(digitalRead(limitPinAcw_m2), DEC);
+    delay(100);
+    // end temp
   }
 }
 
@@ -105,8 +114,8 @@ void takeCommand(Stream &input, Stream &output) {
 
     // first param is the motor id, 1 or 2
 
-    int motorId = input.readStringUntil(' ').toInt();
-    if (motorId != 1 && motorId != 2) {
+    int motorId = readMotorIdFromInput(input);
+    if (motorId == 0) {
       output.write("=46\n");
       return;
     }
@@ -115,12 +124,8 @@ void takeCommand(Stream &input, Stream &output) {
 
     int dir = input.readStringUntil(' ').toInt();
 
-    int dirMult = 0;
-    if (dir == 1) {
-      dirMult -= 1;
-    } else if (dir == 2) {
-      dirMult += 1;
-    } else {
+    int dirMult = getDirMultiplier(dir);
+    if (dirMult == 0) {
       output.write("=47\n");
       return;
     }
@@ -134,13 +139,7 @@ void takeCommand(Stream &input, Stream &output) {
     }
 
     // perform action
-
-    if (motorId == 1) {
-      // TODO: figure out why we couldn't dynamically assign this -- need to learn this language better
-      jumpOne(stepper_m1, howMuch);
-    } else if (motorId == 2) {
-      jumpOne(stepper_m2, howMuch);
-    }
+    jumpOne(motorId, howMuch);
 
     output.write("=00\n");
 
@@ -152,8 +151,8 @@ void takeCommand(Stream &input, Stream &output) {
 
     // first param is the motor id, 1 or 2
 
-    int motorId = input.readStringUntil(' ').toInt();
-    if (motorId != 1 && motorId != 2) {
+    int motorId = readMotorIdFromInput(input);
+    if (motorId == 0) {
       output.write("=46\n");
       return;
     }
@@ -166,7 +165,7 @@ void takeCommand(Stream &input, Stream &output) {
     }
 
     if (motorId == 1) {
-      // TODO: figure out why we couldn't dynamically assign this, as above
+      // TODO: figure out why we couldn't dynamically assign this
       stepper_m1.setMaxSpeed(min(newSpeed, maxSpeed_m1));
     } else if (motorId == 2) {
       stepper_m2.setMaxSpeed(min(newSpeed, maxSpeed_m2));
@@ -181,8 +180,8 @@ void takeCommand(Stream &input, Stream &output) {
 
     // first param is the motor id, 1 or 2
 
-    int motorId = input.readStringUntil(' ').toInt();
-    if (motorId != 1 && motorId != 2) {
+    int motorId = readMotorIdFromInput(input);
+    if (motorId == 0) {
       output.write("=46\n");
       return;
     }
@@ -208,8 +207,8 @@ void takeCommand(Stream &input, Stream &output) {
 
     // first param is the motor id, 1 or 2
 
-    int motorId = input.readStringUntil(' ').toInt();
-    if (motorId != 1 && motorId != 2) {
+    int motorId = readMotorIdFromInput(input);
+    if (motorId == 0) {
       output.write("=46\n");
       return;
     }
@@ -218,12 +217,8 @@ void takeCommand(Stream &input, Stream &output) {
 
     int dir = input.readStringUntil(' ').toInt();
 
-    int dirMult = 0;
-    if (dir == 1) {
-      dirMult -= 1;
-    } else if (dir == 2) {
-      dirMult += 1;
-    } else {
+    int dirMult = getDirMultiplier(dir);
+    if (dirMult == 0) {
       output.write("=47\n");
       return;
     }
@@ -245,6 +240,23 @@ void takeCommand(Stream &input, Stream &output) {
   } else {
     output.write("=44\n");
   }
+}
+
+int readMotorIdFromInput(Stream &input) {
+  int motorId = input.readStringUntil(' ').toInt();
+  if (motorId == 1 || motorId == 2) {
+    return motorId;
+  }
+  return 0;
+}
+
+int getDirMultiplier(int dirInput) {
+  if (dirInput == 1) {
+    return 1;
+  } else if (dirInput == 2) {
+    return -1;
+  }
+  return 0;
 }
 
 boolean shouldTakeInput() {
@@ -302,8 +314,13 @@ void jumpBoth(long howMuch) {
   enableMotors();
 }
 
-void jumpOne(AccelStepper &stepper, long howMuch) {
-  stepper.move(howMuch);
+void jumpOne(int motorId, long howMuch) {
+  if (motorId == 1) {
+    stepper_m1.move(howMuch);
+  } else if (motorId == 2) {
+    stepper_m2.move(howMuch);
+  }
+  
   enableMotors();
 }
 
@@ -321,6 +338,7 @@ void jumpOneByDegrees(int motorId, float howMuch) {
   }
   enableMotors();
 }
+
 void enableMotors() {
   if (!isMotorEnabled) {
     digitalWrite(enablePin_m1, LOW);
@@ -373,6 +391,10 @@ void setupMotors() {
   pinMode(dirPin_m2, OUTPUT);
   pinMode(enablePin_m1, OUTPUT);
   pinMode(enablePin_m2, OUTPUT);
+
+  // Declare limit switch pins as input
+  pinMode(limitPinCw_m2, INPUT);
+  pinMode(limitPinAcw_m2, INPUT);
 
   // set initial state of motor to disabled
   digitalWrite(enablePin_m1, HIGH);
