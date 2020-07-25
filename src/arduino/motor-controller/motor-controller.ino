@@ -271,7 +271,11 @@ boolean motorCanMove(int motorId, long howMuch) {
     return true;
   }
   if (motorId == 2) {
-    return (howMuch > 0 && !isLimitCw_m2) || (howMuch < 0 && !isLimitAcw_m2);
+    if (howMuch > 0) {
+      return !isLimitCw_m2;
+    } else {
+      return !isLimitAcw_m2;
+    }
   }
 }
 
