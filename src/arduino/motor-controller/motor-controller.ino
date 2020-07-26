@@ -1,3 +1,23 @@
+/**
+ * Commands:
+ * 
+ * 01 - Move single motor n steps in a given direction
+ * 
+ *  :01 <motorId> <direction> <steps>;
+ * 
+ * 02 - Set max speed for a motor
+ * 
+ *  :02 <motorId> <speed>;
+ * 
+ * 03 - Set acceleration for a motor
+ * 
+ *  :03 <motorId> <acceleration>;
+ * 
+ * 04 - Move single motor n degrees in a given direction
+ * 
+ *  :04 <motorId> <direction> <degrees>;
+ */
+
 // TODO:
 //  - add limit switch support for m1
 //  - have separate maxAcceleration values for m1 and m2
@@ -19,8 +39,10 @@
 #define stepPin_m2 9
 #define enablePin_m1 7
 #define enablePin_m2 10
-#define limitPinCw_m2 3
-#define limitPinAcw_m2 4
+#define limitPinCw_m1 3
+#define limitPinAcw_m1 4
+#define limitPinCw_m2 11
+#define limitPinAcw_m2 12
 #define maxSpeed_m1 2000L
 #define maxSpeed_m2 1000L
 #define degreesPerStep_m1 0.45
