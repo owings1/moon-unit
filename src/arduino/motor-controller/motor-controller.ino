@@ -293,7 +293,11 @@ boolean motorCanMove(int motorId, long howMuch) {
     return true;
   }
   if (motorId == 2) {
-    return (howMuch > 0 && !isLimitCw_m2) || (howMuch < 0 && !isLimitAcw_m2);
+    if (howMuch > 0) {
+      return !isLimitCw_m2;
+    } else {
+      return !isLimitAcw_m2;
+    }
   }
 }
 
@@ -305,11 +309,7 @@ boolean runMotorsIfNeeded() {
     isRun = true;
   }
   if (stepper_m2.distanceToGo() != 0) {
-    int distanceToGo = stepper_m2.distanceToGo();
-    if (
-      (distanceToGo > 0 && isLimitCw_m2) ||
-      (distanceToGo < 0 && isLimitAcw_m2)
-    ) {
+    if (!motorCanMove(2, stepper_m2.distanceToGo())) {
       long oldAcceleration_m2 = acceleration_m2;
       setAcceleration(2, maxAcceleration);
       stepper_m2.stop();
