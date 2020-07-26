@@ -19,17 +19,18 @@
  */
 
 // TODO:
-//  - add limit switch support for m1
 //  - have separate maxAcceleration values for m1 and m2
 //  - add command to move both motors at once
 //  - auto home function: move to limit, then back a fixed amount
 //  - write real encoder/lcd interface
-//  - cancel/stop motor interrupt
+//  - cancel/stop input pin
+//  - state output pins -- ready, operating, error
 
 #include <AccelStepper.h>
 #include <MultiStepper.h>
 #include <RotaryEncoder.h>
 #include <LiquidCrystal_I2C.h>
+#include "dwf/digitalWriteFast.h"
 
 // Motor
 
@@ -47,10 +48,15 @@
 #define maxSpeed_m2 1000L
 #define degreesPerStep_m1 0.45
 #define degreesPerStep_m2 0.001125
+// Whether the limit switches are connected
+#define limitsEnabled_m1 0
+#define limitsEnabled_m2 1
 #define maxAcceleration 10000L
 #define motorSleepTimeout 2000L
 
 // limit switches
+boolean isLimitCw_m1 = false;
+boolean isLimitAcw_m1 = false;
 boolean isLimitCw_m2 = false;
 boolean isLimitAcw_m2 = false;
 
@@ -101,8 +107,16 @@ void setup() {
 
 void loop() {
 
-  isLimitCw_m2  = digitalRead(limitPinCw_m2)  == HIGH;
-  isLimitAcw_m2 = digitalRead(limitPinAcw_m2) == HIGH;
+  // TODO: move to canMotorMove ?
+  if (limitsEnabled_m1) {
+    isLimitCw_m1  = digitalReadFast(limitPinCw_m1)  == HIGH;
+    isLimitAcw_m2 = digitalReadFast(limitPinAcw_m1) == HIGH;
+  }
+
+  if (limitsEnabled_m2) {
+    isLimitCw_m2  = digitalReadFast(limitPinCw_m2)  == HIGH;
+    isLimitAcw_m2 = digitalReadFast(limitPinAcw_m2) == HIGH;
+  }
 
   static int pos = 0;
 
@@ -123,6 +137,10 @@ void loop() {
     takeCommand(Serial, Serial);
   }
 }
+
+// ----------------------------------------------
+// Command input functions
+// ----------------------------------------------
 
 void takeCommand(Stream &input, Stream &output) {
 
@@ -280,17 +298,17 @@ int getDirMultiplier(int dirInput) {
   return 0;
 }
 
-boolean shouldTakeInput() {
-  return stepper_m1.distanceToGo() == 0 && stepper_m2.distanceToGo() == 0;
-}
-
-boolean shouldUpdateDisplay() {
-  return displayUpdateNeeded;
-}
+// ----------------------------------------------
+// Motor functions
+// ----------------------------------------------
 
 boolean motorCanMove(int motorId, long howMuch) {
   if (motorId == 1) {
-    return true;
+    if (howMuch > 0) {
+      return !isLimitCw_m1;
+    } else {
+      return !isLimitAcw_m1;
+    }
   }
   if (motorId == 2) {
     if (howMuch > 0) {
@@ -302,9 +320,20 @@ boolean motorCanMove(int motorId, long howMuch) {
 }
 
 boolean runMotorsIfNeeded() {
+  // TODO: make limit drain DRY
   boolean isRun = false;
   if (stepper_m1.distanceToGo() != 0) {
-    stepper_m1.run();
+    if (!motorCanMove(1, stepper_m1.distanceToGo())) {
+      long oldAcceleration_m1 = acceleration_m1;
+      setAcceleration(1, maxAcceleration);
+      stepper_m1.stop();
+      while (stepper_m1.distanceToGo() != 0) {
+        stepper_m1.run();
+      }
+      setAcceleration(1, oldAcceleration_m1);
+    } else {
+      stepper_m1.run();
+    }
     registerMotorAction();
     isRun = true;
   }
@@ -324,32 +353,6 @@ boolean runMotorsIfNeeded() {
     isRun = true;
   }
   return isRun;
-}
-
-void takeKnobInput(int oldPos, int newPos) {
-  if (oldPos != newPos) {
-    turnOnDisplayLight();
-    if (newPos > oldPos) {
-      jumpBoth(800 * programNum);
-    } else {
-      jumpBoth(-800 * programNum);
-    }
-    registerDisplayAction();
-  }
-}
-
-void onEncoderSwitchChange() {
-  if (!shouldTakeInput()) {
-    // ignore switch input
-    return;
-  }
-  if (programNum >= numPrograms) {
-    programNum = 1;
-  } else {
-    programNum += 1;
-  }
-  displayUpdateNeeded = true;
-  registerDisplayAction();
 }
 
 void jumpBoth(long howMuch) {
@@ -386,6 +389,24 @@ void jumpOneByDegrees(int motorId, float howMuch) {
   }
 }
 
+void setMaxSpeed(int motorId, long value) {
+  if (motorId == 1) {
+    stepper_m1.setMaxSpeed(min(value, maxSpeed_m1));
+  } else if (motorId == 2) {
+    stepper_m2.setMaxSpeed(min(value, maxSpeed_m2));
+  }
+}
+
+void setAcceleration(int motorId, long value) {
+  if (motorId == 1) {
+    acceleration_m1 = min(value, maxAcceleration);
+    stepper_m1.setAcceleration(acceleration_m1);
+  } else if (motorId == 2) {
+    acceleration_m2 = min(value, maxAcceleration);
+    stepper_m2.setAcceleration(acceleration_m2);
+  }
+}
+
 void enableMotors() {
   if (!isMotorEnabled) {
     digitalWrite(enablePin_m1, LOW);
@@ -404,6 +425,56 @@ void disableMotors() {
   }
 }
 
+void registerMotorAction() {
+  lastMotorActionTime = millis();
+}
+
+void checkMotorSleep() {
+  unsigned long elapsed = millis() - lastMotorActionTime;
+  if (elapsed > motorSleepTimeout) {
+    disableMotors();
+  }
+}
+
+// ----------------------------------------------
+// Encoder functions
+// ----------------------------------------------
+
+void takeKnobInput(int oldPos, int newPos) {
+  // TODO: this is just a placeholder, write a real encoder UI.
+  if (oldPos != newPos) {
+    turnOnDisplayLight();
+    if (newPos > oldPos) {
+      jumpBoth(800 * programNum);
+    } else {
+      jumpBoth(-800 * programNum);
+    }
+    registerDisplayAction();
+  }
+}
+
+boolean shouldTakeInput() {
+  return stepper_m1.distanceToGo() == 0 && stepper_m2.distanceToGo() == 0;
+}
+
+void onEncoderSwitchChange() {
+  if (!shouldTakeInput()) {
+    // ignore switch input
+    return;
+  }
+  if (programNum >= numPrograms) {
+    programNum = 1;
+  } else {
+    programNum += 1;
+  }
+  displayUpdateNeeded = true;
+  registerDisplayAction();
+}
+
+// ----------------------------------------------
+// LCD display functions
+// ----------------------------------------------
+
 void updateDisplay() {
   if (shouldUpdateDisplay()) {
     lcd.setCursor(0, 0);
@@ -411,6 +482,10 @@ void updateDisplay() {
     lcd.print(programNum);
     displayUpdateNeeded = false;
   }
+}
+
+boolean shouldUpdateDisplay() {
+  return displayUpdateNeeded;
 }
 
 void turnOnDisplayLight() {
@@ -421,23 +496,23 @@ void turnOffDisplayLight() {
   lcd.setBacklightPin(3, POSITIVE);
 }
 
-void registerMotorAction() {
-  lastMotorActionTime = millis();
-}
-
 void registerDisplayAction() {
   lastDisplayActionTime = millis();
 }
 
-void setAcceleration(int motorId, long value) {
-  if (motorId == 1) {
-    acceleration_m1 = min(value, maxAcceleration);
-    stepper_m1.setAcceleration(acceleration_m1);
-  } else if (motorId == 2) {
-    acceleration_m2 = min(value, maxAcceleration);
-    stepper_m2.setAcceleration(acceleration_m2);
+void checkDisplaySleep() {
+  unsigned long elapsed = millis() - lastDisplayActionTime;
+  if (elapsed > displaySleepTimeout) {
+    turnOffDisplayLight();
+  } else {
+    // for button, so we don't have to do this in an interrupt
+    turnOnDisplayLight();
   }
 }
+
+// ----------------------------------------------
+// Setup routines
+// ----------------------------------------------
 
 void setupMotors() {
 
@@ -463,23 +538,6 @@ void setupMotors() {
   stepper_m2.setMaxSpeed(maxSpeed_m2);
   setAcceleration(1, maxAcceleration);
   setAcceleration(2, maxAcceleration);
-}
-
-void checkMotorSleep() {
-  unsigned long elapsed = millis() - lastMotorActionTime;
-  if (elapsed > motorSleepTimeout) {
-    disableMotors();
-  }
-}
-
-void checkDisplaySleep() {
-  unsigned long elapsed = millis() - lastDisplayActionTime;
-  if (elapsed > displaySleepTimeout) {
-    turnOffDisplayLight();
-  } else {
-    // for button, so we don't have to do this in an interrupt
-    turnOnDisplayLight();
-  }
 }
 
 void setupDisplay() {
@@ -508,6 +566,10 @@ void setupEncoder() {
 ISR(PCINT1_vect) {
   encoder.tick(); // just call tick() to check the state.
 }
+
+// ----------------------------------------------
+// Miscellaneous Util
+// ----------------------------------------------
 
 // https://www.instructables.com/id/Arduino-Software-debouncing-in-interrupt-function/
 void debounceInterrupt() {
