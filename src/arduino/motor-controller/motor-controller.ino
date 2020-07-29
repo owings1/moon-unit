@@ -23,8 +23,8 @@
  * 
  * b00 (decimal 0) - ready for command
  * b01 (decimal 1) - running command
- * b10 (decimal 2) - unassigned
- * b11 (decimal 3) - unassigned
+ * b10 (decimal 2) - [unassigned]
+ * b11 (decimal 3) - [unassigned]
  */
 
 // TODO:
@@ -110,31 +110,26 @@ boolean isDisplayLightOn = false;
 // State output
 #define statePin1 A0
 #define statePin2 A1
+#define STATE_READY 0
+#define STATE_BUSY 1
 
 // Stop/cancel
 #define stopPin 13
 
 void setup() {
+  setupStatePins();
+  setState(STATE_BUSY);
   Serial.begin(115200L);
   setupMotors();
   setupEncoder();
   setupDisplay();
-  setupStatePins();
   setupStopPin();
+  setState(STATE_READY);
 }
 
 void loop() {
 
-  // TODO: move to canMotorMove ?
-  if (limitsEnabled_m1) {
-    isLimitCw_m1  = digitalReadFast(limitPinCw_m1)  == HIGH;
-    isLimitAcw_m2 = digitalReadFast(limitPinAcw_m1) == HIGH;
-  }
-
-  if (limitsEnabled_m2) {
-    isLimitCw_m2  = digitalReadFast(limitPinCw_m2)  == HIGH;
-    isLimitAcw_m2 = digitalReadFast(limitPinAcw_m2) == HIGH;
-  }
+  readLimitSwitches();
 
   static int pos = 0;
 
@@ -148,10 +143,13 @@ void loop() {
     pos = newPos;
   }
 
-  if (!runMotorsIfNeeded()) {
+  if (runMotorsIfNeeded()) {
+    setState(STATE_BUSY);
+  } else {
     updateDisplay();
     checkDisplaySleep();
     checkMotorSleep();
+    setState(STATE_READY);
     takeCommand(Serial, Serial);
   }
 }
@@ -320,6 +318,19 @@ int getDirMultiplier(int dirInput) {
 // Motor functions
 // ----------------------------------------------
 
+void readLimitSwitches() {
+
+  if (limitsEnabled_m1) {
+    isLimitCw_m1  = digitalReadFast(limitPinCw_m1)  == HIGH;
+    isLimitAcw_m2 = digitalReadFast(limitPinAcw_m1) == HIGH;
+  }
+
+  if (limitsEnabled_m2) {
+    isLimitCw_m2  = digitalReadFast(limitPinCw_m2)  == HIGH;
+    isLimitAcw_m2 = digitalReadFast(limitPinAcw_m2) == HIGH;
+  }
+}
+
 boolean motorCanMove(int motorId, long howMuch) {
   if (motorId == 1) {
     if (howMuch > 0) {
@@ -338,17 +349,11 @@ boolean motorCanMove(int motorId, long howMuch) {
 }
 
 boolean runMotorsIfNeeded() {
-  // TODO: make limit drain DRY
+  
   boolean isRun = false;
   if (stepper_m1.distanceToGo() != 0) {
     if (!motorCanMove(1, stepper_m1.distanceToGo())) {
-      long oldAcceleration_m1 = acceleration_m1;
-      setAcceleration(1, maxAcceleration);
-      stepper_m1.stop();
-      while (stepper_m1.distanceToGo() != 0) {
-        stepper_m1.run();
-      }
-      setAcceleration(1, oldAcceleration_m1);
+      stopMotor(1);
     } else {
       stepper_m1.run();
     }
@@ -357,13 +362,7 @@ boolean runMotorsIfNeeded() {
   }
   if (stepper_m2.distanceToGo() != 0) {
     if (!motorCanMove(2, stepper_m2.distanceToGo())) {
-      long oldAcceleration_m2 = acceleration_m2;
-      setAcceleration(2, maxAcceleration);
-      stepper_m2.stop();
-      while (stepper_m2.distanceToGo() != 0) {
-        stepper_m2.run();
-      }
-      setAcceleration(2, oldAcceleration_m2);
+      stopMotor(2);
     } else {
       stepper_m2.run();
     }
@@ -373,12 +372,34 @@ boolean runMotorsIfNeeded() {
   return isRun;
 }
 
+void stopMotor(int motorId) {
+  // TODO: make DRY
+  if (motorId == 1) {
+    long oldAcceleration_m1 = acceleration_m1;
+    setAcceleration(1, maxAcceleration);
+    stepper_m1.stop();
+    while (stepper_m1.distanceToGo() != 0) {
+      stepper_m1.run();
+    }
+    setAcceleration(1, oldAcceleration_m1);
+  } else if (motorId == 2) {
+    long oldAcceleration_m2 = acceleration_m2;
+    setAcceleration(2, maxAcceleration);
+    stepper_m2.stop();
+    while (stepper_m2.distanceToGo() != 0) {
+      stepper_m2.run();
+    }
+    setAcceleration(2, oldAcceleration_m2);
+  }
+}
+
 void jumpBoth(long howMuch) {
   jumpOne(1, howMuch);
   jumpOne(2, howMuch);
 }
 
 void jumpOne(int motorId, long howMuch) {
+  setState(STATE_BUSY);
   if (motorCanMove(motorId, howMuch)) {
     if (motorId == 1) {
       stepper_m1.move(howMuch);
@@ -390,7 +411,7 @@ void jumpOne(int motorId, long howMuch) {
 }
 
 void jumpOneByDegrees(int motorId, float howMuch) {
-
+  setState(STATE_BUSY);
   long steps;
   if (motorId == 1) {
     steps = howMuch / degreesPerStep_m1;
@@ -610,7 +631,6 @@ ISR(PCINT1_vect) {
 void setupStatePins() {
   pinMode(statePin1, OUTPUT);
   pinMode(statePin2, OUTPUT);
-  
 }
 
 void setupStopPin() {
