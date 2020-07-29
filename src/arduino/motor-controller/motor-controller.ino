@@ -1,5 +1,6 @@
 /**
- * Commands:
+ * Commands
+ * ---------
  * 
  * 01 - Move single motor n steps in a given direction
  * 
@@ -16,6 +17,14 @@
  * 04 - Move single motor n degrees in a given direction
  * 
  *  :04 <motorId> <direction> <degrees>;
+ *
+ * States
+ * ------
+ * 
+ * b00 (decimal 0) - ready for command
+ * b01 (decimal 1) - running command
+ * b10 (decimal 2) - unassigned
+ * b11 (decimal 3) - unassigned
  */
 
 // TODO:
@@ -92,17 +101,26 @@ volatile int programNum = 1;
 // https://bitbucket.org/fmalpartida/new-liquidcrystal/wiki/Home
 LiquidCrystal_I2C  lcd(0x27,2,1,0,4,5,6,7); // 0x27 is the I2C bus address for an unmodified module
 
-#define displaySleepTimeout 10000L
-
+boolean displaySleepEnabled = false;
+unsigned long displaySleepTimeout = 10000L;
 unsigned long lastDisplayActionTime = millis();
 volatile boolean displayUpdateNeeded = false;
 boolean isDisplayLightOn = false;
+
+// State output
+#define statePin1 A0
+#define statePin2 A1
+
+// Stop/cancel
+#define stopPin 13
 
 void setup() {
   Serial.begin(115200L);
   setupMotors();
   setupEncoder();
   setupDisplay();
+  setupStatePins();
+  setupStopPin();
 }
 
 void loop() {
@@ -436,6 +454,25 @@ void checkMotorSleep() {
   }
 }
 
+
+// ----------------------------------------------
+// State pin functions
+// ----------------------------------------------
+void setState(byte state) {
+  if (state == 0) {
+    digitalWrite(statePin1, LOW);
+    digitalWrite(statePin2, LOW);
+  } else if (state == 1) {
+    digitalWrite(statePin1, HIGH);
+    digitalWrite(statePin2, LOW);
+  } else if (state == 2) {
+    digitalWrite(statePin1, LOW);
+    digitalWrite(statePin2, HIGH);
+  } else if (state == 3) {
+    digitalWrite(statePin1, HIGH);
+    digitalWrite(statePin2, HIGH);
+  }
+}
 // ----------------------------------------------
 // Encoder functions
 // ----------------------------------------------
@@ -501,6 +538,9 @@ void registerDisplayAction() {
 }
 
 void checkDisplaySleep() {
+  if (!displaySleepEnabled) {
+    return;
+  }
   unsigned long elapsed = millis() - lastDisplayActionTime;
   if (elapsed > displaySleepTimeout) {
     turnOffDisplayLight();
@@ -567,6 +607,15 @@ ISR(PCINT1_vect) {
   encoder.tick(); // just call tick() to check the state.
 }
 
+void setupStatePins() {
+  pinMode(statePin1, OUTPUT);
+  pinMode(statePin2, OUTPUT);
+  
+}
+
+void setupStopPin() {
+  pinMode(stopPin, INPUT);
+}
 // ----------------------------------------------
 // Miscellaneous Util
 // ----------------------------------------------
