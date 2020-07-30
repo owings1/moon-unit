@@ -32,8 +32,6 @@
 //  - add command to move both motors at once
 //  - auto home function: move to limit, then back a fixed amount
 //  - write real encoder/lcd interface
-//  - cancel/stop input pin
-//  - state output pins -- ready, operating, error
 
 #include <AccelStepper.h>
 #include <MultiStepper.h>
@@ -115,6 +113,7 @@ boolean isDisplayLightOn = false;
 
 // Stop/cancel
 #define stopPin 13
+boolean shouldStop = false;
 
 void setup() {
   setupStatePins();
@@ -130,6 +129,7 @@ void setup() {
 void loop() {
 
   readLimitSwitches();
+  readStopPin();
 
   static int pos = 0;
 
@@ -352,7 +352,7 @@ boolean runMotorsIfNeeded() {
   
   boolean isRun = false;
   if (stepper_m1.distanceToGo() != 0) {
-    if (!motorCanMove(1, stepper_m1.distanceToGo())) {
+    if (shouldStop || !motorCanMove(1, stepper_m1.distanceToGo())) {
       stopMotor(1);
     } else {
       stepper_m1.run();
@@ -361,7 +361,7 @@ boolean runMotorsIfNeeded() {
     isRun = true;
   }
   if (stepper_m2.distanceToGo() != 0) {
-    if (!motorCanMove(2, stepper_m2.distanceToGo())) {
+    if (shouldStop || !motorCanMove(2, stepper_m2.distanceToGo())) {
       stopMotor(2);
     } else {
       stepper_m2.run();
@@ -369,6 +369,7 @@ boolean runMotorsIfNeeded() {
     registerMotorAction();
     isRun = true;
   }
+  shouldStop = false;
   return isRun;
 }
 
@@ -448,6 +449,7 @@ void setAcceleration(int motorId, long value) {
 
 void enableMotors() {
   if (!isMotorEnabled) {
+    //Serial.println("Enabling motors");
     digitalWrite(enablePin_m1, LOW);
     digitalWrite(enablePin_m2, LOW);
     isMotorEnabled = true;
@@ -475,6 +477,9 @@ void checkMotorSleep() {
   }
 }
 
+void readStopPin() {
+  shouldStop = digitalReadFast(stopPin) == HIGH;
+}
 
 // ----------------------------------------------
 // State pin functions
