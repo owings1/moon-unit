@@ -113,6 +113,7 @@ boolean isDisplayLightOn = false;
 
 // Stop/cancel
 #define stopPin 13
+#define stopPinEnabled false
 boolean shouldStop = false;
 
 void setup() {
@@ -478,7 +479,9 @@ void checkMotorSleep() {
 }
 
 void readStopPin() {
-  shouldStop = digitalReadFast(stopPin) == HIGH;
+  if (stopPinEnabled) {
+    shouldStop = digitalReadFast(stopPin) == HIGH;
+  }
 }
 
 // ----------------------------------------------
