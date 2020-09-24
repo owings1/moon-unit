@@ -56,12 +56,12 @@
 #define degreesPerStep_m1 0.45
 #define degreesPerStep_m2 0.001125
 // Whether the limit switches are connected
-#define limitsEnabled_m1 0
-#define limitsEnabled_m2 1
+#define limitsEnabled_m1 false
+#define limitsEnabled_m2 true
 #define maxAcceleration 10000L
 #define motorSleepTimeout 2000L
 
-// limit switches
+// limit switch states
 boolean isLimitCw_m1 = false;
 boolean isLimitAcw_m1 = false;
 boolean isLimitCw_m2 = false;
