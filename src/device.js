@@ -116,9 +116,14 @@ class DeviceService {
             // handle device response
             this.log('Receieved response:', resText)
             const status = parseInt(resText.substring(1))
+            const cidx = resText.indexOf(';')
+            if (cidx) {
+                var body = resText.substring(cidx + 1)
+            }
             handler({
                 status,
-                message: DeviceCodes[status]
+                message: DeviceCodes[status],
+                body
             })
             this.busy = false
         })
