@@ -49,7 +49,7 @@ describe('DeviceService', () => {
             })
             const body = await res.json()
             expect(res.status).to.equal(200)
-            expect(body.response).to.have.key('status')
+            expect(Object.keys(body.response)).to.contain('status')
         })
     })
 })
