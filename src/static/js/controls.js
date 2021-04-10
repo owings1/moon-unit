@@ -2,7 +2,7 @@ $(document).ready(function() {
 
     // :04 <motorId> <direction> <degrees>;
     function getMoveDegreesCommand(motorId, direction) {
-        return ['04', '' + motorId, '' + direction, +$('#in_degrees').val()].join(' ') + ';\n'
+        return [':04', motorId, direction, $('#in_degrees').val()].join(' ') + ';\n'
     }
 
     var busy = false
