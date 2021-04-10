@@ -1,5 +1,8 @@
 // Serial device command HTTP service
 
+// TODO:
+//    - auto-reconnect to serial port
+
 const SerialPort = require('serialport')
 const Readline   = require('@serialport/parser-readline')
 const merge      = require('merge')
