@@ -40,10 +40,10 @@ $(document).ready(function() {
 
             if ($target.is('#go_up')) {
                 motorId = 1
-                direction = 2
+                direction = 1
             } else if ($target.is('#go_down')) {
                 motorId = 1
-                direction = 1
+                direction = 2
             } else if ($target.is('#go_left')) {
                 motorId = 2
                 direction = 2
