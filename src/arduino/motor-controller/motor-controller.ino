@@ -355,7 +355,7 @@ void readLimitSwitches() {
 
   if (limitsEnabled_m1) {
     isLimitCw_m1  = digitalReadFast(limitPinCw_m1)  == HIGH;
-    isLimitAcw_m2 = digitalReadFast(limitPinAcw_m1) == HIGH;
+    isLimitAcw_m1 = digitalReadFast(limitPinAcw_m1) == HIGH;
   }
 
   if (limitsEnabled_m2) {
