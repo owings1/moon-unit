@@ -5,11 +5,14 @@
 const merge      = require('merge')
 const bodyParser = require('body-parser')
 const express    = require('express')
+const prom       = require('prom-client')
 
 const MockBinding = require('@serialport/binding-mock')
 const SerPortFull = require('serialport')
 const SerPortMock = require('@serialport/stream')
 const Readline    = require('@serialport/parser-readline')
+
+prom.collectDefaultMetrics()
 
 class DeviceService {
 
@@ -86,7 +89,7 @@ class DeviceService {
         })
     }
 
-    request(body) {
+    command(body) {
         return new Promise((resolve, reject) => {
             this.log('Enqueuing command', body)
             this.queue.unshift({body, handler: resolve})
@@ -107,7 +110,8 @@ class DeviceService {
             })
             this.busy = false
         })
-        this.device.write(body)
+        this.log('Sending command')
+        this.device.write(Buffer.from(body))
     }
 
     initWorker() {
@@ -117,17 +121,27 @@ class DeviceService {
 
     initApp(app) {
 
-        app.post('/', bodyParser.json(), (req, res) => {
+        app.post('/command/sync', bodyParser.json(), (req, res) => {
             if (!req.body.command) {
                 res.status(400).json({error: 'missing command'})
                 return
             }
-            this.request(req.body.command)
-                .then(response => res.status(200).json({response}))
-                .catch(error => {
-                    this.error(error)
-                    res.status(500).json({error})
-                })
+            try {
+                this.command(req.body.command)
+                    .then(response => res.status(200).json({response}))
+                    .catch(error => {
+                        this.error(error)
+                        res.status(500).json({error})
+                    })
+            } catch (error) {
+                this.error(error)
+                res.status(500).json({error})
+            }
+        })
+
+        app.get('/metrics', (req, res) => {
+            res.setHeader('Content-Type', prom.register.contentType)
+            prom.register.metrics().then(metrics => res.writeHead(200).end(metrics))
         })
 
         app.use((req, res) => res.status(404).json({error: 'not found'}))
