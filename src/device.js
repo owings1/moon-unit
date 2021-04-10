@@ -118,12 +118,12 @@ class DeviceService {
             const status = parseInt(resText.substring(1))
             const cidx = resText.indexOf(';')
             if (cidx) {
-                var body = resText.substring(cidx + 1)
+                var resBody = resText.substring(cidx + 1)
             }
             handler({
                 status,
                 message: DeviceCodes[status],
-                body
+                body: resBody
             })
             this.busy = false
         })
