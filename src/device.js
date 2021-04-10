@@ -14,6 +14,16 @@ const Readline    = require('@serialport/parser-readline')
 
 prom.collectDefaultMetrics()
 
+const DeviceCodes = {
+     0: 'OK',
+    40: 'Missing : before command',
+    44: 'Invalid command',
+    45: 'Invalid motorId',
+    46: 'Invalid direction',
+    47: 'Invalid steps/degrees',
+    48: 'Invalid speed/acceleration'
+}
+
 class DeviceService {
 
     defaults(env) {
@@ -105,8 +115,10 @@ class DeviceService {
         this.parser.once('data', resText => {
             // handle device response
             this.log('Receieved response:', resText)
+            const status = parseInt(resText.substring(1))
             handler({
-                status : parseInt(resText.substring(1))
+                status,
+                message: DeviceCodes[status]
             })
             this.busy = false
         })

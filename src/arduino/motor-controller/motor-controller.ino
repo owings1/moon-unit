@@ -23,9 +23,18 @@
  * motorId 1: ?, 2: ?
  * direction 1: clockwise, 2: anti-clockwise
  *
+ * Response Codes
+ * --------------
+ * 00 - OK
+ * 40 - Missing : before command
+ * 44 - Invalid command
+ * 45 - Invalid motorId
+ * 46 - Invalid direction
+ * 47 - Invalid steps/degrees
+ * 48 - Invalid speed/acceleration
+ *
  * States
  * ------
- * 
  * b00 (decimal 0) - ready for command
  * b01 (decimal 1) - running command
  * b10 (decimal 2) - [unassigned]
@@ -187,7 +196,7 @@ void takeCommand(Stream &input, Stream &output) {
 
     int motorId = readMotorIdFromInput(input);
     if (motorId == 0) {
-      output.write("=46\n");
+      output.write("=45\n");
       return;
     }
 
@@ -197,7 +206,7 @@ void takeCommand(Stream &input, Stream &output) {
 
     int dirMult = getDirMultiplier(dir);
     if (dirMult == 0) {
-      output.write("=47\n");
+      output.write("=46\n");
       return;
     }
 
@@ -205,7 +214,7 @@ void takeCommand(Stream &input, Stream &output) {
 
     long howMuch = input.readStringUntil(';').toInt() * dirMult;
     if (howMuch == 0) {
-      output.write("=48\n");
+      output.write("=47\n");
       return;
     }
 
@@ -222,14 +231,14 @@ void takeCommand(Stream &input, Stream &output) {
 
     int motorId = readMotorIdFromInput(input);
     if (motorId == 0) {
-      output.write("=46\n");
+      output.write("=45\n");
       return;
     }
 
     // second param is the speed
     long newSpeed = input.readStringUntil(';').toInt();
     if (newSpeed == 0) {
-      output.write("=49\n");
+      output.write("=48\n");
       return;
     }
 
@@ -249,14 +258,14 @@ void takeCommand(Stream &input, Stream &output) {
 
     int motorId = readMotorIdFromInput(input);
     if (motorId == 0) {
-      output.write("=46\n");
+      output.write("=45\n");
       return;
     }
 
     // second param is the acceleration
     long newAccel = input.readStringUntil(';').toInt();
     if (newAccel == 0) {
-      output.write("=50\n");
+      output.write("=48\n");
       return;
     }
 
@@ -271,7 +280,7 @@ void takeCommand(Stream &input, Stream &output) {
 
     int motorId = readMotorIdFromInput(input);
     if (motorId == 0) {
-      output.write("=46\n");
+      output.write("=45\n");
       return;
     }
 
@@ -281,7 +290,7 @@ void takeCommand(Stream &input, Stream &output) {
 
     int dirMult = getDirMultiplier(dir);
     if (dirMult == 0) {
-      output.write("=47\n");
+      output.write("=46\n");
       return;
     }
 
@@ -289,7 +298,7 @@ void takeCommand(Stream &input, Stream &output) {
 
     float howMuch = input.readStringUntil(';').toFloat() * dirMult;
     if (howMuch == 0) {
-      output.write("=48\n");
+      output.write("=47\n");
       return;
     }
 
