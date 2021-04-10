@@ -18,6 +18,11 @@
  * 
  *  :04 <motorId> <direction> <degrees>;
  *
+ * Parameters
+ * ----------
+ * motorId 1: ?, 2: ?
+ * direction 1: clockwise, 2: anti-clockwise
+ *
  * States
  * ------
  * 

@@ -121,6 +121,14 @@ class DeviceService {
 
     initApp(app) {
 
+        app.set('view engine', 'ejs')
+
+        app.use('/static', express.static(__dirname + '/static'))
+
+        app.get('/', (req, res) => {
+            res.render('index')
+        })
+
         app.post('/command/sync', bodyParser.json(), (req, res) => {
             if (!req.body.command) {
                 res.status(400).json({error: 'missing command'})
