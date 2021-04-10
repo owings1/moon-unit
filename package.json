@@ -3,9 +3,9 @@
   "private": true,
   "version": "1.0.0",
   "description": "moon unit",
-  "main": "src/index.js",
+  "main": "src/device.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "nyc --reporter=text-summary mocha test/test.js && nyc report --reporter=lcov"
   },
   "repository": {
     "type": "git",
@@ -21,5 +21,11 @@
     "prom-client": "^13.1.0",
     "rpi-gpio": "^2.1.7",
     "serialport": "^9.0.0"
+  },
+  "devDependencies": {
+    "chai": "^4.3.4",
+    "fs-extra": "^9.1.0",
+    "mocha": "^8.3.2",
+    "nyc": "^15.1.0"
   }
 }

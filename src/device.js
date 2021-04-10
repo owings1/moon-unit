@@ -2,29 +2,38 @@
 
 // TODO:
 //    - auto-reconnect to serial port
-
-const SerialPort = require('serialport')
-const Readline   = require('@serialport/parser-readline')
 const merge      = require('merge')
 const bodyParser = require('body-parser')
 const express    = require('express')
 
+const MockBinding = require('@serialport/binding-mock')
+const SerPortFull = require('serialport')
+const SerPortMock = require('@serialport/stream')
+const Readline    = require('@serialport/parser-readline')
+
 class DeviceService {
 
-    defaults() {
+    defaults(env) {
+        env = env || process.env
         return {
-            baudRate    : 115200,
-            autoOpen    : false,
-            openDelay   : 2000,
-            workerDelay : 100
+            path        : env.DEVICE_SERIAL_PORT,
+            mock        : !!env.MOCK,
+            port        : env.HTTP_PORT || 8080,
+            quiet       : !!env.QUIET,
+            openDelay   : +env.OPEN_DELAY || 2000,
+            workerDelay : +env.WORKER_DELAY || 100,
+            baudRate    : +env.BAUD_RATE || 115200
         }
     }
 
-    constructor(path, opts) {
+    constructor(opts, env) {
 
-        this.opts = merge(this.defaults(), opts)
+        this.opts = merge(this.defaults(env), opts)
 
-        this.device = new SerialPort(path, this.opts)
+        if (!this.opts.path) {
+            throw new ConfigError('path not set, you can use DEVICE_SERIAL_PORT')
+        }
+        this.device = this.createDevice()
         this.parser = this.device.pipe(new Readline)
 
         this.queue        = []
@@ -38,6 +47,7 @@ class DeviceService {
     }
 
     listen(port) {
+        port = port || this.opts.port
         return new Promise((resolve, reject) => {
             try {
                 this.device.open(err => {
@@ -46,12 +56,12 @@ class DeviceService {
                         return
                     }
                     this.initWorker()
-                    console.log('Opened, delaying', this.opts.openDelay, 'ms')
+                    this.log('Opened, delaying', this.opts.openDelay, 'ms')
                     setTimeout(() => {
                         try {
                             this.httpServer = this.app.listen(port, () => {
                                 this.port = this.httpServer.address().port
-                                console.log('Listening on port', this.port)
+                                this.log('Listening on port', this.port)
                                 resolve()
                             })
                         } catch (err) {
@@ -67,7 +77,7 @@ class DeviceService {
 
     close() {
         return new Promise(resolve => {
-            console.log('Closing')
+            this.log('Closing')
             if (this.httpServer) {
                 this.httpServer.close()
             }
@@ -78,7 +88,7 @@ class DeviceService {
 
     request(body) {
         return new Promise((resolve, reject) => {
-            console.log('Enqueuing command', body)
+            this.log('Enqueuing command', body)
             this.queue.unshift({body, handler: resolve})
         })
     }
@@ -91,7 +101,7 @@ class DeviceService {
         const {body, handler} = this.queue.pop()
         this.parser.once('data', resText => {
             // handle device response
-            console.log('Receieved response:', resText)
+            this.log('Receieved response:', resText)
             handler({
                 status : parseInt(resText.substring(1))
             })
@@ -115,17 +125,47 @@ class DeviceService {
             this.request(req.body.command)
                 .then(response => res.status(200).json({response}))
                 .catch(error => {
-                    console.error(error)
+                    this.error(error)
                     res.status(500).json({error})
                 })
         })
 
         app.use((req, res) => res.status(404).json({error: 'not found'}))
     }
+
+    createDevice() {
+        var SerialPort = SerPortFull
+        if (this.opts.mock) {
+            SerPortMock.Binding = MockBinding
+            var SerialPort = SerPortMock
+            // TODO: mock response
+            MockBinding.createPort(this.opts.path, {echo: true, readyData: []})
+        }
+        return new SerialPort(this.opts.path, {baudRate: this.opts.baudRate, autoOpen: false})
+    }
+
+    log(...args) {
+        if (!this.opts.quiet) {
+            console.log(new Date, ...args)
+        }
+    }
+
+    error(...args) {
+        console.error(new Date, ...args)
+    }
 }
+
+class BaseError extends Error {
+    constructor(...args) {
+        super(...args)
+        this.name = this.constructor.name
+    }
+}
+
+class ConfigError extends BaseError {}
 
 module.exports = DeviceService
 
 if (require.main === module) {
-    new DeviceService(process.env.DEVICE_SERIAL_PORT).listen(process.env.HTTP_LISTEN_PORT || '8080')
+    new DeviceService().listen()
 }

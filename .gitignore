@@ -4,3 +4,4 @@ node_modules
 /local
 /build
 /qemu-arm-static
+/.nyc_output
