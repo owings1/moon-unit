@@ -18,6 +18,12 @@
  * 
  *  :04 <motorId> <direction> <degrees>;
  *
+ * 05 - Read limit switch states
+ *
+ *  :05;
+ *
+ *    example response: =00;TFFT
+ *
  * Parameters
  * ----------
  * motorId 1: ?, 2: ?
@@ -307,6 +313,18 @@ void takeCommand(Stream &input, Stream &output) {
     jumpOneByDegrees(motorId, howMuch);
 
     output.write("=00\n");
+  } else if (command.equals("05")) {
+    // read limit switch states
+    input.readStringUntil(';');
+    char limitSwitchStates[5] = {
+      isLimitCw_m1  ? 'T' : 'F',
+      isLimitAcw_m1 ? 'T' : 'F',
+      isLimitCw_m2  ? 'T' : 'F',
+      isLimitAcw_m2 ? 'T' : 'F'
+    };
+    output.write("=00;");
+    output.write(limitSwitchStates);
+    output.write("\n");
   } else {
     output.write("=44\n");
   }
