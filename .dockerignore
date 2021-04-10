@@ -2,3 +2,7 @@ node_modules
 /coverage
 /tmp
 /dist
+/local
+/.gitlab-ci.yml
+/bitbucket-pipelines.yml
+/.nyc_output
