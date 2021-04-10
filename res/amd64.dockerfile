@@ -1,6 +1,4 @@
-FROM arm32v7/node:alpine
-
-COPY qemu-arm-static /usr/bin
+FROM node:alpine
 
 RUN apk --no-cache add python3 alpine-sdk linux-headers udev
 RUN addgroup node dialout
