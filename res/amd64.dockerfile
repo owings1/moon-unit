@@ -1,23 +1,25 @@
 FROM node:alpine
 
-RUN apk --no-cache add python3 alpine-sdk linux-headers udev
-RUN addgroup node dialout
+WORKDIR /app
+RUN chown node:node /app && \
+    addgroup node dialout
 EXPOSE 8080
 
-WORKDIR /app
-RUN chown node:node /app
+#RUN apk --no-cache add python3 alpine-sdk linux-headers udev
+RUN apk add --no-cache make g++ gcc python3 linux-headers udev
 
-USER node
-
-RUN npm install serialport --build-from-source
+#RUN npm install serialport --build-from-source
 
 COPY package.json .
 COPY package-lock.json .
-COPY scripts scripts
+#COPY scripts scripts
 
 RUN npm install
 
 COPY --chown=node:node . .
-RUN rm -rf .git
 
-CMD node src/index.js
+USER node
+
+#RUN rm -rf .git
+
+CMD ["node", "src/index.js"]
