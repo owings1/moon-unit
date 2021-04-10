@@ -20,7 +20,7 @@
  *
  * 05 - Read limit switch states
  *
- *  :05;
+ *  :05 ;
  *
  *    example response: =00;TFFT
  *
