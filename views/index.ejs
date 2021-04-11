@@ -8,29 +8,64 @@
 </head>
 <body>
     <form>
-        <input type="text" name="degrees" id="in_degrees" value="0.5"> degrees
-        <div><button class="go" id="go_up">up</button></div>
-        <div><button class="go" id="go_down">down</button></div>
-        <div><button class="go" id="go_left">left</button></div>
-        <div><button class="go" id="go_right">right</button></div>
+        <input type="text" name="degrees" id="in_howmuch" value="1">
+        <select name="unit" id="in_units">
+            <option value="degrees">degrees</option>
+            <option value="steps">steps</option>
+        </select>
+        <table>
+            <tr>
+                <td>&nbsp;</td>
+                <td><button class="go" id="go_up">up</button></td>
+                <td>&nbsp;</td>
+            </tr>
+            <tr>
+                <td><button class="go" id="go_left">left</button></td>
+                <td>&nbsp;</td>
+                <td><button class="go" id="go_right">right</button></td>
+            </tr>
+            <tr>
+                <td>&nbsp;</td>
+                <td><button class="go" id="go_down">down</button></td>
+                <td>&nbsp;</td>
+            </tr>
+        </table>
     </form>
     <hr>
     <form>
-        <div>
-            <input type="text" name="degrees1" id="in_degrees1" value="0.5"> degrees
-            <select name="dir1" id="in_dir1">
-                <option value="1">up</option>
-                <option value="2">down</option>
-            </select>
-        </div>
-        <div>
-            <input type="text" name="degrees2" id="in_degrees2" value="0.5"> degrees
-            <select name="dir2" id="in_dir2">
-                <option value="2">left</option>
-                <option value="1">right</option>
-            </select>
-        </div>
-        <div><button class="go" id="go_both">go</button></div>
+        <table>
+            <tr>
+                <td>
+                    <select name="dir1" id="in_dir1">
+                        <option value="1">up</option>
+                        <option value="2">down</option>
+                    </select>
+                </td>
+                <td>
+                    <input type="text" name="howmuch1" id="in_howmuch1" value="1">
+                </td>
+                <td rowspan="2">
+                    <select name="unit2" id="in_units2">
+                        <option value="degrees">degrees</option>
+                        <option value="steps">steps</option>
+                    </select>
+                </td>
+                <td rowspan="2">
+                    <div><button class="go" id="go_both">go</button></div>
+                </td>
+            </tr>
+            <tr>
+                <td>
+                    <select name="dir2" id="in_dir2">
+                        <option value="2">left</option>
+                        <option value="1">right</option>
+                    </select>
+                </td>
+                <td>
+                    <input type="text" name="howmuch2" id="in_howmuch2" value="1">
+                </td>
+            </tr>
+        </table>
     </form>
     <hr>
     <form>
@@ -51,14 +86,16 @@
     </form>
     <hr>
     <form>
-        <input type="text" name="raw" id="in_raw">
-        <div><button class="go" id="go_raw">Raw</button></div>
+        <div>
+            <input type="text" name="raw" id="in_raw">
+            <button class="go" id="go_raw">Raw</button>
+        </div>
     </form>
     <hr>
     <form>
-        <div><button class="gpio" id="gpio_state">State</button></div>
-        <div><button class="gpio" id="gpio_stop">Stop</button></div>
-        <div><button class="gpio" id="gpio_reset">Reset</button></div>
+        <button class="gpio" id="gpio_state">State</button>
+        <button class="gpio" id="gpio_stop">Stop</button>
+        <button class="gpio" id="gpio_reset">Reset</button>
     </form>
     <hr>
     <h3>Request</h3>

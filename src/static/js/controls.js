@@ -92,15 +92,15 @@ $(document).ready(function() {
                 } else if ($target.is('#end_all')) {
                     cmd = getEndAllCommand()
                 } else if ($target.is('#go_up')) {
-                    cmd = getMoveDegreesCommand(1, 1)
+                    cmd = getMoveSingleCommand(1, 1)
                 } else if ($target.is('#go_down')) {
-                    cmd = getMoveDegreesCommand(1, 2)
+                    cmd = getMoveSingleCommand(1, 2)
                 } else if ($target.is('#go_left')) {
-                    cmd = getMoveDegreesCommand(2, 2)
+                    cmd = getMoveSingleCommand(2, 2)
                 } else if ($target.is('#go_right')) {
-                    cmd = getMoveDegreesCommand(2, 1)
+                    cmd = getMoveSingleCommand(2, 1)
                 } else if ($target.is('#go_both')) {
-                    cmd = getMoveDegreesBothCommand()
+                    cmd = getMoveBothCommand()
                 } else if ($target.is('#go_raw')) {
                     cmd = getRawCommand()
                 }
@@ -110,7 +110,9 @@ $(document).ready(function() {
             } catch (err) {
                 console.error(err)
             }
+
         } else if ($target.hasClass('gpio')) {
+
             e.preventDefault()
 
             clearOutputs()
@@ -125,12 +127,13 @@ $(document).ready(function() {
     })
 
     // :04 <motorId> <direction> <degrees>;
-    function getMoveDegreesCommand(motorId, direction) {
-        const degrees = $('#in_degrees').val()
-        if (isNaN(parseFloat(degrees))) {
-            throw new Error('Invalid degrees input: ' + degrees)
+    function getMoveSingleCommand(motorId, direction) {
+        const howMuch = $('#in_howmuch').val()
+        const unit = $('#in_units').val()
+        if (isNaN(parseFloat(howMuch))) {
+            throw new Error('Invalid input: ' + howMuch)
         }
-        return [':04', motorId, direction, degrees].join(' ') + ';\n'
+        return [unit == 'steps' ? ':01' : ':04', motorId, direction, howMuch].join(' ') + ';\n'
     }
 
     // :06 <motorId>;
@@ -154,24 +157,25 @@ $(document).ready(function() {
     }
 
     // :11 <direction_1> <degrees_1> <direction_2> <degrees_2>;
-    function getMoveDegreesBothCommand() {
+    function getMoveBothCommand() {
+        const unit = $('#in_units2').val()
         const dir1 = parseInt($('#in_dir1').val())
         const dir2 = parseInt($('#in_dir2').val())
-        const degrees1 = parseFloat($('#in_degrees1').val())
-        const degrees2 = parseFloat($('#in_degrees2').val())
+        const howMuch1 = parseFloat($('#in_howmuch1').val())
+        const howMuch2 = parseFloat($('#in_howmuch2').val())
         if (dir1 != 1 && dir1 != 2) {
             throw new Error('Invalid direction_1 value: ' + dir1)
         }
         if (dir2 != 1 && dir2 != 2) {
             throw new Error('Invalid direction_2 value: ' + dir2)
         }
-        if (isNaN(degrees1)) {
-            throw new Error('Invalid degrees_1 value')
+        if (isNaN(howMuch1)) {
+            throw new Error('Invalid howmuch_1 value')
         }
-        if (isNaN(degrees2)) {
-            throw new Error('Invalid degrees_2 value')
+        if (isNaN(howMuch2)) {
+            throw new Error('Invalid howmuch_2 value')
         }
-        return [':11', dir1, degrees1, dir2, degrees2].join(' ') + ';\n'
+        return [unit == 'steps' ? ':10' : ':11', dir1, howMuch1, dir2, howMuch2].join(' ') + ';\n'
     }
 
     function getRawCommand() {
