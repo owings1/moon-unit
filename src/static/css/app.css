@@ -1,5 +1,9 @@
+body {
+    font-family: 'lucida grande',verdana,helvetica,arial,sans-serif;
+}
 .json {
     white-space: pre;
+    padding: 10px;
     font-family: Courier;
     background-color: #ddd;
 }
