@@ -4,13 +4,8 @@ $(document).ready(function() {
         return $('#in_degrees').val()
     }
 
-    // :04 <motorId> <direction> <degrees>;
-    function getMoveDegreesCommand(motorId, direction) {
-        const degrees = getDegreesValue()
-        if (isNaN(parseFloat(degrees))) {
-            throw new Error('Invalid degrees input: ' + degrees)
-        }
-        return [':04', motorId, direction, degrees].join(' ') + ';\n'
+    function clearOutputs() {
+        $('.output').text('')
     }
 
     var busy = false
@@ -21,7 +16,8 @@ $(document).ready(function() {
             return
         }
         busy = true
-        $('.go').addClass('disabled')
+        $('.go').addClass('disabled').prop('disabled', true)
+        clearOutputs()
         const req = {command}
         var opts = {
             method  : 'POST',
@@ -34,7 +30,7 @@ $(document).ready(function() {
         $('#request_output').text(JSON.stringify(req, null, 2))
         fetch('command/sync', opts).then(res => {
             busy = false
-            $('.go').removeClass('disabled')
+            $('.go').removeClass('disabled').prop('disabled', false)
             res.json().then(resBody => {
                 console.log(resBody)
                 $('#response_output').text(JSON.stringify(resBody, null, 2))
@@ -44,7 +40,7 @@ $(document).ready(function() {
             })
         }).catch(err => {
             busy = false
-            $('.go').removeClass('disabled')
+            $('.go').removeClass('disabled').prop('disabled', false)
             console.error(err)
             $('#response_output').text(err)
         })
@@ -58,32 +54,55 @@ $(document).ready(function() {
 
             e.preventDefault()
 
-            if (busy || $target.hasClass('disabled')) {
+            clearOutputs()
+
+            if (busy || $target.hasClass('disabled') || $target.prop('disabled')) {
                 return
             }
-            var motorId, direction
 
-            if ($target.is('#go_up')) {
-                motorId = 1
-                direction = 1
-            } else if ($target.is('#go_down')) {
-                motorId = 1
-                direction = 2
-            } else if ($target.is('#go_left')) {
-                motorId = 2
-                direction = 2
-            } else if ($target.is('#go_right')) {
-                motorId = 2
-                direction = 1
-            }
-
+            var cmd
             try {
-                var cmd = getMoveDegreesCommand(motorId, direction)
+
+                if ($target.is('#home_1')) {
+                    cmd = getHomeSingleCommand(1)
+                } else if ($target.is('#home_2')) {
+                    cmd = getHomeSingleCommand(2)
+                } else if ($target.is('#home_all')) {
+                    cmd = getHomeAllCommand()
+                } else if ($target.is('#go_up')) {
+                    cmd = getMoveDegreesCommand(1, 1)
+                } else if ($target.is('#go_down')) {
+                    cmd = getMoveDegreesCommand(1, 2)
+                } else if ($target.is('#go_left')) {
+                    cmd = getMoveDegreesCommand(2, 2)
+                } else if ($target.is('#go_right')) {
+                    cmd = getMoveDegreesCommand(2, 1)
+                }
+
                 sendCommand(cmd)
+
             } catch (err) {
                 console.error(err)
             }
         }
-        
     })
+
+    // :04 <motorId> <direction> <degrees>;
+    function getMoveDegreesCommand(motorId, direction) {
+        const degrees = getDegreesValue()
+        if (isNaN(parseFloat(degrees))) {
+            throw new Error('Invalid degrees input: ' + degrees)
+        }
+        return [':04', motorId, direction, degrees].join(' ') + ';\n'
+    }
+
+    // :06 <motorId>;
+    function getHomeSingleCommand(motorId) {
+        return [':06', motorId].join(' ') + ';\n'
+    }
+
+    // :07 ;
+    function getHomeAllCommand() {
+        return ':07 ;\n'
+    }
 })
