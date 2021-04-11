@@ -3,7 +3,7 @@
   "private": true,
   "version": "1.0.0",
   "description": "moon unit",
-  "main": "src/device.js",
+  "main": "index.js",
   "scripts": {
     "test": "nyc --reporter=text-summary mocha test/test.js && nyc report --reporter=lcov"
   },

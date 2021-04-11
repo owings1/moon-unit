@@ -12,7 +12,6 @@ RUN apk add --no-cache make g++ gcc python3 linux-headers udev
 
 COPY package.json .
 COPY package-lock.json .
-#COPY scripts scripts
 
 RUN npm install
 
@@ -20,6 +19,4 @@ COPY --chown=node:node . .
 
 USER node
 
-#RUN rm -rf .git
-
-CMD ["node", "src/index.js"]
+CMD ["node", "index.js"]

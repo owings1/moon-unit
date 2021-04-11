@@ -24,7 +24,7 @@ const DeviceCodes = {
     48: 'Invalid speed/acceleration'
 }
 
-class DeviceService {
+class App {
 
     defaults(env) {
         env = env || process.env
@@ -203,8 +203,4 @@ class BaseError extends Error {
 
 class ConfigError extends BaseError {}
 
-module.exports = DeviceService
-
-if (require.main === module) {
-    new DeviceService().listen()
-}
+module.exports = App
