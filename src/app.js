@@ -105,7 +105,8 @@ class App {
                 this.httpServer.close()
             }
             clearInterval(this.workerHandle)
-            this.device.close(resolve)
+            this.device.close()
+            resolve()
         })
     }
 
@@ -204,6 +205,8 @@ class App {
             // TODO: gracefully close serial port or catch error and delay then repoen
             this.gpio.sendReset().then(() => {
                 res.status(200).json({message: 'reset sent'})
+                //this.device.close()
+                //setTimeout(() => this.device.open().then(() => this.log('Reopened')).catch(err => this.error(err)), 4000)
             }).catch(error => {
                 this.error(error)
                 res.status(500).json({error})
