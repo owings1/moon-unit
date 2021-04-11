@@ -49,19 +49,20 @@
  *
  *  :11 <direction_1> <degrees_1> <direction_2> <degrees_2>;
  *
- * 12 - Get motor positions in steps
+ * 12 - [In progress] Get motor positions
  *
- *  :12 ;
+ *  :12 <format>;
  *
  *    example responses:
  *      =00;8500|1200
- *      =00;?|100
+ *      =00;?|130.195
  *      =00:?|?
  *
  * Parameters
  * ----------
- * motorId 1: ?, 2: ?
- * direction 1: clockwise, 2: anti-clockwise
+ * motorId   - 1: scope, 2: base
+ * direction - 1: clockwise, 2: anti-clockwise
+ * format    - 1: steps, 2: degrees
  *
  * Response Codes
  * --------------
@@ -72,6 +73,7 @@
  * 46 - Invalid direction
  * 47 - Invalid steps/degrees
  * 48 - Invalid speed/acceleration
+ * 49 - Invalid other parameter
  *
  * States
  * ------
@@ -82,9 +84,8 @@
  */
 
 // TODO:
+//  - fix position tracking math
 //  - have separate maxAcceleration values for m1 and m2
-//  - add command to move both motors at once
-//  - auto home function: move to limit, then back a fixed amount
 //  - write real encoder/lcd interface
 
 #include <AccelStepper.h>
@@ -105,8 +106,8 @@
 #define limitPinAcw_m1 4
 #define limitPinCw_m2 11
 #define limitPinAcw_m2 12
-#define maxSpeed_m1 2000L
-#define maxSpeed_m2 2000L
+#define maxSpeed_m1 1800L
+#define maxSpeed_m2 1800L
 #define degreesPerStep_m1 0.0008125
 #define degreesPerStep_m2 0.001125
 // for homing, will not overshoot limit switches
@@ -558,14 +559,23 @@ void takeCommand(Stream &input, Stream &output) {
 
   } else if (command.equals("12")) {
 
-    // get motor positions in steps
+    // get motor positions
 
-    input.readStringUntil(';');
+    // param is format
+    int format = input.readStringUntil(';').toInt();
 
-    output.write('=00;');
+    if (format != 1 && format != 2) {
+      output.write("=49\n");
+      return;
+    }
+
+    output.write("=00;");
 
     if (hasHomed_m1) {
-      output.write(String(mpos_m1));
+      String pstr = String(format == 1 ? mpos_m1 : (mpos_m1 * degreesPerStep_m1));
+      for (int i = 0; i < pstr.length(); i++) {
+        output.write(pstr.charAt(i));
+      }
     } else {
       output.write("?");
     }
@@ -573,7 +583,10 @@ void takeCommand(Stream &input, Stream &output) {
     output.write("|");
 
     if (hasHomed_m2) {
-      output.write(String(mpos_m2));
+      String pstr = String(format == 1 ? mpos_m2 : (mpos_m2 * degreesPerStep_m2));
+      for (int i = 0; i < pstr.length(); i++) {
+        output.write(pstr.charAt(i));
+      }
     } else {
       output.write("?");
     }
