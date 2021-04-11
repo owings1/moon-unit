@@ -1,9 +1,97 @@
 body {
-    font-family: 'lucida grande',verdana,helvetica,arial,sans-serif;
+    /*font-family: 'lucida grande',verdana,helvetica,arial,sans-serif;*/
+    font-family: 'Roboto',sans-serif;
+    background-color: black;
+    color: green;
+}
+input[type="text"], textarea, select {
+    background-color: #aaa;
+}
+/*
+button.go {
+    background-color: blue;
+    color: #ddd;
+}
+*/
+button {
+    padding: 5px;
+}
+a.button{
+    display:inline-block;
+    padding:0.3em 1.2em;
+    margin:0 0.1em 0.1em 0;
+    border:0.16em solid rgba(255,255,255,0);
+    border-radius:2em;
+    box-sizing: border-box;
+    text-decoration:none;
+    font-family:'Roboto',sans-serif;
+    font-weight:300;
+    color:#FFFFFF;
+    text-shadow: 0 0.04em 0.04em rgba(0,0,0,0.35);
+    text-align:center;
+    transition: all 0.2s;
+}
+a.button:hover{
+    border-color: rgba(255,255,255,1);
+}
+@media all and (max-width:30em){
+    a.button{
+       display:block;
+       margin:0.2em auto;
+    }
+}
+a.button.blue {
+    background-color: #4e9af1;
+}
+a.button.red {
+    background-color: #f14e4e;
+}
+a.button.magenta {
+    background-color: #f14ebd;
+}
+a.button.gray {
+    background-color: #ccc;
+    color: black;
+}
+a.button.green {
+    background-color: #3bbf45;
+}
+#clear_outputs {
+    margin-top: 14px;
 }
 .json {
     white-space: pre;
     padding: 10px;
     font-family: Courier;
-    background-color: #ddd;
+    background-color: #666;
+    color: white;
+}
+.content {
+    width: 800px;
+    margin: auto;
+    border-style: solid;
+    border-width: 1px;
+    border-color: #a953b3;
+}
+hr {
+    border-color: #a953b3;
+}
+td {
+    padding: 5px;
+    text-align: center;
+}
+.panel {
+    padding: 10px;
+}
+input.howmuch {
+    width: 100px;
+}
+.left {
+    float: left;
+}
+.right {
+    float: right;
+}
+.clear {
+    clear: both;
 }

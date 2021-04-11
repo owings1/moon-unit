@@ -121,7 +121,9 @@ $(document).ready(function() {
             } else if ($target.is('#gpio_stop')) {
                 sendGpio('stop')
             } else if ($target.is('#gpio_reset')) {
-                sendGpio('reset')
+                if (confirm('Reset, are you sure?')) {
+                    sendGpio('reset')
+                }
             }
         }
     })
