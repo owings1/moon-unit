@@ -84,6 +84,12 @@ class Gpio {
             return
         }
         await gpio.write(this.pins.reset, false)
+        await new Promise(resolve =>
+            setTimeout(() => {
+                gpio.write(this.pins.reset, true).then(resolve)
+            }. 100)
+        )
+        setTimeout(())
     }
 }
 

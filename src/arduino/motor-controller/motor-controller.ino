@@ -656,7 +656,7 @@ boolean runMotorsIfNeeded() {
     registerMotorAction();
     isRun = true;
   }
-  shouldStop = false;
+  //shouldStop = false;
   return isRun;
 }
 
