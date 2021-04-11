@@ -662,9 +662,9 @@ boolean isMotorHome(int motorId) {
     return false;
   }
   if (motorId == 1) {
-    return isLimitCw_m1;
+    return isLimitAcw_m1;
   } else if (motorId == 2) {
-    return isLimitCw_m2;
+    return isLimitAcw_m2;
   }
 }
 
@@ -681,8 +681,8 @@ void homeMotor(int motorId) {
     return;
   }
   if (isMotorHome(motorId)) {
-    // move back just a little
-    jumpOneByDegrees(motorId, -2);
+    // move forware just a little
+    jumpOneByDegrees(motorId, 2);
     while (runMotorsIfNeeded()) {
       readLimitSwitches();
       if (!isMotorHome(motorId)) {
@@ -691,7 +691,7 @@ void homeMotor(int motorId) {
     }
     readLimitSwitches();
   }
-  jumpOneByDegrees(motorId, getMaxDegreesForMotor(motorId));
+  jumpOneByDegrees(motorId, -1 * getMaxDegreesForMotor(motorId));
 }
 
 void endMotor(int motorId) {
