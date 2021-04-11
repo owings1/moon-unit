@@ -162,12 +162,21 @@ class App {
                 return
             }
             try {
-                this.command(req.body.command)
-                    .then(response => res.status(200).json({response}))
-                    .catch(error => {
-                        this.error(error)
-                        res.status(500).json({error})
-                    })
+                this.gpio.getState().then(state => {
+                    if (state != 0) {
+                        res.status(503).json({error: 'not ready', state})
+                        return
+                    }
+                    this.command(req.body.command)
+                        .then(response => res.status(200).json({response}))
+                        .catch(error => {
+                            this.error(error)
+                            res.status(500).json({error})
+                        })
+                }).catch(error => {
+                    this.error(error)
+                    res.status(500).json({error})
+                })
             } catch (error) {
                 this.error(error)
                 res.status(500).json({error})
