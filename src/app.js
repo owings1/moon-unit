@@ -175,7 +175,7 @@ class App {
         })
 
         app.get('/gpio/state', (req, res) => {
-            if (!this.gpioEnabled) {
+            if (!this.opts.gpioEnabled) {
                 res.status(400).json({error: 'gpio not enabled'})
                 return
             }
@@ -188,7 +188,7 @@ class App {
         })
 
         app.post('/gpio/reset', (req, res) => {
-            if (!this.gpioEnabled) {
+            if (!this.opts.gpioEnabled) {
                 res.status(400).json({error: 'gpio not enabled'})
                 return
             }
@@ -202,7 +202,7 @@ class App {
         })
 
         app.post('/gpio/stop', (req, res) => {
-            if (!this.gpioEnabled) {
+            if (!this.opts.gpioEnabled) {
                 res.status(400).json({error: 'gpio not enabled'})
                 return
             }
