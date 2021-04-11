@@ -77,6 +77,11 @@ class Gpio {
         }
 
         await gpio.write(this.pins.stop, true)
+        await new Promise((resolve, reject) =>
+            setTimeout(() => {
+                gpio.write(this.pins.stop, false).then(resolve).catch(reject)
+            }, 100)
+        )
     }
 
     async sendReset() {
@@ -89,7 +94,6 @@ class Gpio {
                 gpio.write(this.pins.reset, true).then(resolve).catch(reject)
             }, 100)
         )
-        //setTimeout(())
     }
 }
 
