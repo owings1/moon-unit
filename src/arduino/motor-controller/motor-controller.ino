@@ -24,6 +24,14 @@
  *
  *    example response: =00;TFFT
  *
+ * 06 - Home a single motor
+ *
+ *  :06 <motorId>;
+ *
+ * 07 - Home both motors
+ *
+ *  :07 ;
+ *
  * Parameters
  * ----------
  * motorId 1: ?, 2: ?
@@ -75,6 +83,9 @@
 #define maxSpeed_m2 2000L
 #define degreesPerStep_m1 0.0008125
 #define degreesPerStep_m2 0.001125
+// for homing, will not overshoot limit switches
+#define maxDegrees_m1 190
+#define maxDegress_m2 370
 // Whether the limit switches are connected
 #define limitsEnabled_m1 true
 #define limitsEnabled_m2 true
@@ -98,6 +109,8 @@ AccelStepper stepper_m1(AccelStepper::FULL2WIRE, stepPin_m1, dirPin_m1);
 AccelStepper stepper_m2(AccelStepper::FULL2WIRE, stepPin_m2, dirPin_m2);
 
 // Encoder
+
+#define encoderEnabled false
 
 // These cannot be changed without addressing interrupt as below
 #define encoderPin1 A2
@@ -154,14 +167,16 @@ void loop() {
 
   static int pos = 0;
 
-  int newPos = encoder.getPosition();
+  if (encoderEnabled) {
+    int newPos = encoder.getPosition();
   
-  if (pos != newPos) {
-    if (shouldTakeInput()) {
-      takeKnobInput(pos, newPos);
+    if (pos != newPos) {
+      if (shouldTakeInput()) {
+        takeKnobInput(pos, newPos);
+      }
+      // if we are not taking input, this will ignore changes to knob position
+      pos = newPos;
     }
-    // if we are not taking input, this will ignore changes to knob position
-    pos = newPos;
   }
 
   if (runMotorsIfNeeded()) {
@@ -256,6 +271,7 @@ void takeCommand(Stream &input, Stream &output) {
     }
 
     output.write("=00\n");
+
   } else if (command.equals("03")) {
 
     // Set acceleration for motor
@@ -313,18 +329,69 @@ void takeCommand(Stream &input, Stream &output) {
     jumpOneByDegrees(motorId, howMuch);
 
     output.write("=00\n");
+
   } else if (command.equals("05")) {
+
     // read limit switch states
+
     input.readStringUntil(';');
+
     char limitSwitchStates[5] = {
       isLimitCw_m1  ? 'T' : 'F',
       isLimitAcw_m1 ? 'T' : 'F',
       isLimitCw_m2  ? 'T' : 'F',
       isLimitAcw_m2 ? 'T' : 'F'
     };
+
     output.write("=00;");
     output.write(limitSwitchStates);
     output.write("\n");
+
+  } else if (command.equals("06")) {
+
+    // home a single motor
+
+    // param is the motor id
+    int motorId = readMotorIdFromInput(input);
+
+    if (motorId == 0) {
+      output.write("=45\n");
+      return;
+    }
+
+    input.readStringUntil(';')
+
+    if (!motorCanHome(motorId)) {
+      output.write("=47\n");
+      return;
+    }
+
+    // perform action
+    homeMotor(motorId);
+
+    output.write("=00\n");
+
+  } else if (command.equals("07")) {
+
+    // home both motors
+
+    input.readStringUntil(';');
+
+    if (!motorCanHome(1) && !motorCanHome(2)) {
+      output.write("=47\n");
+      return
+    }
+
+    // perform action
+    if (motorCanHome(1)) {
+      homeMotor(1);
+    }
+    if (motorCanHome(2)) {
+      homeMotor(2);
+    }
+
+    output.write("=00\n");
+
   } else {
     output.write("=44\n");
   }
@@ -379,6 +446,41 @@ boolean motorCanMove(int motorId, long howMuch) {
       return !isLimitAcw_m2;
     }
   }
+}
+
+boolean motorCanHome(int motorId) {
+  if (motorId == 1) {
+    return limitsEnabled_m1;
+  }
+  if (motorId == 2) {
+    return limitsEnabled_m2;
+  }
+}
+
+boolean isMotorHome(int motorId) {
+  if (!motorCanHome(motorId)) {
+    return false;
+  }
+  if (motorId == 1) {
+    return isLimitCw_m1;
+  } else if (motorId == 2) {
+    return isLimitCw_m2;
+  }
+}
+
+float getMaxDegreesForMotor(int motorId) {
+  if (motorId == 1) {
+    return maxDegrees_m1;
+  } else if (motorId == 2) {
+    return maxDegrees_m2;
+  }
+}
+
+void homeMotor(int motorId) {
+  if (!motorCanHome(motorId)) {
+    return;
+  }
+  jumpOneByDegrees(motorId, getMaxDegreesForMotor(motorId));
 }
 
 boolean runMotorsIfNeeded() {
