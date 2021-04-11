@@ -681,12 +681,14 @@ void homeMotor(int motorId) {
     return;
   }
   if (isMotorHome(motorId)) {
-    // move forware just a little
-    jumpOneByDegrees(motorId, 2);
+    // move forward just a little
+    jumpOneByDegrees(motorId, 1.5);
     while (runMotorsIfNeeded()) {
       readLimitSwitches();
+      // TODO: fix physical tab for M2 optical switches. This code works
+      //       fine, and it's better than moving a full 1.5 degrees.
       if (!isMotorHome(motorId)) {
-        stopMotor(motorId);
+        //stopMotor(motorId);
       }
     }
     readLimitSwitches();
@@ -698,7 +700,7 @@ void endMotor(int motorId) {
   if (!motorCanHome(motorId)) {
     return;
   }
-  jumpOneByDegrees(motorId, -1 * getMaxDegreesForMotor(motorId));
+  jumpOneByDegrees(motorId, getMaxDegreesForMotor(motorId));
 }
 
 boolean runMotorsIfNeeded() {
