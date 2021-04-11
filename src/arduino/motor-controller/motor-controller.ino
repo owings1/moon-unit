@@ -18,11 +18,11 @@
  * 
  *  :04 <motorId> <direction> <degrees>;
  *
- * 05 - Read limit switch states
+ * 05 - Get state of limit switches and stop pin
  *
  *  :05 ;
  *
- *    example response: =00;TFFT
+ *    example response: =00;TFFT|F
  *
  * 06 - Home a single motor
  *
@@ -352,15 +352,17 @@ void takeCommand(Stream &input, Stream &output) {
 
     input.readStringUntil(';');
 
-    char limitSwitchStates[5] = {
+    char states[7] = {
       isLimitCw_m1  ? 'T' : 'F',
       isLimitAcw_m1 ? 'T' : 'F',
       isLimitCw_m2  ? 'T' : 'F',
-      isLimitAcw_m2 ? 'T' : 'F'
+      isLimitAcw_m2 ? 'T' : 'F',
+      '|',
+      shouldStop ? 'T' : 'F'
     };
 
     output.write("=00;");
-    output.write(limitSwitchStates);
+    output.write(states);
     output.write("\n");
 
   } else if (command.equals("06")) {
