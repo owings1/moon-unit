@@ -4,6 +4,8 @@ $(document).ready(function() {
         $('.output').text('')
     }
 
+    $('#clear_outputs').on('click', clearOutputs)
+
     var busy = false
 
     function sendCommand(command) {
@@ -15,7 +17,7 @@ $(document).ready(function() {
         $('.go').addClass('disabled').prop('disabled', true)
         clearOutputs()
         const req = {command}
-        var opts = {
+        const opts = {
             method  : 'POST',
             body    : JSON.stringify(req),
             headers : {
@@ -42,10 +44,24 @@ $(document).ready(function() {
         })
     }
 
-    $('form').on('submit', function(e) {
-        console.log('submit')
-        e.preventDefault()
-    })
+    function sendGpio(type) {
+        clearOutputs()
+        const method = type == 'state' ? 'GET' : 'POST'
+        $('#request_output').text([method, 'GPIO', type].join(' '))
+        fetch('gpio/' + type, {method}).then(res => {
+            res.json().then(resBody => {
+                console.log(resBody)
+                $('#response_output').text(JSON.stringify(resBody, null, 2))
+            }).catch(err => {
+                console.error(err)
+                $('#response_output').text(err)
+            })
+        }).catch(err => {
+            console.error(err)
+            $('#response_output').text(err)
+        })
+    }
+
     $('form').on('click', function(e) {
 
         var $target = $(e.target)
@@ -85,12 +101,25 @@ $(document).ready(function() {
                     cmd = getMoveDegreesCommand(2, 1)
                 } else if ($target.is('#go_both')) {
                     cmd = getMoveDegreesBothCommand()
+                } else if ($target.is('#go_raw')) {
+                    cmd = getRawCommand()
                 }
 
                 sendCommand(cmd)
 
             } catch (err) {
                 console.error(err)
+            }
+        } else if ($target.hasClass('gpio')) {
+            e.preventDefault()
+
+            clearOutputs()
+            if ($target.is('#gpio_state')) {
+                sendGpio('state')
+            } else if ($target.is('#gpio_stop')) {
+                sendGpio('stop')
+            } else if ($target.is('#gpio_reset')) {
+                sendGpio('reset')
             }
         }
     })
@@ -143,5 +172,13 @@ $(document).ready(function() {
             throw new Error('Invalid degrees_2 value')
         }
         return [':11', dir1, degrees1, dir2, degrees2].join(' ') + ';\n'
+    }
+
+    function getRawCommand() {
+        const text = $('#in_raw').val().trim()
+        if (!text.length) {
+            throw new Error('Empty input')
+        }
+        return text + '\n'
     }
 })

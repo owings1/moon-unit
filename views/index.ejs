@@ -8,7 +8,7 @@
 </head>
 <body>
     <form>
-        <input type="text" name="degrees" id="in_degrees"> degrees
+        <input type="text" name="degrees" id="in_degrees" value="0.5"> degrees
         <div><button class="go" id="go_up">up</button></div>
         <div><button class="go" id="go_down">down</button></div>
         <div><button class="go" id="go_left">left</button></div>
@@ -17,14 +17,14 @@
     <hr>
     <form>
         <div>
-            <input type="text" name="degrees1" id="in_degrees1"> degrees
+            <input type="text" name="degrees1" id="in_degrees1" value="0.5"> degrees
             <select name="dir1" id="in_dir1">
                 <option value="1">up</option>
                 <option value="2">down</option>
             </select>
         </div>
         <div>
-            <input type="text" name="degrees2" id="in_degrees2"> degrees
+            <input type="text" name="degrees2" id="in_degrees2" value="0.5"> degrees
             <select name="dir2" id="in_dir2">
                 <option value="2">left</option>
                 <option value="1">right</option>
@@ -34,16 +34,33 @@
     </form>
     <hr>
     <form>
-        <div><button class="go" id="home_1">Home 1</button></div>
-        <div><button class="go" id="home_2">Home 2</button></div>
-        <div><button class="go" id="home_all">Home All</button></div>
+        <table>
+            <tr>
+                <td><button class="go" id="home_1">Home 1</button></td>
+                <td><button class="go" id="end_1">End 1</button></td>
+            </tr>
+            <tr>
+                <td><button class="go" id="home_2">Home 2</button></td>
+                <td><button class="go" id="end_2">End 2</button></td>
+            </tr>
+            <tr>
+                <td><button class="go" id="home_all">Home All</button></td>
+                <td><button class="go" id="end_all">End All</button></td>
+            </tr>
+        </table>
     </form>
     <hr>
     <form>
-        <div><button class="go" id="end_1">End 1</button></div>
-        <div><button class="go" id="end_2">End 2</button></div>
-        <div><button class="go" id="end_all">End All</button></div>
+        <input type="text" name="raw" id="in_raw">
+        <div><button class="go" id="go_raw">Raw</button></div>
     </form>
+    <hr>
+    <form>
+        <div><button class="gpio" id="gpio_state">State</button></div>
+        <div><button class="gpio" id="gpio_stop">Stop</button></div>
+        <div><button class="gpio" id="gpio_reset">Reset</button></div>
+    </form>
+    <hr>
     <h3>Request</h3>
     <div id="request_output" class="output json"></div>
     <h3>Response</h3>
