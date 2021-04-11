@@ -22,7 +22,8 @@
  *
  *  :05 ;
  *
- *    example response: =00;TFFT|F
+ *    example response:
+ *      =00;TFFT|F
  *
  * 06 - Home a single motor
  *
@@ -47,6 +48,15 @@
  * 11 - Move both motors by degrees
  *
  *  :11 <direction_1> <degrees_1> <direction_2> <degrees_2>;
+ *
+ * 12 - Get motor positions in steps
+ *
+ *  :12 ;
+ *
+ *    example responses:
+ *      =00;8500|1200
+ *      =00;?|100
+ *      =00:?|?
  *
  * Parameters
  * ----------
@@ -123,6 +133,12 @@ boolean isMotorEnabled = false;
 
 AccelStepper stepper_m1(AccelStepper::FULL2WIRE, stepPin_m1, dirPin_m1);
 AccelStepper stepper_m2(AccelStepper::FULL2WIRE, stepPin_m2, dirPin_m2);
+
+// track the relative position, only meaningful if homed
+long mpos_m1 = 0L;
+long mpos_m2 = 0L;
+boolean hasHomed_m1 = false;
+boolean hasHomed_m2 = false;
 
 // Encoder
 
@@ -201,6 +217,7 @@ void loop() {
     updateDisplay();
     checkDisplaySleep();
     checkMotorSleep();
+    checkMotorsHome();
     setState(STATE_READY);
     takeCommand(Serial, Serial);
   }
@@ -539,6 +556,30 @@ void takeCommand(Stream &input, Stream &output) {
 
     output.write("=00\n");
 
+  } else if (command.equals("12")) {
+
+    // get motor positions in steps
+
+    input.readStringUntil(';');
+
+    output.write('=00;');
+
+    if (hasHomed_m1) {
+      output.write(String(mpos_m1));
+    } else {
+      output.write("?");
+    }
+
+    output.write("|");
+
+    if (hasHomed_m2) {
+      output.write(String(mpos_m2));
+    } else {
+      output.write("?");
+    }
+
+    output.write("\n");
+
   } else {
     output.write("=44\n");
   }
@@ -615,6 +656,17 @@ boolean isMotorHome(int motorId) {
   }
 }
 
+void checkMotorsHome() {
+  if (isMotorHome(1)) {
+    mpos_m1 = 0;
+    hasHomed_m1 = true;
+  }
+  if (isMotorHome(2)) {
+    mpos_m2 = 0;
+    hasHomed_m2 = true;
+  }
+}
+
 float getMaxDegreesForMotor(int motorId) {
   if (motorId == 1) {
     return maxDegrees_m1;
@@ -644,6 +696,7 @@ boolean runMotorsIfNeeded() {
     if (shouldStop || !motorCanMove(1, stepper_m1.distanceToGo())) {
       stopMotor(1);
     } else {
+      registerStep(1, stepper_m1.distanceToGo());
       stepper_m1.run();
     }
     registerMotorAction();
@@ -653,23 +706,23 @@ boolean runMotorsIfNeeded() {
     if (shouldStop || !motorCanMove(2, stepper_m2.distanceToGo())) {
       stopMotor(2);
     } else {
+      registerStep(2, stepper_m2.distanceToGo());
       stepper_m2.run();
     }
     registerMotorAction();
     isRun = true;
   }
-  // the user should reset the pin manually
-  //shouldStop = false;
+
   return isRun;
 }
 
 void stopMotor(int motorId) {
-  // TODO: make DRY
   if (motorId == 1) {
     long oldAcceleration_m1 = acceleration_m1;
     setAcceleration(1, maxAcceleration);
     stepper_m1.stop();
     while (stepper_m1.distanceToGo() != 0) {
+      registerStep(1, stepper_m1.distanceToGo());
       stepper_m1.run();
     }
     setAcceleration(1, oldAcceleration_m1);
@@ -678,9 +731,19 @@ void stopMotor(int motorId) {
     setAcceleration(2, maxAcceleration);
     stepper_m2.stop();
     while (stepper_m2.distanceToGo() != 0) {
+      registerStep(2, stepper_m2.distanceToGo());
       stepper_m2.run();
     }
     setAcceleration(2, oldAcceleration_m2);
+  }
+}
+
+// inc is for positive/negative only. this will only increment/decrement by 1 step.
+void registerStep(int motorId, long inc) {
+  if (motorId == 1) {
+    mpos_m1 += inc > 0 ? 1 : -1;
+  } else if (motorId == 2) {
+    mpos_m2 += inc > 0 ? 1 : -1;
   }
 }
 
