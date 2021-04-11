@@ -32,6 +32,22 @@
  *
  *  :07 ;
  *
+ * 08 - End a single motor
+ *
+ *  :08 <motorId>;
+ *
+ * 09 - End both motors
+ *
+ *  :09 ;
+ *
+ * 10 - Move both motors by steps
+ *
+ *  :10 <direction_1> <steps_1> <direction_2> <steps_2>;
+ *
+ * 11 - Move both motors by degrees
+ *
+ *  :11 <direction_1> <degrees_1> <direction_2> <degrees_2>;
+ *
  * Parameters
  * ----------
  * motorId 1: ?, 2: ?
@@ -85,7 +101,7 @@
 #define degreesPerStep_m2 0.001125
 // for homing, will not overshoot limit switches
 #define maxDegrees_m1 190
-#define maxDegress_m2 370
+#define maxDegrees_m2 380
 // Whether the limit switches are connected
 #define limitsEnabled_m1 true
 #define limitsEnabled_m2 true
@@ -359,7 +375,7 @@ void takeCommand(Stream &input, Stream &output) {
       return;
     }
 
-    input.readStringUntil(';')
+    input.readStringUntil(';');
 
     if (!motorCanHome(motorId)) {
       output.write("=47\n");
@@ -379,7 +395,7 @@ void takeCommand(Stream &input, Stream &output) {
 
     if (!motorCanHome(1) && !motorCanHome(2)) {
       output.write("=47\n");
-      return
+      return;
     }
 
     // perform action
@@ -389,6 +405,135 @@ void takeCommand(Stream &input, Stream &output) {
     if (motorCanHome(2)) {
       homeMotor(2);
     }
+
+    output.write("=00\n");
+
+  } else if (command.equals("08")) {
+
+    // end a single motor
+
+    // param is the motor id
+    int motorId = readMotorIdFromInput(input);
+
+    if (motorId == 0) {
+      output.write("=45\n");
+      return;
+    }
+
+    input.readStringUntil(';');
+
+    if (!motorCanHome(motorId)) {
+      output.write("=47\n");
+      return;
+    }
+
+    // perform action
+    endMotor(motorId);
+
+    output.write("=00\n");
+
+  } else if (command.equals("09")) {
+
+    // end both motors
+
+    input.readStringUntil(';');
+
+    if (!motorCanHome(1) && !motorCanHome(2)) {
+      output.write("=47\n");
+      return;
+    }
+
+    // perform action
+    if (motorCanHome(1)) {
+      endMotor(1);
+    }
+    if (motorCanHome(2)) {
+      endMotor(2);
+    }
+
+    output.write("=00\n");
+
+  } else if (command.equals("10")) {
+
+    // move both motors by steps
+
+    // first param is direction_1
+    int dir1 = input.readStringUntil(' ').toInt();
+
+    int dirMult1 = getDirMultiplier(dir1);
+    if (dirMult1 == 0) {
+      output.write("=46\n");
+      return;
+    }
+
+    // second param is steps_1
+    long howMuch1 = input.readStringUntil(' ').toInt() * dirMult1;
+    if (howMuch1 == 0) {
+      output.write("=47\n");
+      return;
+    }
+
+    // third param is direction_2
+    int dir2 = input.readStringUntil(' ').toInt();
+
+    int dirMult2 = getDirMultiplier(dir2);
+    if (dirMult2 == 0) {
+      output.write("=46\n");
+      return;
+    }
+
+    // fourth param is steps_2
+    long howMuch2 = input.readStringUntil(';').toInt() * dirMult2;
+    if (howMuch2 == 0) {
+      output.write("=47\n");
+      return;
+    }
+
+    // perform action
+    jumpOne(1, howMuch1);
+    jumpOne(2, howMuch2);
+
+    output.write("=00\n");
+
+  } else if (command.equals("11")) {
+
+    // move both motors by degrees
+
+    // first param is direction_1
+    int dir1 = input.readStringUntil(' ').toInt();
+
+    int dirMult1 = getDirMultiplier(dir1);
+    if (dirMult1 == 0) {
+      output.write("=46\n");
+      return;
+    }
+
+    // second param is degrees_1
+    float howMuch1 = input.readStringUntil(' ').toFloat() * dirMult1;
+    if (howMuch1 == 0) {
+      output.write("=47\n");
+      return;
+    }
+
+    // third param is direction_2
+    int dir2 = input.readStringUntil(' ').toInt();
+
+    int dirMult2 = getDirMultiplier(dir2);
+    if (dirMult2 == 0) {
+      output.write("=46\n");
+      return;
+    }
+
+    // fourth param is degrees_2
+    float howMuch2 = input.readStringUntil(';').toFloat() * dirMult2;
+    if (howMuch2 == 0) {
+      output.write("=47\n");
+      return;
+    }
+
+    // perform action
+    jumpOneByDegrees(1, howMuch1);
+    jumpOneByDegrees(2, howMuch2);
 
     output.write("=00\n");
 
@@ -481,6 +626,13 @@ void homeMotor(int motorId) {
     return;
   }
   jumpOneByDegrees(motorId, getMaxDegreesForMotor(motorId));
+}
+
+void endMotor(int motorId) {
+  if (!motorCanHome(motorId)) {
+    return;
+  }
+  jumpOneByDegrees(motorId, -1 * getMaxDegreesForMotor(motorId));
 }
 
 boolean runMotorsIfNeeded() {
