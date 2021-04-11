@@ -13,10 +13,36 @@
         <div><button class="go" id="go_down">down</button></div>
         <div><button class="go" id="go_left">left</button></div>
         <div><button class="go" id="go_right">right</button></div>
-        <hr>
+    </form>
+    <hr>
+    <form>
+        <div>
+            <input type="text" name="degrees1" id="in_degrees1"> degrees
+            <select name="dir1" id="in_dir1">
+                <option value="1">up</option>
+                <option value="2">down</option>
+            </select>
+        </div>
+        <div>
+            <input type="text" name="degrees2" id="in_degrees2"> degrees
+            <select name="dir2" id="in_dir2">
+                <option value="2">left</option>
+                <option value="1">right</option>
+            </select>
+        </div>
+        <div><button class="go" id="go_both">go</button></div>
+    </form>
+    <hr>
+    <form>
         <div><button class="go" id="home_1">Home 1</button></div>
         <div><button class="go" id="home_2">Home 2</button></div>
         <div><button class="go" id="home_all">Home All</button></div>
+    </form>
+    <hr>
+    <form>
+        <div><button class="go" id="end_1">End 1</button></div>
+        <div><button class="go" id="end_2">End 2</button></div>
+        <div><button class="go" id="end_all">End All</button></div>
     </form>
     <h3>Request</h3>
     <div id="request_output" class="output json"></div>
