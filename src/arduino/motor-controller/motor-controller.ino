@@ -162,7 +162,7 @@ boolean isDisplayLightOn = false;
 
 // Stop/cancel
 #define stopPin 13
-#define stopPinEnabled false
+#define stopPinEnabled true
 boolean shouldStop = false;
 
 void setup() {
@@ -658,6 +658,7 @@ boolean runMotorsIfNeeded() {
     registerMotorAction();
     isRun = true;
   }
+  // the user should reset the pin manually
   //shouldStop = false;
   return isRun;
 }
