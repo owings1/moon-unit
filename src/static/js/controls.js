@@ -1,8 +1,16 @@
 $(document).ready(function() {
 
+    function getDegreesValue() {
+        return $('#in_degrees').val()
+    }
+
     // :04 <motorId> <direction> <degrees>;
     function getMoveDegreesCommand(motorId, direction) {
-        return [':04', motorId, direction, $('#in_degrees').val()].join(' ') + ';\n'
+        const degrees = getDegreesValue()
+        if (isNaN(parseFloat(degrees))) {
+            throw new Error('Invalid degrees input: ' + degrees)
+        }
+        return [':04', motorId, direction, degrees].join(' ') + ';\n'
     }
 
     var busy = false
@@ -13,20 +21,32 @@ $(document).ready(function() {
             return
         }
         busy = true
+        $('.go').addClass('disabled')
+        const req = {command}
         var opts = {
-            method: 'POST',
-            body: JSON.stringify({command}),
-            headers: {
+            method  : 'POST',
+            body    : JSON.stringify(req),
+            headers : {
                 'Content-Type' : 'application/json'
             }
         }
-        console.log('Sending', {command})
+        console.log('Sending', req)
+        $('#request_output').text(JSON.stringify(req, null, 2))
         fetch('command/sync', opts).then(res => {
             busy = false
-            res.text().then(console.log)
+            $('.go').removeClass('disabled')
+            res.json().then(resBody => {
+                console.log(resBody)
+                $('#response_output').text(JSON.stringify(resBody, null, 2))
+            }).catch(err => {
+                console.error(err)
+                $('#response_output').text(err)
+            })
         }).catch(err => {
-            console.error(err)
             busy = false
+            $('.go').removeClass('disabled')
+            console.error(err)
+            $('#response_output').text(err)
         })
     }
 
@@ -36,6 +56,11 @@ $(document).ready(function() {
 
         if ($target.hasClass('go')) {
 
+            e.preventDefault()
+
+            if (busy || $target.hasClass('disabled')) {
+                return
+            }
             var motorId, direction
 
             if ($target.is('#go_up')) {
@@ -52,8 +77,12 @@ $(document).ready(function() {
                 direction = 1
             }
 
-            var cmd = getMoveDegreesCommand(motorId, direction)
-            sendCommand(cmd)
+            try {
+                var cmd = getMoveDegreesCommand(motorId, direction)
+                sendCommand(cmd)
+            } catch (err) {
+                console.error(err)
+            }
         }
         
     })

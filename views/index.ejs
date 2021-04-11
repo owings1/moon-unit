@@ -4,14 +4,19 @@
     <title>MoonUnit</title>
     <script type="text/javascript" src="static/js/jquery-3.6.0.min.js"></script>
     <script type="text/javascript" src="static/js/controls.js"></script>
+    <link rel="stylesheet" type="text/css" href="static/css/app.css"/>
 </head>
 <body>
     <form>
         <input type="text" name="degrees" id="in_degrees"> degrees
-        <div><a class="go" id="go_up">up</a></div>
-        <div><a class="go" id="go_down">down</a></div>
-        <div><a class="go" id="go_left">left</a></div>
-        <div><a class="go" id="go_right">right</a></div>
+        <div><button class="go" id="go_up">up</div></div>
+        <div><button class="go" id="go_down">down</div></div>
+        <div><button class="go" id="go_left">left</div></div>
+        <div><button class="go" id="go_right">right</div></div>
     </form>
+    <h3>Request</h3>
+    <div id="request_output" class="json"></div>
+    <h3>Response</h3>
+    <div id="response_output" class="json"></div>
 </body>
 </html>
