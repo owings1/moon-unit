@@ -24,6 +24,8 @@ const DeviceCodes = {
     48: 'Invalid speed/acceleration'
 }
 
+const Gpio = require('./gpio')
+
 class App {
 
     defaults(env) {
@@ -35,7 +37,12 @@ class App {
             quiet       : !!env.QUIET,
             openDelay   : +env.OPEN_DELAY || 2000,
             workerDelay : +env.WORKER_DELAY || 100,
-            baudRate    : +env.BAUD_RATE || 115200
+            baudRate    : +env.BAUD_RATE || 115200,
+            gpioEnabled : !!env.GPIO_ENABLED,
+            pinReset    : +env.PIN_RESET || 37,
+            pinStop     : +env.PIN_STOP || 35,
+            pinState1   : +env.PIN_STATE1 || 38,
+            pinState2   : +env.PIN_STATE2 || 36
         }
     }
 
@@ -63,24 +70,27 @@ class App {
         port = port || this.opts.port
         return new Promise((resolve, reject) => {
             try {
+                this.log('Opening device', this.opts.path)
                 this.device.open(err => {
                     if (err) {
                         reject(err)
                         return
                     }
-                    this.initWorker()
-                    this.log('Opened, delaying', this.opts.openDelay, 'ms')
-                    setTimeout(() => {
-                        try {
-                            this.httpServer = this.app.listen(port, () => {
-                                this.port = this.httpServer.address().port
-                                this.log('Listening on port', this.port)
-                                resolve()
-                            })
-                        } catch (err) {
-                            reject(err)
-                        }
-                    }, this.opts.openDelay)
+                    this.initGpio().then(() => {
+                        this.initWorker()
+                        this.log('Opened, delaying', this.opts.openDelay, 'ms')
+                        setTimeout(() => {
+                            try {
+                                this.httpServer = this.app.listen(port, () => {
+                                    this.port = this.httpServer.address().port
+                                    this.log('Listening on port', this.port)
+                                    resolve()
+                                })
+                            } catch (err) {
+                                reject(err)
+                            }
+                        }, this.opts.openDelay)
+                    }).catch(reject)
                 })
             } catch (err) {
                 reject(err)
@@ -164,6 +174,46 @@ class App {
             }
         })
 
+        app.get('/gpio/state', (req, res) => {
+            if (!this.gpioEnabled) {
+                res.status(400).json({error: 'gpio not enabled'})
+                return
+            }
+            this.gpio.getState().then(
+                state => res.status(200).json({state})
+            ).catch(error => {
+                this.error(error)
+                res.status(500).json({error})
+            })
+        })
+
+        app.post('/gpio/reset', (req, res) => {
+            if (!this.gpioEnabled) {
+                res.status(400).json({error: 'gpio not enabled'})
+                return
+            }
+            // TODO: gracefully close serial port or catch error and delay then repoen
+            this.gpio.sendReset().then(() => {
+                res.status(200).json({message: 'reset sent'})
+            }).catch(error => {
+                this.error(error)
+                res.status(500).json({error})
+            })
+        })
+
+        app.post('/gpio/stop', (req, res) => {
+            if (!this.gpioEnabled) {
+                res.status(400).json({error: 'gpio not enabled'})
+                return
+            }
+            this.gpio.sendStop().then(() => {
+                res.status(200).json({message: 'stop sent'})
+            }).catch(error => {
+                this.error(error)
+                res.status(500).json({error})
+            })
+        })
+
         app.get('/metrics', (req, res) => {
             res.setHeader('Content-Type', prom.register.contentType)
             prom.register.metrics().then(metrics => res.writeHead(200).end(metrics))
@@ -181,6 +231,17 @@ class App {
             MockBinding.createPort(this.opts.path, {echo: true, readyData: []})
         }
         return new SerialPort(this.opts.path, {baudRate: this.opts.baudRate, autoOpen: false})
+    }
+
+    async initGpio() {
+
+        this.gpio = new Gpio(this.opts.gpioEnabled, {
+            reset    : this.opts.pinReset, 
+            stop     : this.opts.pinStop,
+            state1   : this.opts.pinState1,
+            state2   : this.opts.pinState2
+        })
+        await this.gpio.open()
     }
 
     log(...args) {
