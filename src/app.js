@@ -21,7 +21,8 @@ const DeviceCodes = {
     45: 'Invalid motorId',
     46: 'Invalid direction',
     47: 'Invalid steps/degrees',
-    48: 'Invalid speed/acceleration'
+    48: 'Invalid speed/acceleration',
+    49: 'Invalid other parameter'
 }
 
 const Gpio = require('./gpio')
