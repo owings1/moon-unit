@@ -56,6 +56,9 @@ a.button.gray {
 a.button.green {
     background-color: #3bbf45;
 }
+a.button.disabled {
+    background-color: #ddd;
+}
 #clear_outputs {
     margin-top: 14px;
 }
