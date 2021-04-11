@@ -84,7 +84,6 @@
  */
 
 // TODO:
-//  - fix position tracking math
 //  - have separate maxAcceleration values for m1 and m2
 //  - write real encoder/lcd interface
 
@@ -135,9 +134,7 @@ boolean isMotorEnabled = false;
 AccelStepper stepper_m1(AccelStepper::FULL2WIRE, stepPin_m1, dirPin_m1);
 AccelStepper stepper_m2(AccelStepper::FULL2WIRE, stepPin_m2, dirPin_m2);
 
-// track the relative position, only meaningful if homed
-long mpos_m1 = 0L;
-long mpos_m2 = 0L;
+// the position is only meaningful if homed
 boolean hasHomed_m1 = false;
 boolean hasHomed_m2 = false;
 
@@ -165,7 +162,7 @@ volatile int programNum = 1;
 // https://bitbucket.org/fmalpartida/new-liquidcrystal/wiki/Home
 LiquidCrystal_I2C  lcd(0x27,2,1,0,4,5,6,7); // 0x27 is the I2C bus address for an unmodified module
 
-boolean displaySleepEnabled = false;
+boolean displaySleepEnabled = true;
 unsigned long displaySleepTimeout = 10000L;
 unsigned long lastDisplayActionTime = millis();
 volatile boolean displayUpdateNeeded = false;
@@ -218,7 +215,6 @@ void loop() {
     updateDisplay();
     checkDisplaySleep();
     checkMotorSleep();
-    checkMotorsHome();
     setState(STATE_READY);
     takeCommand(Serial, Serial);
   }
@@ -572,7 +568,8 @@ void takeCommand(Stream &input, Stream &output) {
     output.write("=00;");
 
     if (hasHomed_m1) {
-      String pstr = String(format == 1 ? mpos_m1 : (mpos_m1 * degreesPerStep_m1));
+      long mpos = stepper_m1.currentPosition();
+      String pstr = String(format == 1 ? mpos : (mpos * degreesPerStep_m1));
       for (int i = 0; i < pstr.length(); i++) {
         output.write(pstr.charAt(i));
       }
@@ -583,7 +580,8 @@ void takeCommand(Stream &input, Stream &output) {
     output.write("|");
 
     if (hasHomed_m2) {
-      String pstr = String(format == 1 ? mpos_m2 : (mpos_m2 * degreesPerStep_m2));
+      long mpos = stepper_m2.currentPosition();
+      String pstr = String(format == 1 ? mpos : (mpos * degreesPerStep_m2));
       for (int i = 0; i < pstr.length(); i++) {
         output.write(pstr.charAt(i));
       }
@@ -632,6 +630,7 @@ void readLimitSwitches() {
   }
 }
 
+// the howMuch is just a positive/negative direction reference.
 boolean motorCanMove(int motorId, long howMuch) {
   if (motorId == 1) {
     if (howMuch > 0) {
@@ -669,17 +668,6 @@ boolean isMotorHome(int motorId) {
   }
 }
 
-void checkMotorsHome() {
-  if (isMotorHome(1)) {
-    mpos_m1 = 0;
-    hasHomed_m1 = true;
-  }
-  if (isMotorHome(2)) {
-    mpos_m2 = 0;
-    hasHomed_m2 = true;
-  }
-}
-
 float getMaxDegreesForMotor(int motorId) {
   if (motorId == 1) {
     return maxDegrees_m1;
@@ -691,6 +679,17 @@ float getMaxDegreesForMotor(int motorId) {
 void homeMotor(int motorId) {
   if (!motorCanHome(motorId)) {
     return;
+  }
+  if (isMotorHome(motorId)) {
+    // move back just a little
+    jumpOneByDegrees(motorId, -2);
+    while (runMotorsIfNeeded()) {
+      readLimitSwitches();
+      if (!isMotorHome(motorId)) {
+        stopMotor(motorId);
+      }
+    }
+    readLimitSwitches();
   }
   jumpOneByDegrees(motorId, getMaxDegreesForMotor(motorId));
 }
@@ -709,7 +708,6 @@ boolean runMotorsIfNeeded() {
     if (shouldStop || !motorCanMove(1, stepper_m1.distanceToGo())) {
       stopMotor(1);
     } else {
-      registerStep(1, stepper_m1.distanceToGo());
       stepper_m1.run();
     }
     registerMotorAction();
@@ -719,7 +717,6 @@ boolean runMotorsIfNeeded() {
     if (shouldStop || !motorCanMove(2, stepper_m2.distanceToGo())) {
       stopMotor(2);
     } else {
-      registerStep(2, stepper_m2.distanceToGo());
       stepper_m2.run();
     }
     registerMotorAction();
@@ -735,28 +732,31 @@ void stopMotor(int motorId) {
     setAcceleration(1, maxAcceleration);
     stepper_m1.stop();
     while (stepper_m1.distanceToGo() != 0) {
-      registerStep(1, stepper_m1.distanceToGo());
       stepper_m1.run();
     }
     setAcceleration(1, oldAcceleration_m1);
+    if (!shouldStop) {
+      // we have reached a limit switch, see if we are home
+      if (isMotorHome(1)) {
+        hasHomed_m1 = true;
+        stepper_m1.setCurrentPosition(0);
+      }
+    }
   } else if (motorId == 2) {
     long oldAcceleration_m2 = acceleration_m2;
     setAcceleration(2, maxAcceleration);
     stepper_m2.stop();
     while (stepper_m2.distanceToGo() != 0) {
-      registerStep(2, stepper_m2.distanceToGo());
       stepper_m2.run();
     }
     setAcceleration(2, oldAcceleration_m2);
-  }
-}
-
-// inc is for positive/negative only. this will only increment/decrement by 1 step.
-void registerStep(int motorId, long inc) {
-  if (motorId == 1) {
-    mpos_m1 += inc > 0 ? 1 : -1;
-  } else if (motorId == 2) {
-    mpos_m2 += inc > 0 ? 1 : -1;
+    if (!shouldStop) {
+    // we have reached a limit switch, see if we are home
+      if (isMotorHome(2)) {
+        hasHomed_m2 = true;
+        stepper_m2.setCurrentPosition(0);
+      }
+    }
   }
 }
 
