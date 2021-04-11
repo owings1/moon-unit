@@ -235,6 +235,8 @@ class App {
 
     async initGpio() {
 
+        this.log('Gpio is', this.opts.gpioEnabled ? 'enabled' : 'disabled')
+
         this.gpio = new Gpio(this.opts.gpioEnabled, {
             reset    : this.opts.pinReset, 
             stop     : this.opts.pinStop,
