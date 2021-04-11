@@ -4,15 +4,17 @@ body {
     background-color: black;
     color: green;
 }
-input[type="text"], textarea, select {
-    background-color: #aaa;
+.content {
+    width: 800px;
+    margin: auto;
+    background-color: #ffb568;
+    border-style: solid;
+    border-width: 1px;
+    border-color: #a953b3;
 }
-/*
-button.go {
-    background-color: blue;
-    color: #ddd;
+hr {
+    border-color: #a953b3;
 }
-*/
 button {
     padding: 5px;
 }
@@ -67,17 +69,13 @@ a.button.disabled {
     padding: 10px;
     font-family: Courier;
     background-color: #666;
+    text-align: left;
     color: white;
 }
-.content {
-    width: 800px;
-    margin: auto;
-    border-style: solid;
-    border-width: 1px;
-    border-color: #a953b3;
-}
-hr {
-    border-color: #a953b3;
+
+
+table {
+    display: inline-block;
 }
 td {
     padding: 5px;
@@ -85,9 +83,15 @@ td {
 }
 .panel {
     padding: 10px;
+    text-align: center;
+}
+input[type="text"], textarea, select {
+    background-color: #eee;
+    padding: 5px;
 }
 input.howmuch {
     width: 100px;
+    text-align: right;
 }
 .left {
     float: left;
