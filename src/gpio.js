@@ -77,10 +77,11 @@ class Gpio {
         }
 
         await gpio.write(this.pins.stop, true)
+        // keep stop pin on for 1 second
         await new Promise((resolve, reject) =>
             setTimeout(() => {
                 gpio.write(this.pins.stop, false).then(resolve).catch(reject)
-            }, 100)
+            }, 1000)
         )
     }
 
