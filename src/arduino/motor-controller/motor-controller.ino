@@ -71,9 +71,9 @@
 #define limitPinAcw_m1 4
 #define limitPinCw_m2 11
 #define limitPinAcw_m2 12
-#define maxSpeed_m1 1000L
-#define maxSpeed_m2 1000L
-#define degreesPerStep_m1 0.000850 // this needs to get calibrated
+#define maxSpeed_m1 2000L
+#define maxSpeed_m2 2000L
+#define degreesPerStep_m1 0.0008125
 #define degreesPerStep_m2 0.001125
 // Whether the limit switches are connected
 #define limitsEnabled_m1 true
