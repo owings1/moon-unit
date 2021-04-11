@@ -6,4 +6,4 @@ node_modules
 /.gitlab-ci.yml
 /bitbucket-pipelines.yml
 /.nyc_output
-/qemu-arm-static
+#/qemu-arm-static

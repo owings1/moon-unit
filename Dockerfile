@@ -4,8 +4,9 @@ COPY qemu-arm-static /usr/bin
 
 WORKDIR /app
 RUN chown node:node /app && \
-    addgroup node dialout
-    # addgroup node 997
+    addgroup node dialout && \
+    addgroup -g 997 -S gpio && \
+    addgroup node gpio
 EXPOSE 8080
 
 #RUN apk --no-cache add python3 alpine-sdk linux-headers udev
