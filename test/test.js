@@ -1,48 +1,48 @@
-const {expect} = require('chai')
-const fetch = require('node-fetch')
-const fs = require('fs')
-const fse = require('fs-extra')
-const merge = require('merge')
-const path = require('path')
+const {expect}  = require('chai')
+const fetch     = require('node-fetch')
+const fs        = require('fs')
+const fse       = require('fs-extra')
+const merge     = require('merge')
+const path      = require('path')
 const {resolve} = path
 
 
-const DeviceService = require('../src/device')
+const App = require('../src/app')
 
-describe('DeviceService', () => {
+describe('App', () => {
 
     it('should instantiate', () => {
-        new DeviceService({path: '/tmp/test-instantiate'})
+        new App({path: '/tmp/test-instantiate'})
     })
 
     describe('server', () => {
 
-        var svc
-        var svcUrl
+        var app
+        var appUrl
 
         beforeEach(async () => {
-            svc = new DeviceService({
+            app = new App({
                 path: '/tmp/test-' + +new Date,
                 port: null,
                 openDelay: 1,
                 quiet: true,
                 mock: true
             })
-            await svc.listen()
-            svcUrl = 'http://localhost:' + svc.port
+            await app.listen()
+            appUrl = 'http://localhost:' + app.port
         })
 
         afterEach(async () => {
-            await svc.close()
+            await app.close()
         })
 
         it('should serve metrics', async () => {
-            const res = await fetch(svcUrl + '/metrics')
+            const res = await fetch(appUrl + '/metrics')
             expect(res.status).to.equal(200)
         })
 
         it('should send sync command', async () => {
-            const res = await fetch(svcUrl + '/command/sync', {
+            const res = await fetch(appUrl + '/command/sync', {
                 method: 'POST',
                 body: JSON.stringify({command: ':01 2 1 1600;\n'}),
                 headers: {'Content-Type': 'application/json'}
