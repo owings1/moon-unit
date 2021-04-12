@@ -10,7 +10,7 @@
     <div class="content">
         <div class="panel">
             <form>
-                <a href="javascript:" class="gpio button green" id="gpio_state">State</a>
+                <!-- <a href="javascript:" class="gpio button green" id="gpio_state">State</a> -->
                 <a href="javascript:" class="gpio button red" id="gpio_stop">Stop</a>
                 <a href="javascript:" class="gpio button magenta" id="gpio_reset">Reset</a>
             </form>
@@ -20,17 +20,56 @@
             <form>
                 <table>
                     <tr>
-                        <td><a href="javascript:" class="go button blue" id="home_1">Home 1</a></td>
-                        <td><a href="javascript:" class="go button blue" id="end_1">End 1</a></td>
+                        <td><a href="javascript:" class="go button blue" id="home_1">Home Scope</a></td>
+                        <td><a href="javascript:" class="go button blue" id="end_1">End Scope</a></td>
                     </tr>
                     <tr>
-                        <td><a href="javascript:" class="go button blue" id="home_2">Home 2</a></td>
-                        <td><a href="javascript:" class="go button blue" id="end_2">End 2</a></td>
+                        <td><a href="javascript:" class="go button blue" id="home_2">Home Base</a></td>
+                        <td><a href="javascript:" class="go button blue" id="end_2">End Base</a></td>
                     </tr>
                     <tr>
                         <td><a href="javascript:" class="go button blue" id="home_all">Home All</a></td>
                         <td><a href="javascript:" class="go button blue" id="end_all">End All</a></td>
                     </tr>
+                </table>
+                <table>
+                    <thead></thead>
+                    <tbody>
+                        <tr>
+                            <td>State</td>
+                            <td><span id="state"><%= state %></span></td>
+                        </tr>
+                        <tr>
+                            <td>Scope</td>
+                            <td>
+                                <span class="position-value" id="position_m1">
+                                    <%- position[0] + (!isNaN(parseFloat(position[0])) ? '&deg;' : '') %>
+                                </span>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td>Base</td>
+                            <td>
+                                <span class="position-value" id="position_m2">
+                                    <%- position[1] + (!isNaN(parseFloat(position[1])) ? '&deg;' : '') %>
+                                </span>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td><a href="javascript:" class="" id="refresh_status">Refresh</a></td>
+                            <td>
+                                <select name="refresh_interval" id="refresh_interval">
+                                    <option value="0">Never</option>
+                                    <option value="1">1s</option>
+                                    <option value="2">2s</option>
+                                    <option value="5" selected>5s</option>
+                                    <option value="10">10s</option>
+                                    <option value="30">30s</option>
+                                    <option value="60">60s</option>
+                                </select>
+                            </td>
+                        </tr>
+                    </tbody>
                 </table>
             </form>
         </div>

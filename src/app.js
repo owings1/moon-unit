@@ -66,7 +66,7 @@ class App {
         this.app          = express()
         this.httpServer   = null
         this.port         = null
-        this.position     = [NaN, NaN]
+        this.position     = [null, null]
 
         this.initApp(this.app)
     }
@@ -150,7 +150,12 @@ class App {
                         }
                         return
                     }
-                    this.position = res.body.split('|').map(parseFloat)
+                    // normalize NaN, undefined, etc. to null
+                    this.position = JSON.parse(
+                        JSON.stringify(
+                            res.body.split('|').map(parseFloat)
+                        )
+                    )
                 }
             }
 
@@ -183,7 +188,7 @@ class App {
     }
 
     initWorker() {
-        this.log('Initializing worker to run every', this.opts.workerDelay + 'ms')
+        this.log('Initializing worker to run every', this.opts.workerDelay, 'ms')
         clearInterval(this.workerHandle)
         this.workerHandle = setInterval(() => this.loop(), this.opts.workerDelay)
     }
@@ -196,7 +201,12 @@ class App {
         app.use('/static', express.static(__dirname + '/static'))
 
         app.get('/', (req, res) => {
-            res.render('index')
+            this.gpio.getState().then(state => {
+                res.render('index', {
+                    state,
+                    position: this.position
+                })
+            })
         })
 
         app.post('/command/sync', bodyParser.json(), (req, res) => {
@@ -226,8 +236,15 @@ class App {
             }
         })
 
-        app.get('/position', (req, res) => {
-            res.status(200).json({position: this.position})
+        app.get('/status', (req, res) => {
+            this.gpio.getState().then(state => {
+                res.status(200).json({
+                    status: {
+                        state,
+                        position: this.position
+                    }
+                })
+            })
         })
 
         app.get('/gpio/state', (req, res) => {
