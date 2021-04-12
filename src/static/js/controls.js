@@ -110,7 +110,7 @@ $(document).ready(function() {
         clearInterval(refreshInterval)
         const seconds = parseInt($('#refresh_interval').val())
         if (!isNaN(seconds) && seconds > 0) {
-            setInterval(refreshStatus, seconds * 1000)
+            refreshInterval = setInterval(refreshStatus, seconds * 1000)
         }
     }
 
@@ -134,13 +134,13 @@ $(document).ready(function() {
                 'Content-Type' : 'application/json'
             }
         }
-        console.log('Sending', req)
+        //console.log('Sending', req)
         $('#request_output').text(JSON.stringify(req, null, 2))
         fetch('command/sync', opts).then(res => {
             cmdBusy = false
             $('.go').removeClass('disabled').prop('disabled', false)
             res.json().then(resBody => {
-                console.log(resBody)
+                //console.log(resBody)
                 $('#response_output').text(JSON.stringify(resBody, null, 2))
             }).catch(err => {
                 console.error(err)
@@ -170,7 +170,7 @@ $(document).ready(function() {
         $('#request_output').text([method, 'GPIO', type].join(' '))
         fetch('gpio/' + type, {method}).then(res => {
             res.json().then(resBody => {
-                console.log(resBody)
+                //console.log(resBody)
                 $('#response_output').text(JSON.stringify(resBody, null, 2))
             }).catch(err => {
                 console.error(err)
