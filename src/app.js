@@ -165,15 +165,11 @@ class App {
                 if (!isSystem) {
                     this.log('Receieved response:', resText)
                 }
-                const status = parseInt(resText.substring(1))
-                const cidx = resText.indexOf(';')
-                if (cidx) {
-                    var resBody = resText.substring(cidx + 1)
-                }
+                const status = parseInt(resText.substring(1, 3))
                 handler({
                     status,
                     message : DeviceCodes[status],
-                    body    : resBody,
+                    body    : resText.substring(4),
                     raw     : resText
                 })
                 this.busy = false
