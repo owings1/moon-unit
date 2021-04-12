@@ -29,7 +29,7 @@ describe('App', () => {
                 mock: true
             })
             await app.listen()
-            appUrl = 'http://localhost:' + app.port
+            appUrl = 'http://localhost:' + app.httpServer.address().port
         })
 
         afterEach(async () => {

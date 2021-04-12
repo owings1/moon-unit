@@ -65,8 +65,9 @@ class App {
         this.workerHandle = null
         this.app          = express()
         this.httpServer   = null
-        this.port         = null
         this.position     = [null, null]
+
+        this.isConnected = false
 
         this.initApp(this.app)
     }
@@ -75,31 +76,39 @@ class App {
         port = port || this.opts.port
         return new Promise((resolve, reject) => {
             try {
-                this.log('Opening device', this.opts.path)
-                this.device.open(err => {
-                    if (err) {
-                        reject(err)
-                        return
-                    }
-                    this.initGpio().then(() => {
-                        this.log('Opened, delaying', this.opts.openDelay, 'ms')
-                        setTimeout(() => {
-                            try {
-                                this.initWorker()
-                                this.httpServer = this.app.listen(port, () => {
-                                    this.port = this.httpServer.address().port
-                                    this.log('Listening on port', this.port)
-                                    resolve()
-                                })
-                            } catch (err) {
-                                reject(err)
-                            }
-                        }, this.opts.openDelay)
-                    }).catch(reject)
-                })
+                this.initGpio().then(() => {
+                    this.httpServer = this.app.listen(port, () => {
+                        this.log('Listening on', this.httpServer.address())
+                        this.openDevice().then(resolve).catch(reject)
+                    })
+                }).catch(reject)
             } catch (err) {
                 reject(err)
             }
+        })
+    }
+
+    async openDevice() {
+        this.log('Opening device', this.opts.path)
+        clearInterval(this.workerHandle)
+        this.isConnected = false
+        await new Promise((resolve, reject) => {
+            this.device.open(err => {
+                if (err) {
+                    reject(err)
+                    return
+                }
+                this.isConnected = true
+                this.log('Connected, delaying', this.opts.openDelay, 'ms')
+                setTimeout(() => {
+                    try {
+                        this.initWorker()
+                        resolve()
+                    } catch (err) {
+                        reject(err)
+                    }
+                }, this.opts.openDelay)
+            })
         })
     }
 
@@ -110,6 +119,7 @@ class App {
                 this.httpServer.close()
             }
             clearInterval(this.workerHandle)
+            this.isConnected = false
             this.device.close()
             resolve()
         })
@@ -265,7 +275,12 @@ class App {
             // although, seems to work fine without it
             this.gpio.sendReset().then(() => {
                 res.status(200).json({message: 'reset sent'})
-                //this.device.close()
+                this.isConnected = false
+                this.device.close()
+                setTimeout(() => {
+                    // TODO: retry
+                    this.openDevice().catch(err => this.error(err))
+                }, 2000)
                 //setTimeout(() => this.device.open().then(() => this.log('Reopened')).catch(err => this.error(err)), 4000)
             }).catch(error => {
                 this.error(error)
