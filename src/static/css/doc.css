@@ -1,0 +1,10 @@
+body {
+    background-color: #666;
+}
+.doc-wrapper {
+    padding: 20px;
+    width: 800px;
+    margin: auto;
+    background-color: white;
+    border: 1px solid #ccc;
+}

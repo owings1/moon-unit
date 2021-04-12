@@ -3,87 +3,87 @@
 Commands
 ---------
 
-- 01 - Move single motor n steps in a given direction
+- **01** - Move single motor n steps in a given direction
 
-  ```
-  :01 <motorId> <direction> <steps>;
-  ```
+    ```
+    :01 <motorId> <direction> <steps>;
+    ```
 
-- 02 - Set max speed for a motor
+- **02** - Set max speed for a motor
+   
+    ```
+    :02 <motorId> <speed>;
+    ```
 
-  ```
-  :02 <motorId> <speed>;
-  ```
+- **03** - Set acceleration for a motor
 
-- 03 - Set acceleration for a motor
+    ```
+    :03 <motorId> <acceleration>;
+    ```
 
-  ```
-  :03 <motorId> <acceleration>;
-  ```
+- **04** - Move single motor n degrees in a given direction
 
-- 04 - Move single motor n degrees in a given direction
+    ```
+    :04 <motorId> <direction> <degrees>;
+    ```
 
-  ```
-  :04 <motorId> <direction> <degrees>;
-  ```
+- **05** - Get state of limit switches and stop pin
 
-- 05 - Get state of limit switches and stop pin
+    ```
+    :05 ;
+    ```
 
-  ```
-  :05 ;
-  ```
+    example response: `=00;TFFT|F`
 
-  example response: `=00;TFFT|F`
+- **06** - Home a single motor
 
-- 06 - Home a single motor
+    ```
+    :06 <motorId>;
+    ```
 
-  ```
-  :06 <motorId>;
-  ```
+- **07** - Home both motors
 
-- 07 - Home both motors
+    ```
+    :07 ;
+    ```
 
-  ```
-  :07 ;
-  ```
+- **08** - End a single motor
 
-- 08 - End a single motor
+    ```
+    :08 <motorId>;
+    ```
 
-  ```
-  :08 <motorId>;
-  ```
+- **09** - End both motors
 
-- 09 - End both motors
+    ```
+    :09 ;
+    ```
 
-  ```
-  :09 ;
-  ```
+- **10** - Move both motors by steps
 
-- 10 - Move both motors by steps
+    ```
+    :10 <direction_1> <steps_1> <direction_2> <steps_2>;
+    ```
 
-  ```
-  :10 <direction_1> <steps_1> <direction_2> <steps_2>;
-  ```
+- **11** - Move both motors by degrees
 
-- 11 - Move both motors by degrees
+    ```
+    :11 <direction_1> <degrees_1> <direction_2> <degrees_2>;
+    ```
 
-  ```
-  :11 <direction_1> <degrees_1> <direction_2> <degrees_2>;
-  ```
+- **12** - Get motor positions
 
-- 12 - [In progress] Get motor positions
+    ```
+    :12 <format>;
+    ```
 
-  ```
-  :12 <format>;
-  ```
+    example responses:
 
-  example responses:
-
-  ```
-  =00;8500|1200
-  =00;?|130.195
-  =00:?|?
-  ```
+    ```
+    =00;8500|1200
+    =00;?|130.195
+    =00:?|?
+    ```
 
 ## Parameters
 
@@ -99,17 +99,19 @@ Commands
 
 
 ## Response Codes
---------------
-- `00` - OK
-- `40` - Missing : before command
-- `44` - Invalid command
-- `45` - Invalid motorId
-- `46` - Invalid direction
-- `47` - Invalid steps/degrees
-- `48` - Invalid speed/acceleration
-- `49` - Invalid other parameter
+
+| Code | Meaning                    |
+|------|----------------------------|
+| `00` | OK                         |
+| `40` | Missing : before command   |
+| `44` | Invalid command            |
+| `45` | Invalid motorId            |
+| `46` | Invalid direction          |
+| `47` | Invalid steps/degrees      |
+| `48` | Invalid speed/acceleration |
+| `49` | Invalid other parameter    |
 
 ## States
-------
+
 - `0` - ready for command
 - `1` - running command

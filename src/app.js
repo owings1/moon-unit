@@ -1,11 +1,14 @@
 // Serial device command HTTP service
 
 // TODO:
-//    - auto-reconnect to serial port
+//    - API to disconnect/reconnect to serial port
+const fs         = require('fs')
 const merge      = require('merge')
 const bodyParser = require('body-parser')
 const express    = require('express')
+const path       = require('path')
 const prom       = require('prom-client')
+const showdown   = require('showdown')
 
 const MockBinding = require('@serialport/binding-mock')
 const SerPortFull = require('serialport')
@@ -205,6 +208,7 @@ class App {
                 return
             }
             // TODO: gracefully close serial port or catch error and delay then repoen
+            // although, seems to work fine without it
             this.gpio.sendReset().then(() => {
                 res.status(200).json({message: 'reset sent'})
                 //this.device.close()
@@ -233,6 +237,25 @@ class App {
             prom.register.metrics().then(metrics => res.writeHead(200).end(metrics))
         })
 
+        app.get('/doc/:filename', (req, res) => {
+            const file = path.resolve(__dirname, '../doc', path.basename(req.params.filename) + '.md')
+            fs.readFile(file, 'utf-8', (error, text) => {
+                if (error) {
+                    if (error.code == 'ENOENT') {
+                        res.status(404)
+                    } else {
+                        res.status(400)
+                    }
+                    res.json({error})
+                    return
+                }
+                const converter = new showdown.Converter({
+                    tables: true
+                })
+                const html = converter.makeHtml(text)
+                res.render('doc', {html})
+            })
+        })
         app.use((req, res) => res.status(404).json({error: 'not found'}))
     }
 
