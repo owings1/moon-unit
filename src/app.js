@@ -66,6 +66,7 @@ class App {
         this.app          = express()
         this.httpServer   = null
         this.port         = null
+        this.position     = [NaN, NaN]
 
         this.initApp(this.app)
     }
@@ -81,10 +82,10 @@ class App {
                         return
                     }
                     this.initGpio().then(() => {
-                        this.initWorker()
                         this.log('Opened, delaying', this.opts.openDelay, 'ms')
                         setTimeout(() => {
                             try {
+                                this.initWorker()
                                 this.httpServer = this.app.listen(port, () => {
                                     this.port = this.httpServer.address().port
                                     this.log('Listening on port', this.port)
@@ -114,39 +115,75 @@ class App {
         })
     }
 
-    command(body) {
+    commandSync(body, params = {}) {
         return new Promise((resolve, reject) => {
-            this.log('Enqueuing command', body)
-            this.queue.unshift({body, handler: resolve})
+            this.log('Enqueuing command', body.trim())
+            this.queue.unshift({isSystem: false, ...params, body, handler: resolve})
         })
     }
 
     loop() {
-        if (this.busy || !this.queue.length) {
+
+        if (this.busy) {
             return
         }
+
         this.busy = true
-        const {body, handler} = this.queue.pop()
-        this.parser.once('data', resText => {
-            // handle device response
-            this.log('Receieved response:', resText)
-            const status = parseInt(resText.substring(1))
-            const cidx = resText.indexOf(';')
-            if (cidx) {
-                var resBody = resText.substring(cidx + 1)
+
+        this.gpio.getState().then(state => {
+
+            if (state != 0) {
+                this.busy = false
+                return
             }
-            handler({
-                status,
-                message: DeviceCodes[status],
-                body: resBody
+
+            if (this.queue.length) {
+                var {body, handler, isSystem} = this.queue.pop()
+            } else {
+                // TODO: various update tasks, e.g. motorSpeed
+                var isSystem = true
+                var body = ':12 2;\n'
+                var handler = res => {
+                    if (res.status != 0) {
+                        if (!this.opts.mock) {
+                            this.error('Failed to get positions', res)
+                        }
+                        return
+                    }
+                    this.position = res.body.split('|').map(parseFloat)
+                }
+            }
+
+            // TODO: timeout for a response
+            this.parser.once('data', resText => {
+                // handle device response
+                if (!isSystem) {
+                    this.log('Receieved response:', resText)
+                }
+                const status = parseInt(resText.substring(1))
+                const cidx = resText.indexOf(';')
+                if (cidx) {
+                    var resBody = resText.substring(cidx + 1)
+                }
+                handler({
+                    status,
+                    message : DeviceCodes[status],
+                    body    : resBody,
+                    raw     : resText
+                })
+                this.busy = false
             })
-            this.busy = false
+
+            if (!isSystem) {
+                this.log('Sending command', body.trim())
+            }
+
+            this.device.write(Buffer.from(body))
         })
-        this.log('Sending command')
-        this.device.write(Buffer.from(body))
     }
 
     initWorker() {
+        this.log('Initializing worker to run every', this.opts.workerDelay + 'ms')
         clearInterval(this.workerHandle)
         this.workerHandle = setInterval(() => this.loop(), this.opts.workerDelay)
     }
@@ -173,7 +210,7 @@ class App {
                         res.status(503).json({error: 'not ready', state})
                         return
                     }
-                    this.command(req.body.command)
+                    this.commandSync(req.body.command)
                         .then(response => res.status(200).json({response}))
                         .catch(error => {
                             this.error(error)
@@ -187,6 +224,10 @@ class App {
                 this.error(error)
                 res.status(500).json({error})
             }
+        })
+
+        app.get('/position', (req, res) => {
+            res.status(200).json({position: this.position})
         })
 
         app.get('/gpio/state', (req, res) => {
@@ -256,6 +297,7 @@ class App {
                 res.render('doc', {html})
             })
         })
+
         app.use((req, res) => res.status(404).json({error: 'not found'}))
     }
 
@@ -265,6 +307,8 @@ class App {
             SerPortMock.Binding = MockBinding
             var SerialPort = SerPortMock
             // TODO: mock response
+            //  see: https://serialport.io/docs/api-binding-mock
+            //  see: https://github.com/serialport/node-serialport/blob/master/packages/binding-mock/lib/index.js
             MockBinding.createPort(this.opts.path, {echo: true, readyData: []})
         }
         return new SerialPort(this.opts.path, {baudRate: this.opts.baudRate, autoOpen: false})
