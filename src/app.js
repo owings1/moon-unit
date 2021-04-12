@@ -191,7 +191,6 @@ class App {
 
             var isComplete = false
 
-            // TODO: timeout for a response
             this.parser.once('data', resText => {
                 isComplete = true
                 // handle device response
@@ -216,7 +215,7 @@ class App {
 
             setTimeout(() => {
                 if (!isComplete) {
-                    this.error('Command timeout', body)
+                    this.error('Command timeout', body.trim())
                     this.parser.emit('data', '=02;')
                 }
             }, this.opts.commandTimeout)
@@ -299,6 +298,11 @@ class App {
                 res.status(400).json({message: 'Device already connected'})
                 return
             }
+            this.openDevice().then(() => {
+                res.status(200).json({message: 'Device connected'})
+            }).catch(error => {
+                res.status(500).json({error})
+            })
         })
 
         app.get('/gpio/state', (req, res) => {
