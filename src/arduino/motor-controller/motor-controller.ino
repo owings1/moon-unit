@@ -236,6 +236,10 @@ void takeCommand(Stream &input, Stream &output) {
   
   byte firstByte = input.read();
 
+  // ignore trailing \n
+  if (firstByte == '\n') {
+    return;
+  }
   if (firstByte != ':') {
     output.write("=40\n");
     return;
