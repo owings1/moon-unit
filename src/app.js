@@ -58,7 +58,6 @@ class App {
             throw new ConfigError('path not set, you can use DEVICE_SERIAL_PORT')
         }
         this.device = this.createDevice()
-        this.parser = this.device.pipe(new Readline)
 
         this.queue        = []
         this.busy         = false
@@ -91,6 +90,7 @@ class App {
     async openDevice() {
         this.log('Opening device', this.opts.path)
         clearInterval(this.workerHandle)
+        this.queue.splice(0)
         this.isConnected = false
         await new Promise((resolve, reject) => {
             this.device.open(err => {
@@ -100,6 +100,7 @@ class App {
                 }
                 this.isConnected = true
                 this.log('Connected, delaying', this.opts.openDelay, 'ms')
+                this.parser = this.device.pipe(new Readline)
                 setTimeout(() => {
                     try {
                         this.initWorker()
