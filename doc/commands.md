@@ -112,6 +112,7 @@ Commands
 | `00` | OK                         |
 | `01` | Device closed              | sent by app
 | `02` | Command timeout            | sent by app
+| `03` | Flush error                | sent by app
 | `40` | Missing : before command   |
 | `44` | Invalid command            |
 | `45` | Invalid motorId            |

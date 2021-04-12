@@ -36,6 +36,13 @@
                     <thead></thead>
                     <tbody>
                         <tr>
+                            <td colspan="2">
+                                <a href="javascript" class="button <%= status.connectedStatus.toLowerCase() %>" id="connected_status">
+                                    <%= status.connectedStatus %>
+                                </a>
+                            </td>
+                        </tr>
+                        <tr>
                             <td>State</td>
                             <td><span id="state"><%= status.state %></span></td>
                         </tr>

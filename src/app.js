@@ -21,6 +21,7 @@ const DeviceCodes = {
      0: 'OK',
      1: 'Device closed',
      2: 'Command timeout',
+     3:  'Flush error',
     40: 'Missing : before command',
     44: 'Invalid command',
     45: 'Invalid motorId',
@@ -80,7 +81,8 @@ class App {
         return {
             state,
             position    : this.position,
-            isConnected : this.isConnected
+            isConnected : this.isConnected,
+            connectedStatus: this.isConnected ? 'Connected' : 'Disconnected'
         }
     }
 
@@ -131,6 +133,7 @@ class App {
             this.device = null
         }
         this.isConnected = false
+        this.position    = [null, null]
         this.drainQueue()
         this.stopWorker()
     }
@@ -172,54 +175,52 @@ class App {
                 var {body, handler, isSystem} = this.queue.pop()
             } else {
                 // TODO: various update tasks, e.g. motorSpeed
-                var isSystem = true
-                var body = ':12 2;\n'
-                var handler = res => {
-                    if (res.status != 0) {
-                        if (!this.opts.mock) {
-                            this.error('Failed to get positions', res)
-                        }
-                        return
-                    }
-                    // normalize NaN, undefined, etc. to null
-                    this.position = JSON.parse(
-                        JSON.stringify(
-                            res.body.split('|').map(parseFloat)
-                        )
-                    )
-                }
+                var {body, handler, isSystem} = this.getPositionJob()
             }
 
-            var isComplete = false
+            this.flushDevice().then(() => {
 
-            this.parser.once('data', resText => {
-                isComplete = true
-                // handle device response
+                var isComplete = false
+
+                this.parser.once('data', resText => {
+                    isComplete = true
+                    // handle device response
+                    if (!isSystem) {
+                        this.log('Receieved response:', resText)
+                    }
+                    const status = parseInt(resText.substring(1, 3))
+                    handler({
+                        status,
+                        message : DeviceCodes[status],
+                        body    : resText.substring(4),
+                        raw     : resText
+                    })
+                    this.busy = false
+                })
+
                 if (!isSystem) {
-                    this.log('Receieved response:', resText)
+                    this.log('Sending command', body.trim())
                 }
-                const status = parseInt(resText.substring(1, 3))
+
+                this.device.write(Buffer.from(body))
+
+                setTimeout(() => {
+                    if (!isComplete) {
+                        this.error('Command timeout', body.trim())
+                        this.parser.emit('data', '=02;')
+                    }
+                }, this.opts.commandTimeout)
+            }).catch(err => {
+                this.error('Flush failed', err)
+                const status = 3
                 handler({
                     status,
-                    message : DeviceCodes[status],
-                    body    : resText.substring(4),
-                    raw     : resText
+                    message: DeviceCodes[status],
+                    body   : '',
+                    raw    : '=03;',
+                    error  : err.message
                 })
-                this.busy = false
             })
-
-            if (!isSystem) {
-                this.log('Sending command', body.trim())
-            }
-
-            this.device.write(Buffer.from(body))
-
-            setTimeout(() => {
-                if (!isComplete) {
-                    this.error('Command timeout', body.trim())
-                    this.parser.emit('data', '=02;')
-                }
-            }, this.opts.commandTimeout)
         })
     }
 
@@ -240,6 +241,10 @@ class App {
             this.log('Sending error 1 response to handler')
             handler({status: 1, message: DeviceCodes[1]})
         }
+    }
+
+    async flushDevice() {
+        return this.device.flush()
     }
 
     initApp(app) {
@@ -291,7 +296,9 @@ class App {
 
         app.post('/disconnect', (req, res) => {
             this.closeDevice()
-            res.status(200).json({message: 'Device disconnected'})
+            this.status().then(status => {
+                res.status(200).json({message: 'Device disconnected', status})
+            })
         })
 
         app.post('/connect', (req, res) => {
@@ -300,7 +307,9 @@ class App {
                 return
             }
             this.openDevice().then(() => {
-                res.status(200).json({message: 'Device connected'})
+                this.status().then(status => {
+                    res.status(200).json({message: 'Device connected', status})
+                })
             }).catch(error => {
                 res.status(500).json({error})
             })
@@ -390,6 +399,27 @@ class App {
             MockBinding.createPort(this.opts.path, {echo: true, readyData: []})
         }
         return new SerialPort(this.opts.path, {baudRate: this.opts.baudRate, autoOpen: false})
+    }
+
+    getPositionJob() {
+        return {
+            isSystem : true,
+            body     : ':12 2;\n',
+            handler  : res => {
+                if (res.status != 0) {
+                    if (!this.opts.mock) {
+                        this.error('Failed to get positions', res)
+                    }
+                    return
+                }
+                // normalize NaN, undefined, etc. to null
+                this.position = JSON.parse(
+                    JSON.stringify(
+                        res.body.split('|').map(parseFloat)
+                    )
+                )
+            }
+        }
     }
 
     async initGpio() {

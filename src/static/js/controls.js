@@ -72,6 +72,9 @@ $(document).ready(function() {
         } else if ($target.is('#refresh_status')) {
             e.preventDefault()
             refreshStatus()
+        } else if ($target.is('#connected_status')) {
+            e.preventDefault()
+            handleConnectButton()
         }
     })
 
@@ -84,6 +87,29 @@ $(document).ready(function() {
 
     $('#clear_outputs').on('click', clearOutputs)
 
+    async function handleConnectButton() {
+        const $target = $('#connected_status')
+        if ($target.hasClass('disabled')) {
+            return
+        }
+        $target.addClass('disabled')
+        const action = $target.hasClass('connected') ? 'disconnect' : 'connect'
+        try {
+            if (confirm('Are you sure you want to ' + action + '?')) {
+                clearRefreshInterval()
+                $target.text(action + 'ing...')
+                const res = await fetch(action, {method: 'POST'})
+                const {status} = await res.json()
+                writeStatus(status)
+            }
+        } catch (err) {
+            writeStatus()
+            console.error(action, 'failed', err)
+        } finally {
+            setRefreshInterval()
+            $target.removeClass('disabled')
+        }
+    }
 
     // TODO: give ui feedback that refresh is working, last update
     async function refreshStatus() {
@@ -96,18 +122,19 @@ $(document).ready(function() {
             const {status} = await res.json()
             writeStatus(status)
         } catch (err) {
-            writeStatus({
-                state: 'Error',
-                position: ['Error', 'Error']
-            })
+            writeStatus()
             console.error('Position refresh failed', err)
         } finally {
             refreshBusy = false
         }
     }
 
-    function setRefreshInterval() {
+    function clearRefreshInterval() {
         clearInterval(refreshInterval)
+    }
+
+    function setRefreshInterval() {
+        clearRefreshInterval()
         const seconds = parseInt($('#refresh_interval').val())
         if (!isNaN(seconds) && seconds > 0) {
             refreshInterval = setInterval(refreshStatus, seconds * 1000)
@@ -154,7 +181,13 @@ $(document).ready(function() {
         })
     }
 
-    function writeStatus({position, state}) {
+    function writeStatus(status) {
+        status = status || {
+            state: 'Error',
+            position: ['Error', 'Error'],
+            connectedStatus: 'Error'
+        }
+        const {position, state, connectedStatus} = status
         $('#position_m1').html(
             position[0] + (!isNaN(parseFloat(position[0])) ? '&deg;' : '')
         )
@@ -162,6 +195,9 @@ $(document).ready(function() {
             position[1] + (!isNaN(parseFloat(position[1])) ? '&deg;' : '')
         )
         $('#state').text(state)
+        $('#connected_status').text(connectedStatus)
+            .removeClass('connected disconnected')
+            .addClass(connectedStatus.toLowerCase())
     }
 
     function sendGpio(type) {
