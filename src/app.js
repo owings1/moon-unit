@@ -197,6 +197,7 @@ class App {
     initWorker() {
         this.log('Initializing worker to run every', this.opts.workerDelay, 'ms')
         clearInterval(this.workerHandle)
+        this.busy = false
         this.workerHandle = setInterval(() => this.loop(), this.opts.workerDelay)
     }
 
@@ -274,14 +275,17 @@ class App {
             }
             // TODO: gracefully close serial port or catch error and delay then repoen
             // although, seems to work fine without it
+            this.log('Closing device')
             this.device.close()
+            this.log('Sending reset')
             this.gpio.sendReset().then(() => {
                 res.status(200).json({message: 'reset sent'})
+                this.log('Reset sent')
                 this.isConnected = false
                 setTimeout(() => {
                     // TODO: retry
                     this.openDevice().catch(err => this.error(err))
-                }, 3000)
+                }, 5000)
                 //setTimeout(() => this.device.open().then(() => this.log('Reopened')).catch(err => this.error(err)), 4000)
             }).catch(error => {
                 this.error(error)
