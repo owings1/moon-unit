@@ -57,7 +57,6 @@ class App {
         if (!this.opts.path) {
             throw new ConfigError('path not set, you can use DEVICE_SERIAL_PORT')
         }
-        this.device = this.createDevice()
 
         this.queue        = []
         this.busy         = false
@@ -90,6 +89,7 @@ class App {
     async openDevice() {
         this.log('Opening device', this.opts.path)
         clearInterval(this.workerHandle)
+        this.device = this.createDevice()
         this.queue.splice(0)
         this.isConnected = false
         await new Promise((resolve, reject) => {
