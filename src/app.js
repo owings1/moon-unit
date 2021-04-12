@@ -128,6 +128,7 @@ class App {
         if (this.device) {
             this.log('Closing device')
             this.device.close()
+            this.device = null
         }
         this.isConnected = false
         this.drainQueue()
