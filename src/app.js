@@ -273,14 +273,14 @@ class App {
             }
             // TODO: gracefully close serial port or catch error and delay then repoen
             // although, seems to work fine without it
+            this.device.close()
             this.gpio.sendReset().then(() => {
                 res.status(200).json({message: 'reset sent'})
                 this.isConnected = false
-                this.device.close()
                 setTimeout(() => {
                     // TODO: retry
                     this.openDevice().catch(err => this.error(err))
-                }, 2000)
+                }, 3000)
                 //setTimeout(() => this.device.open().then(() => this.log('Reopened')).catch(err => this.error(err)), 4000)
             }).catch(error => {
                 this.error(error)
