@@ -11,6 +11,9 @@
         <div class="panel">
             <form>
                 <!-- <a href="javascript:" class="gpio button green" id="gpio_state">State</a> -->
+                <a href="javascript" class="button <%= status.connectedStatus.toLowerCase() %>" id="connected_status">
+                    <%= status.connectedStatus %>
+                </a>
                 <a href="javascript:" class="gpio button red" id="gpio_stop">Stop</a>
                 <a href="javascript:" class="gpio button magenta" id="gpio_reset">Reset</a>
             </form>
@@ -35,13 +38,6 @@
                 <table>
                     <thead></thead>
                     <tbody>
-                        <tr>
-                            <td colspan="2">
-                                <a href="javascript" class="button <%= status.connectedStatus.toLowerCase() %>" id="connected_status">
-                                    <%= status.connectedStatus %>
-                                </a>
-                            </td>
-                        </tr>
                         <tr>
                             <td>State</td>
                             <td><span id="state"><%= status.state %></span></td>
