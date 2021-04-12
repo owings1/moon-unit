@@ -84,6 +84,13 @@ Commands
     =00;?|130.195
     =00:?|?
     ```
+- **13** - No response (debug)
+
+    ```
+    :13 ;
+    ```
+
+    This is for testing the app command response timeout.
 
 ## Parameters
 
@@ -100,9 +107,11 @@ Commands
 
 ## Response Codes
 
-| Code | Meaning                    |
-|------|----------------------------|
+| Code | Meaning                    | Comment
+|------|----------------------------|-----------
 | `00` | OK                         |
+| `01` | Device closed              | sent by app
+| `02` | Command timeout            | sent by app
 | `40` | Missing : before command   |
 | `44` | Invalid command            |
 | `45` | Invalid motorId            |

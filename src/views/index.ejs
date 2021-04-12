@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>MoonUnit</title>
+    <title><%= title %></title>
     <script type="text/javascript" src="static/js/jquery-3.6.0.min.js"></script>
     <script type="text/javascript" src="static/js/controls.js"></script>
     <link rel="stylesheet" type="text/css" href="static/css/app.css"/>
@@ -37,13 +37,13 @@
                     <tbody>
                         <tr>
                             <td>State</td>
-                            <td><span id="state"><%= state %></span></td>
+                            <td><span id="state"><%= status.state %></span></td>
                         </tr>
                         <tr>
                             <td>Scope</td>
                             <td>
                                 <span class="position-value" id="position_m1">
-                                    <%- position[0] + (!isNaN(parseFloat(position[0])) ? '&deg;' : '') %>
+                                    <%- status.position[0] + (!isNaN(parseFloat(status.position[0])) ? '&deg;' : '') %>
                                 </span>
                             </td>
                         </tr>
@@ -51,7 +51,7 @@
                             <td>Base</td>
                             <td>
                                 <span class="position-value" id="position_m2">
-                                    <%- position[1] + (!isNaN(parseFloat(position[1])) ? '&deg;' : '') %>
+                                    <%- status.position[1] + (!isNaN(parseFloat(status.position[1])) ? '&deg;' : '') %>
                                 </span>
                             </td>
                         </tr>

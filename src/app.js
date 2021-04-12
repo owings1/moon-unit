@@ -19,6 +19,8 @@ prom.collectDefaultMetrics()
 
 const DeviceCodes = {
      0: 'OK',
+     1: 'Device closed',
+     2: 'Command timeout',
     40: 'Missing : before command',
     44: 'Invalid command',
     45: 'Invalid motorId',
@@ -46,7 +48,10 @@ class App {
             pinReset    : +env.PIN_RESET || 37,
             pinStop     : +env.PIN_STOP || 35,
             pinState1   : +env.PIN_STATE1 || 38,
-            pinState2   : +env.PIN_STATE2 || 36
+            pinState2   : +env.PIN_STATE2 || 36,
+            // how long to wait after reset to reopen device
+            resetDelay  : +env.RESET_DELAY || 5000,
+            commandTimeout : +env.COMMAND_TIMEOUT || 5000
         }
     }
 
@@ -70,12 +75,20 @@ class App {
         this.initApp(this.app)
     }
 
-    listen(port) {
-        port = port || this.opts.port
+    async status() {
+        const state = this.gpio ? (await this.gpio.getState()) : null
+        return {
+            state,
+            position    : this.position,
+            isConnected : this.isConnected
+        }
+    }
+
+    listen() {
         return new Promise((resolve, reject) => {
             try {
                 this.initGpio().then(() => {
-                    this.httpServer = this.app.listen(port, () => {
+                    this.httpServer = this.app.listen(this.opts.port, () => {
                         this.log('Listening on', this.httpServer.address())
                         this.openDevice().then(resolve).catch(reject)
                     })
@@ -87,11 +100,9 @@ class App {
     }
 
     async openDevice() {
+        this.closeDevice()
         this.log('Opening device', this.opts.path)
-        clearInterval(this.workerHandle)
         this.device = this.createDevice()
-        this.queue.splice(0)
-        this.isConnected = false
         await new Promise((resolve, reject) => {
             this.device.open(err => {
                 if (err) {
@@ -113,15 +124,23 @@ class App {
         })
     }
 
+    closeDevice() {
+        if (this.device) {
+            this.log('Closing device')
+            this.device.close()
+        }
+        this.isConnected = false
+        this.drainQueue()
+        this.stopWorker()
+    }
+
     close() {
         return new Promise(resolve => {
-            this.log('Closing')
+            this.log('Shutting down')
+            this.closeDevice()
             if (this.httpServer) {
                 this.httpServer.close()
             }
-            clearInterval(this.workerHandle)
-            this.isConnected = false
-            this.device.close()
             resolve()
         })
     }
@@ -170,8 +189,11 @@ class App {
                 }
             }
 
+            var isComplete = false
+
             // TODO: timeout for a response
             this.parser.once('data', resText => {
+                isComplete = true
                 // handle device response
                 if (!isSystem) {
                     this.log('Receieved response:', resText)
@@ -191,14 +213,33 @@ class App {
             }
 
             this.device.write(Buffer.from(body))
+
+            setTimeout(() => {
+                if (!isComplete) {
+                    this.error('Command timeout', body)
+                    this.parser.emit('data', '=02;')
+                }
+            }, this.opts.commandTimeout)
         })
     }
 
     initWorker() {
         this.log('Initializing worker to run every', this.opts.workerDelay, 'ms')
+        this.stopWorker()
+        this.workerHandle = setInterval(() => this.loop(), this.opts.workerDelay)
+    }
+
+    stopWorker() {
         clearInterval(this.workerHandle)
         this.busy = false
-        this.workerHandle = setInterval(() => this.loop(), this.opts.workerDelay)
+    }
+
+    drainQueue() {
+        while (this.queue.length) {
+            var {handler} = this.queue.pop()
+            this.log('Sending error 1 response to handler')
+            handler({status: 1, message: DeviceCodes[1]})
+        }
     }
 
     initApp(app) {
@@ -209,10 +250,10 @@ class App {
         app.use('/static', express.static(__dirname + '/static'))
 
         app.get('/', (req, res) => {
-            this.gpio.getState().then(state => {
+            this.status().then(status => {
                 res.render('index', {
-                    state,
-                    position: this.position
+                    title: 'MoonUnit',
+                    status
                 })
             })
         })
@@ -245,14 +286,19 @@ class App {
         })
 
         app.get('/status', (req, res) => {
-            this.gpio.getState().then(state => {
-                res.status(200).json({
-                    status: {
-                        state,
-                        position: this.position
-                    }
-                })
-            })
+            this.status().then(status => res.status(200).json({status}))
+        })
+
+        app.post('/disconnect', (req, res) => {
+            this.closeDevice()
+            res.status(200).json({message: 'Device disconnected'})
+        })
+
+        app.post('/connect', (req, res) => {
+            if (this.isConnected) {
+                res.status(400).json({message: 'Device already connected'})
+                return
+            }
         })
 
         app.get('/gpio/state', (req, res) => {
@@ -273,20 +319,14 @@ class App {
                 res.status(400).json({error: 'gpio not enabled'})
                 return
             }
-            // TODO: gracefully close serial port or catch error and delay then repoen
-            // although, seems to work fine without it
-            this.log('Closing device')
-            this.device.close()
+            this.closeDevice()
             this.log('Sending reset')
             this.gpio.sendReset().then(() => {
                 res.status(200).json({message: 'reset sent'})
-                this.log('Reset sent')
-                this.isConnected = false
+                this.log('Reset sent, delaying', this.opts.resetDelay, 'to reopen')
                 setTimeout(() => {
-                    // TODO: retry
                     this.openDevice().catch(err => this.error(err))
-                }, 5000)
-                //setTimeout(() => this.device.open().then(() => this.log('Reopened')).catch(err => this.error(err)), 4000)
+                }, this.opts.resetDelay)
             }).catch(error => {
                 this.error(error)
                 res.status(500).json({error})

@@ -49,7 +49,7 @@
  *
  *  :11 <direction_1> <degrees_1> <direction_2> <degrees_2>;
  *
- * 12 - [In progress] Get motor positions
+ * 12 - Get motor positions
  *
  *  :12 <format>;
  *
@@ -57,6 +57,10 @@
  *      =00;8500|1200
  *      =00;?|130.195
  *      =00:?|?
+ *
+ * 13 - No response (debug)
+ *
+ *  :13 ;
  *
  * Parameters
  * ----------
@@ -362,7 +366,7 @@ void takeCommand(Stream &input, Stream &output) {
 
   } else if (command.equals("05")) {
 
-    // read limit switch states
+    // read limit switch and stop pin states
 
     input.readStringUntil(';');
 
@@ -590,6 +594,10 @@ void takeCommand(Stream &input, Stream &output) {
     }
 
     output.write("\n");
+
+  } else if (command.equals("13")) {
+    // no response
+    input.readStringUntil(';');
 
   } else {
     output.write("=44\n");
