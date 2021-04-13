@@ -105,6 +105,18 @@ Commands
     =50;
     ```
 
+- **15** - Get motor positions in degrees, and orientation.
+
+    ```
+    :15 ;
+    ```
+
+    example reponses:
+    ```
+    =00;?|120.43|143.2|43.0231|123.5
+    =00;12.02|120.43|?|?|?
+    =00;?|?|?|?|?
+    ```
 ## Parameters
 
 - `<motorId>`
