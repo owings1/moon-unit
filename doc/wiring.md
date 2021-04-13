@@ -28,11 +28,11 @@ motor controller
 |  A1 | state pin 2 (SP2)           | white  | state bit for pi MSB
 |  A2 | r. encoder pin 1            | yellow |
 |  A3 | r. encoder pin 2            | white  |
-| SCL | LCD display I2C SCL         | blue   |
-| SDA | LCD display I2C SDA         | green  |
+| SCL | I2C SCL                     | blue   | I2C for orientation sensor*
+| SDA | I2C SDA                     | green  | I2C for orientation sensor
 | Rst | reset pin                   | blue   | for pi to reset when `LOW`
 
-
+\* future to use 8x I2C multiplexer
 
 ### States
 

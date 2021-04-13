@@ -82,8 +82,9 @@ Commands
     ```
     =00;8500|1200
     =00;?|130.195
-    =00:?|?
+    =00;?|?
     ```
+
 - **13** - No response (debug)
 
     ```
@@ -91,6 +92,18 @@ Commands
     ```
 
     This is for testing the app command response timeout.
+
+- **14** - Get orientation (x|y|z)
+
+    ```
+    :14 ;
+    ```
+
+    example responses:
+    ```
+    =00;143.2|43.0231|123.5
+    =50;
+    ```
 
 ## Parameters
 

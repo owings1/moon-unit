@@ -28,7 +28,8 @@ const DeviceCodes = {
     46: 'Invalid direction',
     47: 'Invalid steps/degrees',
     48: 'Invalid speed/acceleration',
-    49: 'Invalid other parameter'
+    49: 'Invalid other parameter',
+    50: 'Orientation unavailable'
 }
 
 const Gpio = require('./gpio')

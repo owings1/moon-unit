@@ -56,11 +56,19 @@
  *    example responses:
  *      =00;8500|1200
  *      =00;?|130.195
- *      =00:?|?
+ *      =00;?|?
  *
  * 13 - No response (debug)
  *
  *  :13 ;
+ *
+ * 14 - Get orientation (x|y|z)
+ *
+ *  :14 ;
+ *
+ *    example responses:
+ *      =00;143.2|43.02|123.5
+ *      =50;
  *
  * Parameters
  * ----------
@@ -71,6 +79,9 @@
  * Response Codes
  * --------------
  * 00 - OK
+ * 01 - (App) Device closed
+ * 02 - (App) Command timeout
+ * 03 - (App) Flush error
  * 40 - Missing : before command
  * 44 - Invalid command
  * 45 - Invalid motorId
@@ -78,6 +89,7 @@
  * 47 - Invalid steps/degrees
  * 48 - Invalid speed/acceleration
  * 49 - Invalid other parameter
+ * 50 - Orientation unavailable
  *
  * States
  * ------
@@ -96,6 +108,24 @@
 #include <RotaryEncoder.h>
 #include <LiquidCrystal_I2C.h>
 #include "dwf/digitalWriteFast.h"
+#include <Adafruit_Sensor.h>
+#include <Adafruit_BNO055.h>
+
+/******************************************/
+/* Features/Hardware Enable               */
+/* ****************************************/
+// Whether the limit switches are connected
+#define limitsEnabled_m1 true
+#define limitsEnabled_m2 true
+// Rotary Encoder
+#define encoderEnabled false
+// LCD Display
+#define lcdEnabled false
+// Orientation Sensor
+#define orientationEnabled true
+// Stop Signal pin
+#define stopPinEnabled true
+/****************************/
 
 // Motor
 
@@ -116,9 +146,7 @@
 // for homing, will not overshoot limit switches
 #define maxDegrees_m1 190
 #define maxDegrees_m2 380
-// Whether the limit switches are connected
-#define limitsEnabled_m1 true
-#define limitsEnabled_m2 true
+
 #define maxAcceleration 10000L
 #define motorSleepTimeout 2000L
 
@@ -142,9 +170,7 @@ AccelStepper stepper_m2(AccelStepper::FULL2WIRE, stepPin_m2, dirPin_m2);
 boolean hasHomed_m1 = false;
 boolean hasHomed_m2 = false;
 
-// Encoder
-
-#define encoderEnabled false
+// Rotary Encoder
 
 // These cannot be changed without addressing interrupt as below
 #define encoderPin1 A2
@@ -163,7 +189,7 @@ volatile int programNum = 1;
 
 // LCD Display
 
-// https://bitbucket.org/fmalpartida/new-liquidcrystal/wiki/Home
+// https://github.com/fmalpartida/New-LiquidCrystal
 LiquidCrystal_I2C  lcd(0x27,2,1,0,4,5,6,7); // 0x27 is the I2C bus address for an unmodified module
 
 boolean displaySleepEnabled = true;
@@ -171,6 +197,17 @@ unsigned long displaySleepTimeout = 10000L;
 unsigned long lastDisplayActionTime = millis();
 volatile boolean displayUpdateNeeded = false;
 boolean isDisplayLightOn = false;
+
+// Orientation sensor
+
+// https://learn.adafruit.com/adafruit-bno055-absolute-orientation-sensor/arduino-code
+Adafruit_BNO055 bno = Adafruit_BNO055(55);
+// whether it is initialized properly
+boolean isOrientation = false;
+// latest read
+float orientation_x;
+float orientation_y;
+float orientation_z;
 
 // State output
 #define statePin1 A0
@@ -180,7 +217,6 @@ boolean isDisplayLightOn = false;
 
 // Stop/cancel
 #define stopPin 13
-#define stopPinEnabled true
 boolean shouldStop = false;
 
 void setup() {
@@ -190,6 +226,7 @@ void setup() {
   setupMotors();
   setupEncoder();
   setupDisplay();
+  setupOrientation();
   setupStopPin();
   setState(STATE_READY);
 }
@@ -219,6 +256,7 @@ void loop() {
     updateDisplay();
     checkDisplaySleep();
     checkMotorSleep();
+    readOrientation();
     setState(STATE_READY);
     takeCommand(Serial, Serial);
   }
@@ -577,10 +615,7 @@ void takeCommand(Stream &input, Stream &output) {
 
     if (hasHomed_m1) {
       long mpos = stepper_m1.currentPosition();
-      String pstr = String(format == 1 ? mpos : (mpos * degreesPerStep_m1));
-      for (int i = 0; i < pstr.length(); i++) {
-        output.write(pstr.charAt(i));
-      }
+      writeString(output, String(format == 1 ? mpos : (mpos * degreesPerStep_m1)));
     } else {
       output.write("?");
     }
@@ -589,10 +624,7 @@ void takeCommand(Stream &input, Stream &output) {
 
     if (hasHomed_m2) {
       long mpos = stepper_m2.currentPosition();
-      String pstr = String(format == 1 ? mpos : (mpos * degreesPerStep_m2));
-      for (int i = 0; i < pstr.length(); i++) {
-        output.write(pstr.charAt(i));
-      }
+      writeString(output, String(format == 1 ? mpos : (mpos * degreesPerStep_m2)));
     } else {
       output.write("?");
     }
@@ -603,8 +635,37 @@ void takeCommand(Stream &input, Stream &output) {
     // no response
     input.readStringUntil(';');
 
+  } else if (command.equals("14")) {
+
+    // get orientation
+
+    input.readStringUntil(';');
+
+    if (!isOrientation) {
+      output.write("=50;\n");
+      return;
+    }
+
+    readOrientation();
+
+    output.write("=00;");
+
+    writeString(output, String(orientation_x, 4));
+    output.write('|');
+    writeString(output, String(orientation_y, 4));
+    output.write('|');
+    writeString(output, String(orientation_z, 4));
+
+    output.write("\n");
+    
   } else {
     output.write("=44\n");
+  }
+}
+
+void writeString(Stream &output, String s) {
+  for (int i = 0; i < s.length(); i++) {
+    output.write(s.charAt(i));
   }
 }
 
@@ -834,7 +895,6 @@ void setAcceleration(int motorId, long value) {
 
 void enableMotors() {
   if (!isMotorEnabled) {
-    //Serial.println("Enabling motors");
     digitalWrite(enablePin_m1, LOW);
     digitalWrite(enablePin_m2, LOW);
     isMotorEnabled = true;
@@ -862,6 +922,9 @@ void checkMotorSleep() {
   }
 }
 
+// ----------------------------------------------
+// Stop pin functions
+// ----------------------------------------------
 void readStopPin() {
   if (stopPinEnabled) {
     shouldStop = digitalReadFast(stopPin) == HIGH;
@@ -886,8 +949,9 @@ void setState(byte state) {
     digitalWrite(statePin2, HIGH);
   }
 }
+
 // ----------------------------------------------
-// Encoder functions
+// Rotary Encoder functions
 // ----------------------------------------------
 
 void takeKnobInput(int oldPos, int newPos) {
@@ -926,7 +990,7 @@ void onEncoderSwitchChange() {
 // ----------------------------------------------
 
 void updateDisplay() {
-  if (shouldUpdateDisplay()) {
+  if (lcdEnabled && shouldUpdateDisplay()) {
     lcd.setCursor(0, 0);
     lcd.print("Program: ");
     lcd.print(programNum);
@@ -935,15 +999,19 @@ void updateDisplay() {
 }
 
 boolean shouldUpdateDisplay() {
-  return displayUpdateNeeded;
+  return lcdEnabled && displayUpdateNeeded;
 }
 
 void turnOnDisplayLight() {
-  lcd.setBacklightPin(3, NEGATIVE);
+  if (lcdEnabled) {
+    lcd.setBacklightPin(3, NEGATIVE);
+  }
 }
 
 void turnOffDisplayLight() {
-  lcd.setBacklightPin(3, POSITIVE);
+  if (lcdEnabled) {
+    lcd.setBacklightPin(3, POSITIVE);
+  }
 }
 
 void registerDisplayAction() {
@@ -951,7 +1019,7 @@ void registerDisplayAction() {
 }
 
 void checkDisplaySleep() {
-  if (!displaySleepEnabled) {
+  if (!lcdEnabled || !displaySleepEnabled) {
     return;
   }
   unsigned long elapsed = millis() - lastDisplayActionTime;
@@ -961,6 +1029,23 @@ void checkDisplaySleep() {
     // for button, so we don't have to do this in an interrupt
     turnOnDisplayLight();
   }
+}
+
+// ----------------------------------------------
+// Orientation functions
+// ----------------------------------------------
+
+void readOrientation() {
+  if (!isOrientation) {
+    return;
+  }
+  /* Get a new sensor event */ 
+  sensors_event_t event; 
+  bno.getEvent(&event);
+
+  orientation_x = event.orientation.x;
+  orientation_y = event.orientation.y;
+  orientation_z = event.orientation.z;
 }
 
 // ----------------------------------------------
@@ -994,6 +1079,9 @@ void setupMotors() {
 }
 
 void setupDisplay() {
+  if (!lcdEnabled) {
+    return;
+  }
   lcd.begin(16, 2);
   lcd.clear();
   displayUpdateNeeded = true;
@@ -1002,6 +1090,10 @@ void setupDisplay() {
 }
 
 void setupEncoder() {
+
+  if (!encoderEnabled){
+    return;
+  }
 
   pinMode(encoderSwitchPin, OUTPUT);
   // use pullup resistor
@@ -1017,7 +1109,19 @@ void setupEncoder() {
 // The Interrupt Service Routine for Pin Change Interrupt 1
 // This routine will only be called on any signal change on A2 and A3: exactly where we need to check.
 ISR(PCINT1_vect) {
-  encoder.tick(); // just call tick() to check the state.
+  if (encoderEnabled) {
+    encoder.tick(); // just call tick() to check the state.
+  }
+}
+
+void setupOrientation() {
+  if (!orientationEnabled) {
+    return;
+  }
+  if (bno.begin()) {
+    isOrientation = true;
+    bno.setExtCrystalUse(true);
+  }
 }
 
 void setupStatePins() {
@@ -1028,6 +1132,7 @@ void setupStatePins() {
 void setupStopPin() {
   pinMode(stopPin, INPUT);
 }
+
 // ----------------------------------------------
 // Miscellaneous Util
 // ----------------------------------------------
