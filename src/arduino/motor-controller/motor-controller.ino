@@ -684,13 +684,13 @@ void takeCommand(Stream &input, Stream &output) {
 
     output.write("=00;");
 
-    writeString(output, String(cal_system, 0));
+    writeString(output, String(cal_system));
     output.write('|');
-    writeString(output, String(cal_gyro, 0));
+    writeString(output, String(cal_gyro));
     output.write('|');
-    writeString(output, String(cal_accel, 0));
+    writeString(output, String(cal_accel));
     output.write('|');
-    writeString(output, String(cal_mag, 0));
+    writeString(output, String(cal_mag));
     output.write('|');
     output.write(isOrientationCalibrated ? 'T' : 'F');
     output.write("\n");
