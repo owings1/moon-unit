@@ -185,9 +185,11 @@ $(document).ready(function() {
         status = status || {
             state: 'Error',
             position: ['Error', 'Error'],
+            orientation: ['Error', 'Error', 'Error'],
+            limitsEnabled: ['Error', 'Error'],
             connectedStatus: 'Error'
         }
-        const {position, state, connectedStatus, orientation} = status
+        const {position, state, connectedStatus, orientation, limitsEnabled} = status
         $('#position_m1').html(
             position[0] + (!isNaN(parseFloat(position[0])) ? '&deg;' : '')
         )
@@ -201,6 +203,8 @@ $(document).ready(function() {
         $('#orientation_x').text('' + orientation[0])
         $('#orientation_y').text('' + orientation[1])
         $('#orientation_z').text('' + orientation[2])
+        $('#limitsEnabled_m1').text('' + limitsEnabled[0])
+        $('#limitsEnabled_m2').text('' + limitsEnabled[1])
     }
 
     function sendGpio(type) {

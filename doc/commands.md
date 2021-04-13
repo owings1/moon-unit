@@ -105,7 +105,7 @@ Commands
     =50;
     ```
 
-- **15** - Get motor positions in degrees, and orientation.
+- **15** - Get motor positions in degrees, and orientation, followed by limits enabled
 
     ```
     :15 ;
@@ -113,10 +113,32 @@ Commands
 
     example reponses:
     ```
-    =00;?|120.43|143.2|43.0231|123.5
-    =00;12.02|120.43|?|?|?
-    =00;?|?|?|?|?
+    =00;?|120.43|143.2|43.0231|123.5|F|T
+    =00;12.02|120.43|?|?|?|T|T
+    =00;?|?|?|?|?|F|F
     ```
+
+- **16** - Get orientation calibration status
+
+    ```
+    :16 ;
+    ```
+
+    Indexes:
+
+    * `0`: system (0-3)
+    * `1`: gyro (0-3)
+    * `2`: accel (0-3)
+    * `3`: mag (0-3)
+    * `4`: T/F whether all values are 3
+
+    example responses:
+
+    ```
+    =00;0|3|1|2|F
+    =50;
+    ```
+
 ## Parameters
 
 - `<motorId>`
@@ -145,6 +167,8 @@ Commands
 | `47` | Invalid steps/degrees      |
 | `48` | Invalid speed/acceleration |
 | `49` | Invalid other parameter    |
+| `50` | Orientation unavailable    | either not enabled at compile, or initialization error
+| `51` | Limits unavailable         | not enabled at compile
 
 ## States
 

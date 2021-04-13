@@ -29,7 +29,8 @@ const DeviceCodes = {
     47: 'Invalid steps/degrees',
     48: 'Invalid speed/acceleration',
     49: 'Invalid other parameter',
-    50: 'Orientation unavailable'
+    50: 'Orientation unavailable',
+    51: 'Limits unavailable'
 }
 
 const Gpio = require('./gpio')
@@ -70,12 +71,17 @@ class App {
         this.workerHandle = null
         this.app          = express()
         this.httpServer   = null
-        this.position     = [null, null]
-        this.orientation  = [null, null, null]
 
         this.isConnected = false
 
+        this.clearStatus()
         this.initApp(this.app)
+    }
+
+    clearStatus() {
+        this.position      = [null, null]
+        this.orientation   = [null, null, null]
+        this.limitsEnabled = [null, null]
     }
 
     async status() {
@@ -85,6 +91,7 @@ class App {
             position    : this.position,
             orientation : this.orientation,
             isConnected : this.isConnected,
+            limitsEnabled : this.limitsEnabled,
             connectedStatus: this.isConnected ? 'Connected' : 'Disconnected'
         }
     }
@@ -136,8 +143,7 @@ class App {
             this.device = null
         }
         this.isConnected = false
-        this.position    = [null, null]
-        this.orientation = [null, null, null]
+        this.clearStatus()
         this.drainQueue()
         this.stopWorker()
     }

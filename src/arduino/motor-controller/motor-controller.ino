@@ -70,7 +70,7 @@
  *      =00;143.2|43.02|123.5|F
  *      =50;
  *
- * 15 - Get position, followed by orientation
+ * 15 - Get position, followed by orientation, followed by limits enabled
  *
  *  :15 ;
  *
@@ -78,9 +78,15 @@
  *
  *  :16 ;
  *
- *    example response:
+ *    example responses:
  *      =00;0|3|1|2|F
  *      =50;
+ *
+ * 17 - Set limit switch enablement for a motor
+ *
+ *  :17 <motorId> <T|F>;
+ *
+ *    must be compiled with limitsConnected or will return 51.
  *
  * Parameters
  * ----------
@@ -102,6 +108,7 @@
  * 48 - Invalid speed/acceleration
  * 49 - Invalid other parameter
  * 50 - Orientation unavailable
+ * 51 - Limits unavailable
  *
  * States
  * ------
@@ -127,8 +134,8 @@
 /* Features/Hardware Enable               */
 /* ****************************************/
 // Whether the limit switches are connected
-#define limitsEnabled_m1 true
-#define limitsEnabled_m2 true
+#define limitsConnected_m1 true
+#define limitsConnected_m2 true
 // Rotary Encoder
 #define encoderEnabled false
 // LCD Display
@@ -164,6 +171,10 @@
 #define maxAcceleration 10000L
 #define motorSleepTimeout 2000L
 
+// limit switches can be disabled during runtime, these
+// are set to the value of limitsConnected at setup.
+boolean limitsEnabled_m1 = false;
+boolean limitsEnabled_m2 = false;
 // limit switch states
 boolean isLimitCw_m1 = false;
 boolean isLimitAcw_m1 = false;
@@ -662,16 +673,31 @@ void takeCommand(Stream &input, Stream &output) {
     writeOrientation(output);
 
     output.write("\n");
+
   } else if (command.equals("15")) {
-    // get position by degrees, followed by orientation
+
+    // get position by degrees, followed by orientation, followed by limits enabled
     input.readStringUntil(';');
+
     readOrientation();
+
     output.write("=00;");
+
     writePositions(output, 2);
+
     output.write('|');
     writeOrientation(output);
+
+    output.write('|');
+    output.write(limitsEnabled_m1 ? 'T' : 'F');
+
+    output.write('|');
+    output.write(limitsEnabled_m2 ? 'T' : 'F');
+
     output.write("\n");
+
   } else if (command.equals("16")) {
+
     // get orientation calibration status
     input.readStringUntil(';');
 
@@ -695,6 +721,37 @@ void takeCommand(Stream &input, Stream &output) {
     output.write(isOrientationCalibrated ? 'T' : 'F');
     output.write("\n");
 
+  } else if (command.equals("17")) {
+
+    // Set limit switch enablement for a motor
+
+    // first param is the motor id
+    int motorId = readMotorIdFromInput(input);
+
+    if (motorId == 0) {
+      output.write("=45;\n");
+      return;
+    }
+    // last param is T/F
+    char flag = input.readStringUntil(';').charAt(0);
+    if (flag != 'T' && flag != 'F') {
+      output.write("=49;\n");
+      return;
+    }
+    if (motorId == 1) {
+      if (!limitsConnected_m1) {
+        output.write("=51;\n");
+        return;
+      }
+      limitsEnabled_m1 = flag == 'T';
+    } else if (motorId == 2) {
+      if (!limitsConnected_m2) {
+        output.write("=51;\n");
+        return;
+      }
+      limitsEnabled_m2 = flag == 'T';
+    }
+    output.write("=00;\n");
   } else {
     output.write("=44\n");
   }
@@ -761,12 +818,12 @@ int getDirMultiplier(int dirInput) {
 
 void readLimitSwitches() {
 
-  if (limitsEnabled_m1) {
+  if (limitsConnected_m1) {
     isLimitCw_m1  = digitalReadFast(limitPinCw_m1)  == HIGH;
     isLimitAcw_m1 = digitalReadFast(limitPinAcw_m1) == HIGH;
   }
 
-  if (limitsEnabled_m2) {
+  if (limitsConnected_m2) {
     isLimitCw_m2  = digitalReadFast(limitPinCw_m2)  == HIGH;
     isLimitAcw_m2 = digitalReadFast(limitPinAcw_m2) == HIGH;
   }
@@ -775,6 +832,9 @@ void readLimitSwitches() {
 // the howMuch is just a positive/negative direction reference.
 boolean motorCanMove(int motorId, long howMuch) {
   if (motorId == 1) {
+    if (!limitsEnabled_m1) {
+      return true;
+    }
     if (howMuch > 0) {
       return !isLimitCw_m1;
     } else {
@@ -782,6 +842,9 @@ boolean motorCanMove(int motorId, long howMuch) {
     }
   }
   if (motorId == 2) {
+    if (!limitsEnabled_m2) {
+      return true;
+    }
     if (howMuch > 0) {
       return !isLimitCw_m2;
     } else {
@@ -825,6 +888,7 @@ void homeMotor(int motorId) {
   if (isMotorHome(motorId)) {
     // move forward just a little
     jumpOneByDegrees(motorId, 1.5);
+    setState(STATE_BUSY);
     while (runMotorsIfNeeded()) {
       readLimitSwitches();
       // TODO: fix physical tab for M2 optical switches. This code works
@@ -1137,9 +1201,21 @@ void setupMotors() {
   pinMode(enablePin_m1, OUTPUT);
   pinMode(enablePin_m2, OUTPUT);
 
-  // Declare limit switch pins as input
-  pinMode(limitPinCw_m2, INPUT);
-  pinMode(limitPinAcw_m2, INPUT);
+  if (limitsConnected_m1) {
+    // Declare limit switch pins as input
+    pinMode(limitPinCw_m1, INPUT);
+    pinMode(limitPinAcw_m1, INPUT);
+    // set enabled
+    limitsEnabled_m1 = true;
+  }
+
+  if (limitsConnected_m2) {
+    // Declare limit switch pins as input
+    pinMode(limitPinCw_m2, INPUT);
+    pinMode(limitPinAcw_m2, INPUT);
+    // set enabled
+    limitsEnabled_m2 = true;
+  }
 
   // set initial state of motor to disabled
   digitalWrite(enablePin_m1, HIGH);

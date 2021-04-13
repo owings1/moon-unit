@@ -21,20 +21,7 @@
         <hr>
         <div class="panel">
             <form>
-                <table>
-                    <tr>
-                        <td><a href="javascript:" class="go button blue" id="home_1">Home Scope</a></td>
-                        <td><a href="javascript:" class="go button blue" id="end_1">End Scope</a></td>
-                    </tr>
-                    <tr>
-                        <td><a href="javascript:" class="go button blue" id="home_2">Home Base</a></td>
-                        <td><a href="javascript:" class="go button blue" id="end_2">End Base</a></td>
-                    </tr>
-                    <tr>
-                        <td><a href="javascript:" class="go button blue" id="home_all">Home All</a></td>
-                        <td><a href="javascript:" class="go button blue" id="end_all">End All</a></td>
-                    </tr>
-                </table>
+                
                 <table>
                     <thead></thead>
                     <tbody>
@@ -77,6 +64,42 @@
                             <td></td>
                         </tr>
                     </tbody>
+                </table>
+                <table>
+                    <thead>
+                        <tr>
+                            <th colspan="2">Limits Enabled</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td>Scope</td>
+                            <td><span id="limitsEnabled_m1"><%= '' + status.limitsEnabled[0] %></span></td>
+                        </tr>
+                        <tr>
+                            <td>Base</td>
+                            <td><span id="limitsEnabled_m2"><%= '' + status.limitsEnabled[0] %></span></td>
+                        </tr>
+                    </tbody>
+                </table>
+            </form>
+        </div>
+        <hr>
+        <div class="panel">
+            <form>
+                <table>
+                    <tr>
+                        <td><a href="javascript:" class="go button blue" id="home_1">Home Scope</a></td>
+                        <td><a href="javascript:" class="go button blue" id="end_1">End Scope</a></td>
+                    </tr>
+                    <tr>
+                        <td><a href="javascript:" class="go button blue" id="home_2">Home Base</a></td>
+                        <td><a href="javascript:" class="go button blue" id="end_2">End Base</a></td>
+                    </tr>
+                    <tr>
+                        <td><a href="javascript:" class="go button blue" id="home_all">Home All</a></td>
+                        <td><a href="javascript:" class="go button blue" id="end_all">End All</a></td>
+                    </tr>
                 </table>
             </form>
         </div>
