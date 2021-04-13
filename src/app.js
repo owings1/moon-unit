@@ -45,7 +45,7 @@ class App {
             quiet       : !!env.QUIET,
             openDelay   : +env.OPEN_DELAY || 2000,
             workerDelay : +env.WORKER_DELAY || 100,
-            baudRate    : +env.BAUD_RATE || 115200,
+            baudRate    : +env.BAUD_RATE || 9600, //115200,
             gpioEnabled : !!env.GPIO_ENABLED,
             pinReset    : +env.PIN_RESET || 37,
             pinStop     : +env.PIN_STOP || 35,

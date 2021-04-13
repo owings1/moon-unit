@@ -125,7 +125,9 @@
 #define orientationEnabled true
 // Stop Signal pin
 #define stopPinEnabled true
-/****************************/
+/******************************************/
+
+#define baudRate 9600L
 
 // Motor
 
@@ -222,7 +224,7 @@ boolean shouldStop = false;
 void setup() {
   setupStatePins();
   setState(STATE_BUSY);
-  Serial.begin(115200L);
+  Serial.begin(baudRate);
   setupMotors();
   setupEncoder();
   setupDisplay();
