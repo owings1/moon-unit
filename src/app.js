@@ -248,7 +248,9 @@ class App {
     }
 
     async flushDevice() {
-        return this.device.flush()
+        // TODO: figure out why device.flush does not return a promise
+        // commenting out for debug (getting errors)
+        //return this.device.flush()
     }
 
     initApp(app) {
