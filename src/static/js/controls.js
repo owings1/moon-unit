@@ -187,7 +187,7 @@ $(document).ready(function() {
             position: ['Error', 'Error'],
             connectedStatus: 'Error'
         }
-        const {position, state, connectedStatus} = status
+        const {position, state, connectedStatus, orientation} = status
         $('#position_m1').html(
             position[0] + (!isNaN(parseFloat(position[0])) ? '&deg;' : '')
         )
@@ -198,6 +198,9 @@ $(document).ready(function() {
         $('#connected_status').text(connectedStatus)
             .removeClass('connected disconnected')
             .addClass(connectedStatus.toLowerCase())
+        $('#orientation_x').text('' + orientation[0])
+        $('#orientation_y').text('' + orientation[1])
+        $('#orientation_z').text('' + orientation[2])
     }
 
     function sendGpio(type) {

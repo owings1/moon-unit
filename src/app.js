@@ -71,6 +71,7 @@ class App {
         this.app          = express()
         this.httpServer   = null
         this.position     = [null, null]
+        this.orientation  = [null, null, null]
 
         this.isConnected = false
 
@@ -82,6 +83,7 @@ class App {
         return {
             state,
             position    : this.position,
+            orientation : this.orientation,
             isConnected : this.isConnected,
             connectedStatus: this.isConnected ? 'Connected' : 'Disconnected'
         }
@@ -135,6 +137,7 @@ class App {
         }
         this.isConnected = false
         this.position    = [null, null]
+        this.orientation = [null, null, null]
         this.drainQueue()
         this.stopWorker()
     }
@@ -405,7 +408,7 @@ class App {
     getPositionJob() {
         return {
             isSystem : true,
-            body     : ':12 2;\n',
+            body     : ':15 ;\n',
             handler  : res => {
                 if (res.status != 0) {
                     if (!this.opts.mock) {
@@ -414,11 +417,13 @@ class App {
                     return
                 }
                 // normalize NaN, undefined, etc. to null
-                this.position = JSON.parse(
+                const nums = JSON.parse(
                     JSON.stringify(
                         res.body.split('|').map(parseFloat)
                     )
                 )
+                this.position = [nums[0], nums[1]]
+                this.orientation = [nums[2], nums[3], nums[4]]
             }
         }
     }
