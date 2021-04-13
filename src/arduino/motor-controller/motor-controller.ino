@@ -62,12 +62,24 @@
  *
  *  :13 ;
  *
- * 14 - Get orientation (x|y|z)
+ * 14 - Get orientation (x|y|z|isCalibrated)
  *
  *  :14 ;
  *
  *    example responses:
- *      =00;143.2|43.02|123.5
+ *      =00;143.2|43.02|123.5|F
+ *      =50;
+ *
+ * 15 - Get position, followed by orientation
+ *
+ *  :15 ;
+ *
+ * 16 - Get orientation calibration status
+ *
+ *  :16 ;
+ *
+ *    example response:
+ *      =00;0|3|1|2|F
  *      =50;
  *
  * Parameters
@@ -206,10 +218,18 @@ boolean isDisplayLightOn = false;
 Adafruit_BNO055 bno = Adafruit_BNO055(55);
 // whether it is initialized properly
 boolean isOrientation = false;
+boolean isOrientationCalibrated = false;
 // latest read
 float orientation_x;
 float orientation_y;
 float orientation_z;
+// calibration
+// 
+uint8_t cal_system;
+uint8_t cal_gyro;
+uint8_t cal_accel;
+uint8_t cal_mag;
+
 
 // State output
 #define statePin1 A0
@@ -651,6 +671,30 @@ void takeCommand(Stream &input, Stream &output) {
     output.write('|');
     writeOrientation(output);
     output.write("\n");
+  } else if (command.equals("16")) {
+    // get orientation calibration status
+    input.readStringUntil(';');
+
+    if (!isOrientation) {
+      output.write("=50;\n");
+      return;
+    }
+
+    readOrientation();
+
+    output.write("=00;");
+
+    writeString(output, String(cal_system, 0));
+    output.write('|');
+    writeString(output, String(cal_gyro, 0));
+    output.write('|');
+    writeString(output, String(cal_accel, 0));
+    output.write('|');
+    writeString(output, String(cal_mag, 0));
+    output.write('|');
+    output.write(isOrientationCalibrated ? 'T' : 'F');
+    output.write("\n");
+
   } else {
     output.write("=44\n");
   }
@@ -684,8 +728,10 @@ void writeOrientation(Stream &output) {
   } else {
     output.write("?|?|?");
   }
-
+  output.write('|');
+  output.write(isOrientationCalibrated ? 'T' : 'F');
 }
+
 void writeString(Stream &output, String s) {
   for (int i = 0; i < s.length(); i++) {
     output.write(s.charAt(i));
@@ -1069,6 +1115,12 @@ void readOrientation() {
   orientation_x = event.orientation.x;
   orientation_y = event.orientation.y;
   orientation_z = event.orientation.z;
+  if (!isOrientationCalibrated) {
+    bno.getCalibration(&cal_system, &cal_gyro, &cal_accel, &cal_mag);
+    if (cal_system == 3 && cal_gyro == 3 && cal_accel == 3 && cal_mag == 3) {
+      isOrientationCalibrated = true;
+    }
+  }
 }
 
 // ----------------------------------------------
@@ -1138,6 +1190,7 @@ ISR(PCINT1_vect) {
 }
 
 void setupOrientation() {
+  cal_system = cal_gyro = cal_accel = cal_mag = 0;
   if (!orientationEnabled) {
     return;
   }
