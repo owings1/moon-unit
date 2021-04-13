@@ -82,6 +82,7 @@ class App {
         this.position      = [null, null]
         this.orientation   = [null, null, null]
         this.limitsEnabled = [null, null]
+        this.isOrientationCalibrated = null
     }
 
     async status() {
@@ -92,6 +93,7 @@ class App {
             orientation : this.orientation,
             isConnected : this.isConnected,
             limitsEnabled : this.limitsEnabled,
+            isOrientationCalibrated : this.isOrientationCalibrated,
             connectedStatus: this.isConnected ? 'Connected' : 'Disconnected'
         }
     }
@@ -435,7 +437,15 @@ class App {
                 )
                 this.position = [nums[0], nums[1]]
                 this.orientation = [nums[2], nums[3], nums[4]]
-                this.limitsEnabled = [arr[5], arr[6]]
+                switch (arr[5]) {
+                    case 'T':
+                        this.isOrientationCalibrated = true
+                    case 'F':
+                        this.isOrientationCalibrated = false
+                    default:
+                        this.isOrientationCalibrated = null
+                }
+                this.limitsEnabled = [arr[6], arr[7]]
             }
         }
     }
