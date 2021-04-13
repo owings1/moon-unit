@@ -1,0 +1,12 @@
+Downloading and Installation
+Source code for the library and documentation can be downloaded from the download section of this repository: [ The library comes in source and with examples that will get you started. Additionally you have a full description of the library in the docs folder in HTML format that you can browse.
+
+To install the library:
+
+Download the most recent version of the library.
+Extract the library. It should be in a subfolder of its own (something like /myLCDSketch/libraries/LCD) in your sketch or in the library folder of the Arduino distribution.
+When you start the Arduino IDE, it should contain a new menu "LCD" with examples. (File > Examples > LCD...). It should also appear in the menu Sketch > import library.
+Alternatively you can install the library in the Arduino SDK library pool. To install and learn about libraries please follow the instructions in [http://www.arduino.cc/playground/Code/Library|Library Tutorial], there is a Section in the Tutorial indicating how to install a library.
+//The library has been developed to replace the current Arduino library, therefore you will need to remove/backup the LiquidCrystal folder from the Arduino library folder the original LiquidCrystal library and replace it for this one. You will also potentially need to remove other LCD libraries like LiquidCrystal_I2C as that will also conflict with this library.//
+
+Also in the download section you can find the driver library] for the PCF8574* I2C IO expander ASIC.
