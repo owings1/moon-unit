@@ -425,14 +425,17 @@ class App {
                     }
                     return
                 }
-                // normalize NaN, undefined, etc. to null
+               
+                const arr = res.body.split('|')
+                 // normalize NaN, undefined, etc. to null
                 const nums = JSON.parse(
                     JSON.stringify(
-                        res.body.split('|').map(parseFloat)
+                        arr.map(parseFloat)
                     )
                 )
                 this.position = [nums[0], nums[1]]
                 this.orientation = [nums[2], nums[3], nums[4]]
+                this.limitsEnabled = [arr[5], arr[6]]
             }
         }
     }
