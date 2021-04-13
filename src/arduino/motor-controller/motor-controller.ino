@@ -613,21 +613,8 @@ void takeCommand(Stream &input, Stream &output) {
 
     output.write("=00;");
 
-    if (hasHomed_m1) {
-      long mpos = stepper_m1.currentPosition();
-      writeString(output, String(format == 1 ? mpos : (mpos * degreesPerStep_m1)));
-    } else {
-      output.write("?");
-    }
+    writePositions(output, format);
 
-    output.write("|");
-
-    if (hasHomed_m2) {
-      long mpos = stepper_m2.currentPosition();
-      writeString(output, String(format == 1 ? mpos : (mpos * degreesPerStep_m2)));
-    } else {
-      output.write("?");
-    }
 
     output.write("\n");
 
@@ -650,19 +637,53 @@ void takeCommand(Stream &input, Stream &output) {
 
     output.write("=00;");
 
-    writeString(output, String(orientation_x, 4));
-    output.write('|');
-    writeString(output, String(orientation_y, 4));
-    output.write('|');
-    writeString(output, String(orientation_z, 4));
+    writeOrientation(output);
 
     output.write("\n");
-    
+  } else if (command.equals("15")) {
+    // get position by degrees, followed by orientation
+    input.readStringUntil(';');
+    readOrientation();
+    output.write("=00;");
+    writePositions(output, 2);
+    output.write('|');
+    writeOrientation(output);
+    output.write("\n");
   } else {
     output.write("=44\n");
   }
 }
 
+void writePositions(Stream &output, int format) {
+  if (hasHomed_m1) {
+    long mpos = stepper_m1.currentPosition();
+    writeString(output, String(format == 1 ? mpos : (mpos * degreesPerStep_m1)));
+  } else {
+    output.write("?");
+  }
+
+  output.write("|");
+
+  if (hasHomed_m2) {
+    long mpos = stepper_m2.currentPosition();
+    writeString(output, String(format == 1 ? mpos : (mpos * degreesPerStep_m2)));
+  } else {
+    output.write("?");
+  }
+}
+
+void writeOrientation(Stream &output) {
+  if (isOrientation) {
+    writeString(output, String(orientation_x, 4));
+    output.write('|');
+    writeString(output, String(orientation_y, 4));
+    output.write('|');
+    writeString(output, String(orientation_z, 4));
+  } else {
+    output.write("?|?|?");
+  }
+
+}
 void writeString(Stream &output, String s) {
   for (int i = 0; i < s.length(); i++) {
     output.write(s.charAt(i));
