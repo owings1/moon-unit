@@ -206,7 +206,7 @@ class App {
                     this.log('Sending command', body.trim())
                 }
 
-                this.device.write(Buffer.from(body))
+                this.device.write(Buffer.from(this.opts.mock ? body : body.trim()))
 
                 // TODO: rethink timeout, this is causing errors
                 //setTimeout(() => {
