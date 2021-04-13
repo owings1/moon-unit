@@ -208,12 +208,13 @@ class App {
 
                 this.device.write(Buffer.from(body))
 
-                setTimeout(() => {
-                    if (!isComplete) {
-                        this.error('Command timeout', body.trim())
-                        this.parser.emit('data', '=02;')
-                    }
-                }, this.opts.commandTimeout)
+                // TODO: rethink timeout, this is causing errors
+                //setTimeout(() => {
+                //    if (!isComplete) {
+                //        this.error('Command timeout', body.trim())
+                //        this.parser.emit('data', '=02;')
+                //    }
+                //}, this.opts.commandTimeout)
             }).catch(err => {
                 this.error('Flush failed', err)
                 const status = 3
