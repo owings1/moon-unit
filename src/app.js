@@ -42,7 +42,7 @@ class App {
         return {
             controllerPath     : env.CONTROLLER_PORT,
             controllerBaudRate : +env.CONTROLLER_BAUD_RATE || 9600, //115200,
-            gaugerPath         : env.GAUGER_PATH,
+            gaugerPath         : env.GAUGER_PORT,
             gaugerBaudRate     : +env.GAUGER_BAUD_RATE || 9600, //115200,
             gaugerEnabled      : !env.GAUGER_DISABLED,
             mock        : !!env.MOCK,
@@ -76,7 +76,8 @@ class App {
         this.controllerWorkerHandle = null
         this.isControllerConnected  = false
 
-        this.isGaugerEnabled    = this.opts.gaugerEnabled
+        this.gaugerJobs         = {}
+        this.gaugerQueue        = []
         this.gaugerBusy         = false
         this.gaugerWorkerHandle = null
         this.isGaugerConnected  = false
@@ -85,6 +86,7 @@ class App {
         this.httpServer = null
 
         this.clearStatus()
+        this.clearGauges()
         this.initApp(this.app)
     }
 
@@ -93,6 +95,10 @@ class App {
         this.orientation   = [null, null, null]
         this.limitsEnabled = [null, null]
         this.isOrientationCalibrated = null
+        
+    }
+    clearGauges() {
+        this.gpsCoords = [null, null]
     }
 
     async status() {
@@ -103,10 +109,12 @@ class App {
             orientation               : this.orientation,
             isControllerConnected     : this.isControllerConnected,
             limitsEnabled             : this.limitsEnabled,
-            isGaugerEnabled           : this.isGaugerEnabled,
+            isGaugerEnabled           : this.opts.gaugerEnabled,
             isGaugerConnected         : this.isGaugerConnected,
             isOrientationCalibrated   : this.isOrientationCalibrated,
-            controllerConnectedStatus : this.isControllerConnected ? 'Connected' : 'Disconnected'
+            controllerConnectedStatus : this.isControllerConnected ? 'Connected' : 'Disconnected',
+            gaugerConnectedStatus     : this.isGaugerConnected ? 'Connected' : 'Disconnected',
+            gpsCoords                 : this.gpsCoords
         }
     }
 
@@ -116,7 +124,9 @@ class App {
                 this.initGpio().then(() => {
                     this.httpServer = this.app.listen(this.opts.port, () => {
                         this.log('Listening on', this.httpServer.address())
-                        this.openController().then(resolve).catch(reject)
+                        this.openController().then(() =>
+                            this.openGauger()
+                        ).then(resolve).catch(reject)
                     })
                 }).catch(reject)
             } catch (err) {
@@ -136,7 +146,7 @@ class App {
                     return
                 }
                 this.isControllerConnected = true
-                this.log('Controller opened delaying', this.opts.openDelay, 'ms')
+                this.log('Controller opened, delaying', this.opts.openDelay, 'ms')
                 this.controllerParser = this.controller.pipe(new Readline)
                 setTimeout(() => {
                     try {
@@ -164,6 +174,10 @@ class App {
 
     async openGauger() {
         this.closeGauger()
+        if (!this.opts.gaugerEnabled) {
+            this.log('Gauger is disabled')
+            return
+        }
         this.log('Opening gauger', this.opts.gaugerPath)
         this.gauger = this.createDevice(this.opts.gaugerPath, this.opts.gaugerBaudRate)
         await new Promise((resolve, reject) => {
@@ -173,10 +187,26 @@ class App {
                     return
                 }
                 this.isGaugerConnected = true
+                this.log('Gauger opened, delaying', this.opts.openDelay, 'ms')
                 this.gaugerParser = this.gauger.pipe(new Readline)
+                this.gaugerParser.on('data', data => {
+                    if (data.indexOf('ACK:') == 0) {
+                        this.handleGaugerAckData(data)
+                    } else {
+                        this.handleGaugeData(data)
+                    }
+                })
                 setTimeout(() => {
                     try {
                         this.initGaugerWorker()
+                        this.log('Setting gauger to streaming mode')
+                        this.gaugerCommand(':01 2;\n').then(res => {
+                            if (res.status != 0) {
+                                this.error('Failed to set gauger to streaming mode', res)
+                                return
+                            }
+                            this.log('Gauger acknowledges streaming mode')
+                        })
                         resolve()
                     } catch (err) {
                         reject(err)
@@ -186,15 +216,50 @@ class App {
         })
     }
 
+    handleGaugerAckData(data) {
+        const [ack, id, resText] = data.split(':')
+        const status = parseInt(resText.substring(1, 3))
+        if (this.gaugerJobs[id]) {
+            this.log('Gauger ACK job', id)
+            this.gaugerJobs[id].handler({
+                status,
+                message : DeviceCodes[status],
+                body    : resText.substring(4),
+                raw     : resText
+            })
+        } else {
+            this.log('Unknown gauger job ackd', id)
+        }
+    }
+
+    handleGaugeData(data) {
+        const [module, text] = data.split(':')
+        switch (module) {
+            case 'GPS':
+                this.gpsCoords = text.split('|').map(parseFloat)
+                break
+            default:
+                this.log('Unknown module', module)
+                break
+        }
+    }
+
     closeGauger() {
         if (this.gauger) {
             this.log('Closing gauger')
             this.gauger.close()
-            this gauger = null
+            this.gauger = null
         }
         this.isGaugerConnected = false
-        this.clearStatus()
+        this.drainGaugerQueue()
+        
+        //this.clearStatus()
         this.stopGaugerWorker()
+    }
+
+    drainGaugerQueue() {
+        this.gaugerJobs = {}
+        this.gaugerQueue = []
     }
 
     close() {
@@ -209,9 +274,9 @@ class App {
         })
     }
 
-    commandSync(body, params = {}) {
+    controllerCommand(body, params = {}) {
         return new Promise((resolve, reject) => {
-            this.log('Enqueuing command', body.trim())
+            this.log('Enqueuing controller command', body.trim())
             this.controllerQueue.unshift({isSystem: false, ...params, body, handler: resolve})
         })
     }
@@ -290,7 +355,38 @@ class App {
             return
         }
 
+        if (!this.gaugerQueue.length) {
+            return   
+        }
+
         this.gaugerBusy = true
+
+        const {id, body, handler} = this.gaugerQueue.pop()
+        this.gaugerJobs[id] = {
+            handler: res => {
+                this.gaugerBusy = false
+                if (handler) {
+                    handler(res)
+                }
+            }
+        }
+        this.gauger.write(Buffer.from(this.opts.mock ? body : body.trim()))
+    }
+
+    gaugerCommand(body, params = {}) {
+        const id = this._newGaugerJobId()
+        body = ':' + id + body
+        return new Promise((resolve, reject) => {
+            this.log('Enqueuing gauger command', body.trim())
+            this.gaugerQueue.unshift({isSystem: false, ...params, body, id, handler: resolve})
+        })
+    }
+
+    _newGaugerJobId() {
+        if (!this._gid || this._gid > 2 * 1000 * 1000 * 1000) {
+            this._gid = 0
+        }
+        return ++this._gid
     }
 
     initControllerWorker() {
@@ -314,8 +410,8 @@ class App {
 
     initGaugerWorker() {
         this.log('Initializing gauger worker to run every', this.opts.workerDelay, 'ms')
-        this.stopControllerWorker()
-        this.gaugerWorkerHandle = setInterval(() => this.gaugerrLoop(), this.opts.workerDelay)
+        this.stopGaugerWorker()
+        this.gaugerWorkerHandle = setInterval(() => this.gaugerLoop(), this.opts.workerDelay)
     }
 
     stopGaugerWorker() {
@@ -356,7 +452,7 @@ class App {
                         res.status(503).json({error: 'not ready', state})
                         return
                     }
-                    this.commandSync(req.body.command)
+                    this.controllerCommand(req.body.command)
                         .then(response => res.status(200).json({response}))
                         .catch(error => {
                             this.error(error)
@@ -480,7 +576,7 @@ class App {
             //  see: https://github.com/serialport/node-serialport/blob/master/packages/binding-mock/lib/index.js
             MockBinding.createPort(devicePath, {echo: true, readyData: []})
         }
-        return new SerialPort(devicePath, {baudRate,, autoOpen: false})
+        return new SerialPort(devicePath, {baudRate, autoOpen: false})
     }
 
     getPositionJob() {

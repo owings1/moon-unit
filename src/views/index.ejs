@@ -27,7 +27,7 @@
                     <tbody>
                         <tr>
                             <td>State</td>
-                            <td><span id="state"><%= status.state %></span></td>
+                            <td><span id="controller_state"><%= status.controllerState %></span></td>
                             <td>x = <span id="orientation_x"><%= '' + status.orientation[0] %></span></td>
                         </tr>
                         <tr>
@@ -82,6 +82,11 @@
                         </tr>
                     </tbody>
                 </table>
+                <div>
+                    GPS:
+                    <span class="gps-coord" id="gps_lat"><%= '' + status.gpsCoords[0] %></span>,
+                    <span class="gps-coord" id="gps_long"><%= '' + status.gpsCoords[1] %></span>
+                </div>
             </form>
         </div>
         <hr>
