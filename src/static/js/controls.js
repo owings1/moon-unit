@@ -187,9 +187,11 @@ $(document).ready(function() {
             position: ['Error', 'Error'],
             orientation: ['Error', 'Error', 'Error'],
             limitsEnabled: ['Error', 'Error'],
-            controllerConnectedStatus: 'Error'
+            controllerConnectedStatus: 'Error',
+            gaugerConnectedStatus: 'Error',
+            gpsCoords: ['Error', 'Error']
         }
-        const {position, controllerState, controllerConnectedStatus, orientation, limitsEnabled} = status
+        const {position, controllerState, controllerConnectedStatus, orientation, limitsEnabled, gpsCoords} = status
         $('#position_m1').html(
             position[0] + (!isNaN(parseFloat(position[0])) ? '&deg;' : '')
         )
@@ -205,6 +207,8 @@ $(document).ready(function() {
         $('#orientation_z').text('' + orientation[2])
         $('#limitsEnabled_m1').text('' + limitsEnabled[0])
         $('#limitsEnabled_m2').text('' + limitsEnabled[1])
+        $('#gps_lat').text('' + gpsCoords[0])
+        $('#gps_long').text('' + gpsCoords[1])
     }
 
     function sendGpio(uri, method) {
