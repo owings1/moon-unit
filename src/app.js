@@ -350,11 +350,12 @@ class App {
             return
         }
 
-        this.gaugerBusy = true
-
         if (!this.gaugerQueue.length) {
             return   
         }
+
+        this.gaugerBusy = true
+
         const {body, handler} = this.gaugerQueue.pop()
         const id = this.newGaugerJobId()
         this.gaugerJobs[id] = {
@@ -365,6 +366,7 @@ class App {
                 }
             }
         }
+        this.gauger.write(Buffer.from(this.opts.mock ? body : body.trim()))
     }
 
     newGaugerJobId() {
@@ -395,7 +397,7 @@ class App {
 
     initGaugerWorker() {
         this.log('Initializing gauger worker to run every', this.opts.workerDelay, 'ms')
-        this.stopControllerWorker()
+        this.stopGaugerWorker()
         this.gaugerWorkerHandle = setInterval(() => this.gaugerLoop(), this.opts.workerDelay)
     }
 
