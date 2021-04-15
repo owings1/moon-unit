@@ -246,6 +246,7 @@ class App {
                 const values = text.split('|').map(parseFloat)
                 this.magHeading = values[0]
                 this.declinationAngle = values[4]
+                break
             default:
                 this.log('Unknown module', module)
                 break
