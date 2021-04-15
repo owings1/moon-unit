@@ -13,6 +13,7 @@
 // 1: quiet
 // 2: stream all
 // 3: stream gps
+#define maxMode 3
 byte mode = 1;
 
 SoftwareSerial gpsSerial(8,9); //rx, tx
@@ -70,7 +71,7 @@ void takeCommand(Stream &input, Stream &output) {
   if (command.equals("01")) {
     // set mode
     byte newMode = input.readStringUntil(';').toInt();
-    if (newMode != 1 && newMode != 2) {
+    if (newMode < 1 || newMode > maxMode) {
       output.write("=49\n");
       return;
     }
