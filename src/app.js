@@ -378,7 +378,7 @@ class App {
         body = ':' + id + body
         return new Promise((resolve, reject) => {
             this.log('Enqueuing gauger command', body.trim())
-            this.gaugerQueue.unshift({isSystem: false, ...params, body, handler: resolve})
+            this.gaugerQueue.unshift({isSystem: false, ...params, body, id, handler: resolve})
         })
     }
 
