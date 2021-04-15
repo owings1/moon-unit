@@ -42,7 +42,8 @@ void takeCommand(Stream &input, Stream &output) {
   long id = input.parseInt();
 
   output.write("ACK:");
-  output.print(id, 0);
+  output.print(id, DEC);
+  output.write(':');
 
 
   if (input.read() != ':') {
@@ -76,7 +77,6 @@ void writeLatLong(Stream &output) {
   output.print(gps_lat, 6);
   output.write('|');
   output.print(gps_lon, 6);
-  output.write('|');
 }
 
 void readGps() {
