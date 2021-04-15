@@ -86,6 +86,7 @@ class App {
         this.httpServer = null
 
         this.clearStatus()
+        this.clearGauges()
         this.initApp(this.app)
     }
 
