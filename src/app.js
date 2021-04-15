@@ -146,7 +146,7 @@ class App {
                     return
                 }
                 this.isControllerConnected = true
-                this.log('Controller opened delaying', this.opts.openDelay, 'ms')
+                this.log('Controller opened, delaying', this.opts.openDelay, 'ms')
                 this.controllerParser = this.controller.pipe(new Readline)
                 setTimeout(() => {
                     try {
@@ -187,6 +187,7 @@ class App {
                     return
                 }
                 this.isGaugerConnected = true
+                this.log('Gauger opened, delaying', this.opts.openDelay, 'ms')
                 this.gaugerParser = this.gauger.pipe(new Readline)
                 this.gaugerParser.on('data', data => {
                     if (data.indexOf('ACK:') == 0) {
@@ -199,8 +200,12 @@ class App {
                     try {
                         this.initGaugerWorker()
                         this.log('Setting gauger to streaming mode')
-                        this.gaugerQueue.unshift({
-                            body: ':' + this.newGaugerJobId() + ':01 2;\n'
+                        this.gaugerCommand(':01 2;\n').then(res => {
+                            if (res.status != 0) {
+                                this.error('Failed to set gauger to streaming mode', res)
+                                return
+                            }
+                            this.log('Gauger acknowledges streaming mode')
                         })
                         resolve()
                     } catch (err) {
@@ -269,9 +274,9 @@ class App {
         })
     }
 
-    commandSync(body, params = {}) {
+    controllerCommand(body, params = {}) {
         return new Promise((resolve, reject) => {
-            this.log('Enqueuing command', body.trim())
+            this.log('Enqueuing controller command', body.trim())
             this.controllerQueue.unshift({isSystem: false, ...params, body, handler: resolve})
         })
     }
@@ -356,8 +361,7 @@ class App {
 
         this.gaugerBusy = true
 
-        const {body, handler} = this.gaugerQueue.pop()
-        const id = this.newGaugerJobId()
+        const {id, body, handler} = this.gaugerQueue.pop()
         this.gaugerJobs[id] = {
             handler: res => {
                 this.gaugerBusy = false
@@ -369,7 +373,16 @@ class App {
         this.gauger.write(Buffer.from(this.opts.mock ? body : body.trim()))
     }
 
-    newGaugerJobId() {
+    gaugerCommand(body, params = {}) {
+        const id = this._newGaugerJobId()
+        body = ':' + id + body
+        return new Promise((resolve, reject) => {
+            this.log('Enqueuing gauger command', body.trim())
+            this.gaugerQueue.unshift({isSystem: false, ...params, body, handler: resolve})
+        })
+    }
+
+    _newGaugerJobId() {
         if (!this._gid || this._gid > 2 * 1000 * 1000 * 1000) {
             this._gid = 0
         }
@@ -439,7 +452,7 @@ class App {
                         res.status(503).json({error: 'not ready', state})
                         return
                     }
-                    this.commandSync(req.body.command)
+                    this.controllerCommand(req.body.command)
                         .then(response => res.status(200).json({response}))
                         .catch(error => {
                             this.error(error)
