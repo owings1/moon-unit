@@ -5,6 +5,9 @@
  *
  *  :<id>:01 <mode>;
  *
+ * 02 - Set declination angle
+ *
+ *  :<id>:02 <radians>;
  */
 #include <Adafruit_Sensor.h>
 #include <Adafruit_HMC5883_U.h>
@@ -24,11 +27,11 @@ TinyGPS gps;
 float gps_lat = -1;
 float gps_lon = -1;
 
-
 // Mag
 
 /* Assign a unique ID to this sensor */
 Adafruit_HMC5883_Unified mag = Adafruit_HMC5883_Unified(49138);
+// https://www.ngdc.noaa.gov/geomag/calculators/magcalc.shtml
 float declinationAngle = 0.23; // radians
 boolean isMagInit = false;
 float mag_x = 0; // micro-Tesla (uT)
@@ -95,6 +98,15 @@ void takeCommand(Stream &input, Stream &output) {
     }
     mode = newMode;
     output.write("=00\n");
+  } else if (command.equals("02")) {
+    // set declination angle
+    float newValue = input.readStringUntil(';').toFloat();
+    if (newValue > 7 || newValue < -7) {
+      output.write("=49\n");
+      return;
+    }
+    declinationAngle = newValue;
+    output.write("=00\n");
   } else {
     output.write("=44\n");
   }
@@ -104,9 +116,11 @@ void writeAll(Stream &output) {
   output.write("GPS:");
   writeGps(output);
   output.write("\n");
-  output.write("MAG:");
-  writeMag(output);
-  output.write("\n");
+  if (isMagInit) {
+    output.write("MAG:");
+    writeMag(output);
+    output.write("\n");
+  }
 }
 
 void writeGps(Stream &output) {
@@ -123,11 +137,15 @@ void writeMag(Stream &output) {
   output.print(mag_y, 4);
   output.write('|');
   output.print(mag_z, 4);
+  output.write('|');
+  output.print(declinationAngle, 4);
 }
 
 void readAll() {
   readGps();
-  readMag();
+  if (isMagInit) {
+    readMag();
+  }
 }
 
 void readGps() {

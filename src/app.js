@@ -99,6 +99,8 @@ class App {
     }
     clearGauges() {
         this.gpsCoords = [null, null]
+        this.magHeading = null
+        this.declinationAngle = null
     }
 
     async status() {
@@ -114,7 +116,9 @@ class App {
             isOrientationCalibrated   : this.isOrientationCalibrated,
             controllerConnectedStatus : this.isControllerConnected ? 'Connected' : 'Disconnected',
             gaugerConnectedStatus     : this.isGaugerConnected ? 'Connected' : 'Disconnected',
-            gpsCoords                 : this.gpsCoords
+            gpsCoords                 : this.gpsCoords,
+            magHeading                : this.magHeading,
+            declinationAngle          : this.declinationAngle
         }
     }
 
@@ -238,6 +242,10 @@ class App {
             case 'GPS':
                 this.gpsCoords = text.split('|').map(parseFloat)
                 break
+            case 'MAG':
+                const values = text.split('|').map(parseFloat)
+                this.magHeading = values[0]
+                this.declinationAngle = values[4]
             default:
                 this.log('Unknown module', module)
                 break
