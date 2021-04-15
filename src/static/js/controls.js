@@ -1,6 +1,6 @@
 $(document).ready(function() {
 
-    var cmdBusy = false
+    var requestBusy = false
     var refreshBusy = false
     var refreshInterval
 
@@ -16,7 +16,7 @@ $(document).ready(function() {
 
             clearOutputs()
 
-            if (cmdBusy || $target.hasClass('disabled') || $target.prop('disabled')) {
+            if (requestBusy || $target.hasClass('disabled') || $target.prop('disabled')) {
                 return
             }
 
@@ -49,7 +49,7 @@ $(document).ready(function() {
                     cmd = getRawCommand()
                 }
 
-                sendCommand(cmd)
+                sendRequest('controller/command/sync', 'POST', {command: cmd})
 
             } catch (err) {
                 console.error(err)
@@ -61,12 +61,12 @@ $(document).ready(function() {
 
             clearOutputs()
             if ($target.is('#gpio_controller_state')) {
-                sendGpio('controller/state')
+                sendRequest('controller/gpio/state')
             } else if ($target.is('#gpio_controller_stop')) {
-                sendGpio('controller/stop', 'POST')
+                sendRequest('controller/gpio/stop', 'POST')
             } else if ($target.is('#gpio_controller_reset')) {
                 if (confirm('Reset, are you sure?')) {
-                    sendGpio('controller/reset', 'POST')
+                    sendRequest('controller/gpio/reset', 'POST')
                 }
             }
         } else if ($target.is('#refresh_status')) {
@@ -74,7 +74,7 @@ $(document).ready(function() {
             refreshStatus()
         } else if ($target.is('#controller_connected_status')) {
             e.preventDefault()
-            handleConnectButton()
+            handleControllerConnectButton()
         }
     })
 
@@ -87,7 +87,7 @@ $(document).ready(function() {
 
     $('#clear_outputs').on('click', clearOutputs)
 
-    async function handleConnectButton() {
+    async function handleControllerConnectButton() {
         const $target = $('#controller_connected_status')
         if ($target.hasClass('disabled')) {
             return
@@ -98,7 +98,7 @@ $(document).ready(function() {
             if (confirm('Are you sure you want to ' + action + '?')) {
                 clearRefreshInterval()
                 $target.text(action + 'ing...')
-                const res = await fetch(action, {method: 'POST'})
+                const res = await fetch('controller/' + action, {method: 'POST'})
                 const {status} = await res.json()
                 writeStatus(status)
             }
@@ -123,7 +123,7 @@ $(document).ready(function() {
             writeStatus(status)
         } catch (err) {
             writeStatus()
-            console.error('Position refresh failed', err)
+            console.error('Status refresh failed', err)
         } finally {
             refreshBusy = false
         }
@@ -145,26 +145,29 @@ $(document).ready(function() {
         $('.output').text('')
     }
 
-    function sendCommand(command) {
-        if (cmdBusy) {
+    function sendRequest(uri, method, body) {
+        if (requestBusy) {
             console.log('Busy, ignoring')
             return
         }
-        cmdBusy = true
+        requestBusy = true
         $('.go').addClass('disabled').prop('disabled', true)
         clearOutputs()
-        const req = {command}
-        const opts = {
-            method  : 'POST',
-            body    : JSON.stringify(req),
-            headers : {
+        const opts = {method}
+        if (body) {
+            opts.headers = {
                 'Content-Type' : 'application/json'
             }
+            opts.body = JSON.stringify(body)
         }
         //console.log('Sending', req)
-        $('#request_output').text(JSON.stringify(req, null, 2))
-        fetch('command/sync', opts).then(res => {
-            cmdBusy = false
+        var reqText = [method, uri].join(' ')
+        if (body) {
+            reqText = [reqText, '\n', JSON.stringify(body, null, 2)].join('\n')
+        }
+        $('#request_output').text(reqText)
+        return fetch(uri, opts).then(res => {
+            requestBusy = false
             $('.go').removeClass('disabled').prop('disabled', false)
             res.json().then(resBody => {
                 //console.log(resBody)
@@ -174,7 +177,7 @@ $(document).ready(function() {
                 $('#response_output').text(err)
             })
         }).catch(err => {
-            cmdBusy = false
+            requestBusy = false
             $('.go').removeClass('disabled').prop('disabled', false)
             console.error(err)
             $('#response_output').text(err)
@@ -193,43 +196,24 @@ $(document).ready(function() {
             magHeading: 'Error',
             declinationAngle: 'Error'
         }
-        const {position, controllerState, controllerConnectedStatus, orientation, limitsEnabled, gpsCoords, magHeading} = status
         $('#position_m1').html(
-            position[0] + (!isNaN(parseFloat(position[0])) ? '&deg;' : '')
+            status.position[0] + (!isNaN(parseFloat(status.position[0])) ? '&deg;' : '')
         )
         $('#position_m2').html(
-            position[1] + (!isNaN(parseFloat(position[1])) ? '&deg;' : '')
+            status.position[1] + (!isNaN(parseFloat(status.position[1])) ? '&deg;' : '')
         )
-        $('#controller_state').text(controllerState)
-        $('#controller_connected_status').text(controllerConnectedStatus)
+        $('#controller_state').text(status.controllerState)
+        $('#controller_connected_status').text(status.controllerConnectedStatus)
             .removeClass('connected disconnected')
-            .addClass(controllerConnectedStatus.toLowerCase())
-        $('#orientation_x').text('' + orientation[0])
-        $('#orientation_y').text('' + orientation[1])
-        $('#orientation_z').text('' + orientation[2])
-        $('#limitsEnabled_m1').text('' + limitsEnabled[0])
-        $('#limitsEnabled_m2').text('' + limitsEnabled[1])
-        $('#gps_lat').text('' + gpsCoords[0])
-        $('#gps_long').text('' + gpsCoords[1])
-        $('#mag_heading').text('' + magHeading)
-    }
-
-    function sendGpio(uri, method) {
-        clearOutputs()
-        method = method || 'GET'
-        $('#request_output').text([method, 'GPIO', type].join(' '))
-        fetch('gpio/' + uri, {method}).then(res => {
-            res.json().then(resBody => {
-                //console.log(resBody)
-                $('#response_output').text(JSON.stringify(resBody, null, 2))
-            }).catch(err => {
-                console.error(err)
-                $('#response_output').text(err)
-            })
-        }).catch(err => {
-            console.error(err)
-            $('#response_output').text(err)
-        })
+            .addClass(status.controllerConnectedStatus.toLowerCase())
+        $('#orientation_x').text('' + status.orientation[0])
+        $('#orientation_y').text('' + status.orientation[1])
+        $('#orientation_z').text('' + status.orientation[2])
+        $('#limitsEnabled_m1').text('' + status.limitsEnabled[0])
+        $('#limitsEnabled_m2').text('' + status.limitsEnabled[1])
+        $('#gps_lat').text('' + status.gpsCoords[0])
+        $('#gps_long').text('' + status.gpsCoords[1])
+        $('#mag_heading').text('' + status.magHeading)
     }
 
     // :04 <motorId> <direction> <degrees>;

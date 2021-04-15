@@ -1,7 +1,5 @@
 // Serial device command HTTP service
 
-// TODO:
-//    - API to disconnect/reconnect to serial port
 const fs         = require('fs')
 const merge      = require('merge')
 const bodyParser = require('body-parser')
@@ -450,7 +448,11 @@ class App {
             })
         })
 
-        app.post('/command/sync', bodyParser.json(), (req, res) => {
+        app.get('/status', (req, res) => {
+            this.status().then(status => res.status(200).json({status}))
+        })
+
+        app.post('/controller/command/sync', bodyParser.json(), (req, res) => {
             if (!req.body.command) {
                 res.status(400).json({error: 'missing command'})
                 return
@@ -477,18 +479,14 @@ class App {
             }
         })
 
-        app.get('/status', (req, res) => {
-            this.status().then(status => res.status(200).json({status}))
-        })
-
-        app.post('/disconnect', (req, res) => {
+        app.post('/controller/disconnect', (req, res) => {
             this.closeController()
             this.status().then(status => {
                 res.status(200).json({message: 'Device disconnected', status})
             })
         })
 
-        app.post('/connect', (req, res) => {
+        app.post('/controller/connect', (req, res) => {
             if (this.isControllerConnected) {
                 res.status(400).json({message: 'Device already connected'})
                 return
@@ -502,7 +500,46 @@ class App {
             })
         })
 
-        app.get('/gpio/controller/state', (req, res) => {
+        app.post('/gauger/command/sync', (req, res) => {
+            if (!req.body.command) {
+                res.status(400).json({error: 'missing command'})
+                return
+            }
+            try {
+                this.gaugerCommand(req.body.command)
+                    .then(response => res.status(200).json({response}))
+                    .catch(error => {
+                        this.error(error)
+                        res.status(500).json({error})
+                    })
+            } catch (error) {
+                this.error(error)
+                res.status(500).json({error})
+            }
+        })
+
+        app.post('/gauger/disconnect', (req, res) => {
+            this.closeGauger()
+            this.status().then(status => {
+                res.status(200).json({message: 'Device disconnected', status})
+            })
+        })
+
+        app.post('/gauger/connect', (req, res) => {
+            if (this.isGaugerConnected) {
+                res.status(400).json({message: 'Device already connected'})
+                return
+            }
+            this.openGauger().then(() => {
+                this.status().then(status => {
+                    res.status(200).json({message: 'Device connected', status})
+                })
+            }).catch(error => {
+                res.status(500).json({error})
+            })
+        })
+
+        app.get('/controller/gpio/state', (req, res) => {
             if (!this.opts.gpioEnabled) {
                 res.status(400).json({error: 'gpio not enabled'})
                 return
@@ -515,7 +552,7 @@ class App {
             })
         })
 
-        app.post('/gpio/controller/reset', (req, res) => {
+        app.post('/controller/gpio/reset', (req, res) => {
             if (!this.opts.gpioEnabled) {
                 res.status(400).json({error: 'gpio not enabled'})
                 return
@@ -534,7 +571,7 @@ class App {
             })
         })
 
-        app.post('/gpio/controller/stop', (req, res) => {
+        app.post('/controller/gpio/stop', (req, res) => {
             if (!this.opts.gpioEnabled) {
                 res.status(400).json({error: 'gpio not enabled'})
                 return
