@@ -60,19 +60,19 @@ $(document).ready(function() {
             e.preventDefault()
 
             clearOutputs()
-            if ($target.is('#gpio_state')) {
-                sendGpio('state')
-            } else if ($target.is('#gpio_stop')) {
-                sendGpio('stop')
-            } else if ($target.is('#gpio_reset')) {
+            if ($target.is('#gpio_controller_state')) {
+                sendGpio('controller/state')
+            } else if ($target.is('#gpio_controller_stop')) {
+                sendGpio('controller/stop', 'POST')
+            } else if ($target.is('#gpio_controller_reset')) {
                 if (confirm('Reset, are you sure?')) {
-                    sendGpio('reset')
+                    sendGpio('controller/reset', 'POST')
                 }
             }
         } else if ($target.is('#refresh_status')) {
             e.preventDefault()
             refreshStatus()
-        } else if ($target.is('#connected_status')) {
+        } else if ($target.is('#controller_connected_status')) {
             e.preventDefault()
             handleConnectButton()
         }
@@ -88,7 +88,7 @@ $(document).ready(function() {
     $('#clear_outputs').on('click', clearOutputs)
 
     async function handleConnectButton() {
-        const $target = $('#connected_status')
+        const $target = $('#controller_connected_status')
         if ($target.hasClass('disabled')) {
             return
         }
@@ -183,23 +183,23 @@ $(document).ready(function() {
 
     function writeStatus(status) {
         status = status || {
-            state: 'Error',
+            controllerState: 'Error',
             position: ['Error', 'Error'],
             orientation: ['Error', 'Error', 'Error'],
             limitsEnabled: ['Error', 'Error'],
-            connectedStatus: 'Error'
+            controllerConnectedStatus: 'Error'
         }
-        const {position, state, connectedStatus, orientation, limitsEnabled} = status
+        const {position, controllerState, controllerConnectedStatus, orientation, limitsEnabled} = status
         $('#position_m1').html(
             position[0] + (!isNaN(parseFloat(position[0])) ? '&deg;' : '')
         )
         $('#position_m2').html(
             position[1] + (!isNaN(parseFloat(position[1])) ? '&deg;' : '')
         )
-        $('#state').text(state)
-        $('#connected_status').text(connectedStatus)
+        $('#controller_state').text(controllerState)
+        $('#controller_connected_status').text(controllerConnectedStatus)
             .removeClass('connected disconnected')
-            .addClass(connectedStatus.toLowerCase())
+            .addClass(controllerConnectedStatus.toLowerCase())
         $('#orientation_x').text('' + orientation[0])
         $('#orientation_y').text('' + orientation[1])
         $('#orientation_z').text('' + orientation[2])
@@ -207,11 +207,11 @@ $(document).ready(function() {
         $('#limitsEnabled_m2').text('' + limitsEnabled[1])
     }
 
-    function sendGpio(type) {
+    function sendGpio(uri, method) {
         clearOutputs()
-        const method = type == 'state' ? 'GET' : 'POST'
+        method = method || 'GET'
         $('#request_output').text([method, 'GPIO', type].join(' '))
-        fetch('gpio/' + type, {method}).then(res => {
+        fetch('gpio/' + uri, {method}).then(res => {
             res.json().then(resBody => {
                 //console.log(resBody)
                 $('#response_output').text(JSON.stringify(resBody, null, 2))

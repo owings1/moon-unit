@@ -40,13 +40,18 @@ class App {
     defaults(env) {
         env = env || process.env
         return {
-            path        : env.DEVICE_SERIAL_PORT,
+            controllerPath     : env.CONTROLLER_PORT,
+            controllerBaudRate : +env.CONTROLLER_BAUD_RATE || 9600, //115200,
+            gaugerPath         : env.GAUGER_PATH,
+            gaugerBaudRate     : +env.GAUGER_BAUD_RATE || 9600, //115200,
+            gaugerEnabled      : !env.GAUGER_DISABLED,
             mock        : !!env.MOCK,
             port        : env.HTTP_PORT || 8080,
             quiet       : !!env.QUIET,
             openDelay   : +env.OPEN_DELAY || 2000,
             workerDelay : +env.WORKER_DELAY || 100,
-            baudRate    : +env.BAUD_RATE || 9600, //115200,
+            
+            
             gpioEnabled : !!env.GPIO_ENABLED,
             pinReset    : +env.PIN_RESET || 37,
             pinStop     : +env.PIN_STOP || 35,
@@ -62,17 +67,22 @@ class App {
 
         this.opts = merge(this.defaults(env), opts)
 
-        if (!this.opts.path) {
-            throw new ConfigError('path not set, you can use DEVICE_SERIAL_PORT')
+        if (!this.opts.controllerPath) {
+            throw new ConfigError('path not set, you can use CONTROLLER_PORT')
         }
 
-        this.queue        = []
-        this.busy         = false
-        this.workerHandle = null
-        this.app          = express()
-        this.httpServer   = null
+        this.controllerQueue        = []
+        this.controllerBusy         = false
+        this.controllerWorkerHandle = null
+        this.isControllerConnected  = false
 
-        this.isConnected = false
+        this.isGaugerEnabled    = this.opts.gaugerEnabled
+        this.gaugerBusy         = false
+        this.gaugerWorkerHandle = null
+        this.isGaugerConnected  = false
+        
+        this.app        = express()
+        this.httpServer = null
 
         this.clearStatus()
         this.initApp(this.app)
@@ -86,15 +96,17 @@ class App {
     }
 
     async status() {
-        const state = this.gpio ? (await this.gpio.getState()) : null
+        const controllerState = this.gpio ? (await this.gpio.getState()) : null
         return {
-            state,
-            position    : this.position,
-            orientation : this.orientation,
-            isConnected : this.isConnected,
-            limitsEnabled : this.limitsEnabled,
-            isOrientationCalibrated : this.isOrientationCalibrated,
-            connectedStatus: this.isConnected ? 'Connected' : 'Disconnected'
+            controllerState,
+            position                  : this.position,
+            orientation               : this.orientation,
+            isControllerConnected     : this.isControllerConnected,
+            limitsEnabled             : this.limitsEnabled,
+            isGaugerEnabled           : this.isGaugerEnabled,
+            isGaugerConnected         : this.isGaugerConnected,
+            isOrientationCalibrated   : this.isOrientationCalibrated,
+            controllerConnectedStatus : this.isControllerConnected ? 'Connected' : 'Disconnected'
         }
     }
 
@@ -104,7 +116,7 @@ class App {
                 this.initGpio().then(() => {
                     this.httpServer = this.app.listen(this.opts.port, () => {
                         this.log('Listening on', this.httpServer.address())
-                        this.openDevice().then(resolve).catch(reject)
+                        this.openController().then(resolve).catch(reject)
                     })
                 }).catch(reject)
             } catch (err) {
@@ -113,22 +125,22 @@ class App {
         })
     }
 
-    async openDevice() {
-        this.closeDevice()
-        this.log('Opening device', this.opts.path)
-        this.device = this.createDevice()
+    async openController() {
+        this.closeController()
+        this.log('Opening controller', this.opts.controllerPath)
+        this.controller = this.createDevice(this.opts.controllerPath, this.opts.controllerBaudRate)
         await new Promise((resolve, reject) => {
-            this.device.open(err => {
+            this.controller.open(err => {
                 if (err) {
                     reject(err)
                     return
                 }
-                this.isConnected = true
-                this.log('Connected, delaying', this.opts.openDelay, 'ms')
-                this.parser = this.device.pipe(new Readline)
+                this.isControllerConnected = true
+                this.log('Controller opened delaying', this.opts.openDelay, 'ms')
+                this.controllerParser = this.controller.pipe(new Readline)
                 setTimeout(() => {
                     try {
-                        this.initWorker()
+                        this.initControllerWorker()
                         resolve()
                     } catch (err) {
                         reject(err)
@@ -138,22 +150,58 @@ class App {
         })
     }
 
-    closeDevice() {
-        if (this.device) {
-            this.log('Closing device')
-            this.device.close()
-            this.device = null
+    closeController() {
+        if (this.controller) {
+            this.log('Closing controller')
+            this.controller.close()
+            this.controller = null
         }
-        this.isConnected = false
+        this.isControllerConnected = false
         this.clearStatus()
-        this.drainQueue()
-        this.stopWorker()
+        this.drainControllerQueue()
+        this.stopControllerWorker()
+    }
+
+    async openGauger() {
+        this.closeGauger()
+        this.log('Opening gauger', this.opts.gaugerPath)
+        this.gauger = this.createDevice(this.opts.gaugerPath, this.opts.gaugerBaudRate)
+        await new Promise((resolve, reject) => {
+            this.gauger.open(err => {
+                if (err) {
+                    reject(err)
+                    return
+                }
+                this.isGaugerConnected = true
+                this.gaugerParser = this.gauger.pipe(new Readline)
+                setTimeout(() => {
+                    try {
+                        this.initGaugerWorker()
+                        resolve()
+                    } catch (err) {
+                        reject(err)
+                    }
+                }, this.opts.openDelay)
+            })
+        })
+    }
+
+    closeGauger() {
+        if (this.gauger) {
+            this.log('Closing gauger')
+            this.gauger.close()
+            this gauger = null
+        }
+        this.isGaugerConnected = false
+        this.clearStatus()
+        this.stopGaugerWorker()
     }
 
     close() {
         return new Promise(resolve => {
             this.log('Shutting down')
-            this.closeDevice()
+            this.closeController()
+            this.closeGauger()
             if (this.httpServer) {
                 this.httpServer.close()
             }
@@ -164,37 +212,37 @@ class App {
     commandSync(body, params = {}) {
         return new Promise((resolve, reject) => {
             this.log('Enqueuing command', body.trim())
-            this.queue.unshift({isSystem: false, ...params, body, handler: resolve})
+            this.controllerQueue.unshift({isSystem: false, ...params, body, handler: resolve})
         })
     }
 
-    loop() {
+    controllerLoop() {
 
-        if (this.busy) {
+        if (this.controllerBusy) {
             return
         }
 
-        this.busy = true
+        this.controllerBusy = true
 
         this.gpio.getState().then(state => {
 
             if (state != 0) {
-                this.busy = false
+                this.controllerBusy = false
                 return
             }
 
-            if (this.queue.length) {
-                var {body, handler, isSystem} = this.queue.pop()
+            if (this.controllerQueue.length) {
+                var {body, handler, isSystem} = this.controllerQueue.pop()
             } else {
                 // TODO: various update tasks, e.g. motorSpeed
                 var {body, handler, isSystem} = this.getPositionJob()
             }
 
-            this.flushDevice().then(() => {
+            this.flushController().then(() => {
 
                 var isComplete = false
 
-                this.parser.once('data', resText => {
+                this.controllerParser.once('data', resText => {
                     isComplete = true
                     // handle device response
                     if (!isSystem) {
@@ -207,20 +255,20 @@ class App {
                         body    : resText.substring(4),
                         raw     : resText
                     })
-                    this.busy = false
+                    this.controllerBusy = false
                 })
 
                 if (!isSystem) {
                     this.log('Sending command', body.trim())
                 }
 
-                this.device.write(Buffer.from(this.opts.mock ? body : body.trim()))
+                this.controller.write(Buffer.from(this.opts.mock ? body : body.trim()))
 
                 // TODO: rethink timeout, this is causing errors
                 //setTimeout(() => {
                 //    if (!isComplete) {
                 //        this.error('Command timeout', body.trim())
-                //        this.parser.emit('data', '=02;')
+                //        this.controllerParser.emit('data', '=02;')
                 //    }
                 //}, this.opts.commandTimeout)
             }).catch(err => {
@@ -237,29 +285,48 @@ class App {
         })
     }
 
-    initWorker() {
-        this.log('Initializing worker to run every', this.opts.workerDelay, 'ms')
-        this.stopWorker()
-        this.workerHandle = setInterval(() => this.loop(), this.opts.workerDelay)
+    gaugerLoop() {
+        if (this.gaugerBusy) {
+            return
+        }
+
+        this.gaugerBusy = true
     }
 
-    stopWorker() {
-        clearInterval(this.workerHandle)
-        this.busy = false
+    initControllerWorker() {
+        this.log('Initializing controller worker to run every', this.opts.workerDelay, 'ms')
+        this.stopControllerWorker()
+        this.controllerWorkerHandle = setInterval(() => this.controllerLoop(), this.opts.workerDelay)
     }
 
-    drainQueue() {
-        while (this.queue.length) {
-            var {handler} = this.queue.pop()
+    stopControllerWorker() {
+        clearInterval(this.controllerWorkerHandle)
+        this.controllerBusy = false
+    }
+
+    drainControllerQueue() {
+        while (this.controllerQueue.length) {
+            var {handler} = this.controllerQueue.pop()
             this.log('Sending error 1 response to handler')
             handler({status: 1, message: DeviceCodes[1]})
         }
     }
 
-    async flushDevice() {
+    initGaugerWorker() {
+        this.log('Initializing gauger worker to run every', this.opts.workerDelay, 'ms')
+        this.stopControllerWorker()
+        this.gaugerWorkerHandle = setInterval(() => this.gaugerrLoop(), this.opts.workerDelay)
+    }
+
+    stopGaugerWorker() {
+        clearInterval(this.gaugerWorkerHandle)
+        this.gaugerBusy = false
+    }
+
+    async flushController() {
         // TODO: figure out why device.flush does not return a promise
         // commenting out for debug (getting errors)
-        //return this.device.flush()
+        //return this.controller.flush()
     }
 
     initApp(app) {
@@ -310,18 +377,18 @@ class App {
         })
 
         app.post('/disconnect', (req, res) => {
-            this.closeDevice()
+            this.closeController()
             this.status().then(status => {
                 res.status(200).json({message: 'Device disconnected', status})
             })
         })
 
         app.post('/connect', (req, res) => {
-            if (this.isConnected) {
+            if (this.isControllerConnected) {
                 res.status(400).json({message: 'Device already connected'})
                 return
             }
-            this.openDevice().then(() => {
+            this.openController().then(() => {
                 this.status().then(status => {
                     res.status(200).json({message: 'Device connected', status})
                 })
@@ -330,7 +397,7 @@ class App {
             })
         })
 
-        app.get('/gpio/state', (req, res) => {
+        app.get('/gpio/controller/state', (req, res) => {
             if (!this.opts.gpioEnabled) {
                 res.status(400).json({error: 'gpio not enabled'})
                 return
@@ -343,18 +410,18 @@ class App {
             })
         })
 
-        app.post('/gpio/reset', (req, res) => {
+        app.post('/gpio/controller/reset', (req, res) => {
             if (!this.opts.gpioEnabled) {
                 res.status(400).json({error: 'gpio not enabled'})
                 return
             }
-            this.closeDevice()
+            this.closeController()
             this.log('Sending reset')
             this.gpio.sendReset().then(() => {
                 res.status(200).json({message: 'reset sent'})
                 this.log('Reset sent, delaying', this.opts.resetDelay, 'to reopen')
                 setTimeout(() => {
-                    this.openDevice().catch(err => this.error(err))
+                    this.openController().catch(err => this.error(err))
                 }, this.opts.resetDelay)
             }).catch(error => {
                 this.error(error)
@@ -362,7 +429,7 @@ class App {
             })
         })
 
-        app.post('/gpio/stop', (req, res) => {
+        app.post('/gpio/controller/stop', (req, res) => {
             if (!this.opts.gpioEnabled) {
                 res.status(400).json({error: 'gpio not enabled'})
                 return
@@ -403,7 +470,7 @@ class App {
         app.use((req, res) => res.status(404).json({error: 'not found'}))
     }
 
-    createDevice() {
+    createDevice(devicePath, baudRate) {
         var SerialPort = SerPortFull
         if (this.opts.mock) {
             SerPortMock.Binding = MockBinding
@@ -411,9 +478,9 @@ class App {
             // TODO: mock response
             //  see: https://serialport.io/docs/api-binding-mock
             //  see: https://github.com/serialport/node-serialport/blob/master/packages/binding-mock/lib/index.js
-            MockBinding.createPort(this.opts.path, {echo: true, readyData: []})
+            MockBinding.createPort(devicePath, {echo: true, readyData: []})
         }
-        return new SerialPort(this.opts.path, {baudRate: this.opts.baudRate, autoOpen: false})
+        return new SerialPort(devicePath, {baudRate,, autoOpen: false})
     }
 
     getPositionJob() {

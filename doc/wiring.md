@@ -29,7 +29,7 @@ motor controller
 |  A2 | r. encoder pin 1            | yellow |
 |  A3 | r. encoder pin 2            | white  |
 | SCL | I2C SCL                     | blue   | I2C for orientation sensor*
-| SDA | I2C SDA                     | green  | I2C for orientation sensor
+| SDA | I2C SDA                     | green or white  | I2C for orientation sensor
 | Rst | reset pin                   | blue   | for pi to reset when `LOW`
 
 \* future to use 8x I2C multiplexer

@@ -139,6 +139,12 @@ Commands
     =50;
     ```
 
+ - **17** - Set limit switch enablement for a motor
+
+    ```
+    :17 <motorId> <T|F>;
+    ```
+
 ## Parameters
 
 - `<motorId>`

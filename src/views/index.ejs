@@ -10,12 +10,12 @@
     <div class="content">
         <div class="panel">
             <form>
-                <!-- <a href="javascript:" class="gpio button green" id="gpio_state">State</a> -->
-                <a href="javascript" class="button <%= status.connectedStatus.toLowerCase() %>" id="connected_status">
-                    <%= status.connectedStatus %>
+                <!-- <a href="javascript:" class="gpio button green" id="gpio_controller_state">State</a> -->
+                <a href="javascript" class="button <%= status.controllerConnectedStatus.toLowerCase() %>" id="controller_connected_status">
+                    <%= status.controllerConnectedStatus %>
                 </a>
-                <a href="javascript:" class="gpio button red" id="gpio_stop">Stop</a>
-                <a href="javascript:" class="gpio button magenta" id="gpio_reset">Reset</a>
+                <a href="javascript:" class="gpio button red" id="gpio_controller_stop">Stop</a>
+                <a href="javascript:" class="gpio button magenta" id="gpio_controller_reset">Reset</a>
             </form>
         </div>
         <hr>
