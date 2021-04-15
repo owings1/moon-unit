@@ -191,18 +191,19 @@ class App {
                 this.isGaugerConnected = true
                 this.log('Gauger opened, delaying', this.opts.openDelay, 'ms')
                 this.gaugerParser = this.gauger.pipe(new Readline)
-                this.gaugerParser.on('data', data => {
-                    if (data.indexOf('ACK:') == 0) {
-                        this.handleGaugerAckData(data)
-                    } else {
-                        this.handleGaugeData(data)
-                    }
-                })
                 setTimeout(() => {
                     try {
                         this.initGaugerWorker()
+                        this.gauger.flush()
+                        this.gaugerParser.on('data', data => {
+                            if (data.indexOf('ACK:') == 0) {
+                                this.handleGaugerAckData(data)
+                            } else {
+                                this.handleGaugeData(data)
+                            }
+                        })
                         this.log('Setting gauger to streaming mode')
-                        this.gaugerCommand(':01 2;\n').then(res => {
+                        this.gaugerCommand(':71 2;\n').then(res => {
                             if (res.status != 0) {
                                 this.error('Failed to set gauger to streaming mode', res)
                                 return

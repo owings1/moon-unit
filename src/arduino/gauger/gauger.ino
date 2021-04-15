@@ -1,11 +1,11 @@
 /*
  * Commands
  *
- * 01 - Set mode
+ * 71 - Set mode
  *
  *  :<id>:01 <mode>;
  *
- * 02 - Set declination angle
+ * 72 - Set declination angle
  *
  *  :<id>:02 <radians>;
  */
@@ -89,7 +89,7 @@ void takeCommand(Stream &input, Stream &output) {
 
   String command = input.readStringUntil(' ');
 
-  if (command.equals("01")) {
+  if (command.equals("71")) {
     // set mode
     byte newMode = input.readStringUntil(';').toInt();
     if (newMode < 1 || newMode > maxMode) {
@@ -98,7 +98,7 @@ void takeCommand(Stream &input, Stream &output) {
     }
     mode = newMode;
     output.write("=00\n");
-  } else if (command.equals("02")) {
+  } else if (command.equals("72")) {
     // set declination angle
     float newValue = input.readStringUntil(';').toFloat();
     if (newValue > 7 || newValue < -7) {
