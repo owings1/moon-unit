@@ -51,10 +51,10 @@ class App {
             
             
             gpioEnabled : !!env.GPIO_ENABLED,
-            pinReset    : +env.PIN_RESET || 37,
-            pinStop     : +env.PIN_STOP || 35,
-            pinState1   : +env.PIN_STATE1 || 38,
-            pinState2   : +env.PIN_STATE2 || 36,
+            pinControllerReset    : +env.PIN__CONTROLLER_RESET || 37,
+            pinControllerStop     : +env.PIN_CONTROLLER_STOP || 35,
+            pinControllerReady   : +env.PIN_CONTROLLER_READY || 38,
+            //pinState2   : +env.PIN_STATE2 || 36,
             // how long to wait after reset to reopen device
             resetDelay  : +env.RESET_DELAY || 5000,
             commandTimeout : +env.COMMAND_TIMEOUT || 5000
@@ -102,7 +102,7 @@ class App {
     }
 
     async status() {
-        const controllerState = this.gpio ? (await this.gpio.getState()) : null
+        const controllerState = this.gpio ? (await this.gpio.getControllerState()) : null
         return {
             controllerState,
             position                  : this.position,
@@ -297,9 +297,9 @@ class App {
 
         this.controllerBusy = true
 
-        this.gpio.getState().then(state => {
+        this.gpio.isControllerReady().then(isReady => {
 
-            if (state != 0) {
+            if (!isReady) {
                 this.controllerBusy = false
                 return
             }
@@ -459,9 +459,9 @@ class App {
                 return
             }
             try {
-                this.gpio.getState().then(state => {
-                    if (state != 0) {
-                        res.status(503).json({error: 'not ready', state})
+                this.gpio.isControllerReady().then(isReady => {
+                    if (!isReady) {
+                        res.status(503).json({error: 'not ready', isReady})
                         return
                     }
                     this.controllerCommand(req.body.command)
@@ -545,8 +545,8 @@ class App {
                 res.status(400).json({error: 'gpio not enabled'})
                 return
             }
-            this.gpio.getState().then(
-                state => res.status(200).json({state})
+            this.gpio.getControllerState().then(state =>
+                res.status(200).json({state})
             ).catch(error => {
                 this.error(error)
                 res.status(500).json({error})
@@ -560,7 +560,7 @@ class App {
             }
             this.closeController()
             this.log('Sending reset')
-            this.gpio.sendReset().then(() => {
+            this.gpio.sendControllerReset().then(() => {
                 res.status(200).json({message: 'reset sent'})
                 this.log('Reset sent, delaying', this.opts.resetDelay, 'to reopen')
                 setTimeout(() => {
@@ -577,7 +577,7 @@ class App {
                 res.status(400).json({error: 'gpio not enabled'})
                 return
             }
-            this.gpio.sendStop().then(() => {
+            this.gpio.sendControllerStop().then(() => {
                 res.status(200).json({message: 'stop sent'})
             }).catch(error => {
                 this.error(error)
@@ -665,10 +665,9 @@ class App {
         this.log('Gpio is', this.opts.gpioEnabled ? 'enabled' : 'disabled')
 
         this.gpio = new Gpio(this.opts.gpioEnabled, {
-            reset    : this.opts.pinReset, 
-            stop     : this.opts.pinStop,
-            state1   : this.opts.pinState1,
-            state2   : this.opts.pinState2
+            controllerReset    : this.opts.pinControllerReset, 
+            controllerStop     : this.opts.pinControllerStop,
+            controllerReady   : this.opts.pinControllerReady
         })
         await this.gpio.open()
     }

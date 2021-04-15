@@ -202,7 +202,7 @@ $(document).ready(function() {
         $('#position_m2').html(
             status.position[1] + (!isNaN(parseFloat(status.position[1])) ? '&deg;' : '')
         )
-        $('#controller_state').text(status.controllerState)
+        $('#controller_state').text('' + status.controllerState)
         $('#controller_connected_status').text(status.controllerConnectedStatus)
             .removeClass('connected disconnected')
             .addClass(status.controllerConnectedStatus.toLowerCase())

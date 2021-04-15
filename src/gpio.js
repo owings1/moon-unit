@@ -28,7 +28,7 @@ class Gpio {
         if (!pins) {
             throw new Error('Invalid argument: pins')
         }
-        for (var k of ['reset', 'stop', 'state1', 'state2']) {
+        for (var k of ['controllerReset', 'controllerStop', 'controllerReady']) {
             if (!pins[k]) {
                 throw new Error('Missing pin: ' + k)
             }
@@ -46,11 +46,9 @@ class Gpio {
             gpio = require('rpi-gpio').promise
         }
 
-        await gpio.setup(this.pins.reset, gpio.DIR_HIGH)
-        await gpio.setup(this.pins.stop, gpio.DIR_LOW)
-
-        await gpio.setup(this.pins.state1, gpio.DIR_IN)
-        await gpio.setup(this.pins.state2, gpio.DIR_IN)
+        await gpio.setup(this.pins.controllerReset, gpio.DIR_HIGH)
+        await gpio.setup(this.pins.controllerStop, gpio.DIR_LOW)
+        await gpio.setup(this.pins.controllerReady, gpio.DIR_IN)
     }
 
     async close() {
@@ -60,39 +58,42 @@ class Gpio {
         gpio.destroy()
     }
 
-    async getState() {
+    async isControllerReady() {
         if (!this.enabled) {
-            return 0
+            return true
         }
 
-        const sp1 = await gpio.read(this.pins.state1)
-        const sp2 = await gpio.read(this.pins.state2)
-
-        return sp1 + sp2 * 2
+        const value = await gpio.read(this.pins.controllerReady)
+        return !value
     }
 
-    async sendStop() {
+    async getControllerState() {
+        const isReady = await this.isControllerReady()
+        return isReady ? 'ready' : 'busy'
+    }
+
+    async sendControllerStop() {
         if (!this.enabled) {
             return
         }
 
-        await gpio.write(this.pins.stop, true)
+        await gpio.write(this.pins.controllerStop, true)
         // keep stop pin on for 1 second
         await new Promise((resolve, reject) =>
             setTimeout(() => {
-                gpio.write(this.pins.stop, false).then(resolve).catch(reject)
+                gpio.write(this.pins.controllerStop, false).then(resolve).catch(reject)
             }, 1000)
         )
     }
 
-    async sendReset() {
+    async sendControllerReset() {
         if (!this.enabled) {
             return
         }
-        await gpio.write(this.pins.reset, false)
+        await gpio.write(this.pins.controllerReset, false)
         await new Promise((resolve, reject) =>
             setTimeout(() => {
-                gpio.write(this.pins.reset, true).then(resolve).catch(reject)
+                gpio.write(this.pins.controllerReset, true).then(resolve).catch(reject)
             }, 100)
         )
     }
