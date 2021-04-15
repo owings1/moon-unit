@@ -1,6 +1,18 @@
+/*
+ * Commands
+ *
+ * 01 - Set mode
+ *
+ *  :<id>:01 <mode>;
+ *
+ */
 #include <SoftwareSerial.h> 
 #include <TinyGPS.h>
 
+// Modes
+// 1: quiet
+// 2: stream all
+// 3: stream gps
 byte mode = 1;
 
 SoftwareSerial gpsSerial(8,9); //rx, tx
@@ -15,9 +27,11 @@ void setup() {
 
 void loop() {
 
-  readGps();
   if (mode == 2) {
+    readAll();
     writeAll(Serial);
+  } else if (mode == 3) {
+    streamGps(Serial);
   }
   takeCommand(Serial, Serial);
   delay(1000);
@@ -79,10 +93,20 @@ void writeLatLong(Stream &output) {
   output.print(gps_lon, 6);
 }
 
+void readAll() {
+  readGps();
+}
+
 void readGps() {
-  if (gpsSerial.available()) {
+  while (gpsSerial.available()) {
     if (gps.encode(gpsSerial.read())) {
       gps.f_get_position(&gps_lat, &gps_lon);
     }
+  }
+}
+
+void streamGps(Stream &output) {
+  while (gpsSerial.available()) {
+    output.write(gpsSerial.read());
   }
 }
