@@ -110,12 +110,10 @@
  * 50 - Orientation unavailable
  * 51 - Limits unavailable
  *
- * States
+ * State/Ready pin
  * ------
- * b00 (decimal 0) - ready for command
- * b01 (decimal 1) - running command
- * b10 (decimal 2) - [unassigned]
- * b11 (decimal 3) - [unassigned]
+ * HIGH - ready
+ * LOW  - busy
  */
 
 // TODO:
@@ -243,17 +241,16 @@ uint8_t cal_mag;
 
 
 // State output
-#define statePin1 A0
-#define statePin2 A1
-#define STATE_READY 0
-#define STATE_BUSY 1
+#define statePin A0
+#define STATE_READY HIGH
+#define STATE_BUSY LOW
 
 // Stop/cancel
 #define stopPin 13
 boolean shouldStop = false;
 
 void setup() {
-  setupStatePins();
+  setupStatePin();
   setState(STATE_BUSY);
   Serial.begin(baudRate);
   setupMotors();
@@ -662,7 +659,7 @@ void takeCommand(Stream &input, Stream &output) {
     input.readStringUntil(';');
 
     if (!isOrientation) {
-      output.write("=50;\n");
+      output.write("=50\n");
       return;
     }
 
@@ -702,7 +699,7 @@ void takeCommand(Stream &input, Stream &output) {
     input.readStringUntil(';');
 
     if (!isOrientation) {
-      output.write("=50;\n");
+      output.write("=50\n");
       return;
     }
 
@@ -729,29 +726,29 @@ void takeCommand(Stream &input, Stream &output) {
     int motorId = readMotorIdFromInput(input);
 
     if (motorId == 0) {
-      output.write("=45;\n");
+      output.write("=45\n");
       return;
     }
     // last param is T/F
     char flag = input.readStringUntil(';').charAt(0);
     if (flag != 'T' && flag != 'F') {
-      output.write("=49;\n");
+      output.write("=49\n");
       return;
     }
     if (motorId == 1) {
       if (!limitsConnected_m1) {
-        output.write("=51;\n");
+        output.write("=51\n");
         return;
       }
       limitsEnabled_m1 = flag == 'T';
     } else if (motorId == 2) {
       if (!limitsConnected_m2) {
-        output.write("=51;\n");
+        output.write("=51\n");
         return;
       }
       limitsEnabled_m2 = flag == 'T';
     }
-    output.write("=00;\n");
+    output.write("=00\n");
   } else {
     output.write("=44\n");
   }
@@ -1068,19 +1065,7 @@ void readStopPin() {
 // State pin functions
 // ----------------------------------------------
 void setState(byte state) {
-  if (state == 0) {
-    digitalWrite(statePin1, LOW);
-    digitalWrite(statePin2, LOW);
-  } else if (state == 1) {
-    digitalWrite(statePin1, HIGH);
-    digitalWrite(statePin2, LOW);
-  } else if (state == 2) {
-    digitalWrite(statePin1, LOW);
-    digitalWrite(statePin2, HIGH);
-  } else if (state == 3) {
-    digitalWrite(statePin1, HIGH);
-    digitalWrite(statePin2, HIGH);
-  }
+  digitalWrite(statePin, state);
 }
 
 // ----------------------------------------------
@@ -1276,9 +1261,8 @@ void setupOrientation() {
   }
 }
 
-void setupStatePins() {
-  pinMode(statePin1, OUTPUT);
-  pinMode(statePin2, OUTPUT);
+void setupStatePin() {
+  pinMode(statePin, OUTPUT);
 }
 
 void setupStopPin() {

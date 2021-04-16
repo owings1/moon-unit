@@ -21,8 +21,14 @@
 #define maxMode 3
 byte mode = 1;
 
+// Motor Controller
+#define mcStatePin 5
+SoftwareSerial mcSerial(6, 7); //rx, tx
+#define mcTimeout 2000
+byte mcState = LOW;
+
 // GPS
-SoftwareSerial gpsSerial(8,9); //rx, tx
+SoftwareSerial gpsSerial(8, 9); //rx, tx
 TinyGPS gps;
 float gps_lat = -1;
 float gps_lon = -1;
@@ -40,8 +46,10 @@ float mag_z = 0;
 float mag_heading = -1; // degrees
 
 void setup() {
+  pinMode(mcStatePin, INPUT);
   Serial.begin(9600);
   gpsSerial.begin(9600);
+  mcSerial.begin(9600);
   if (mag.begin()) {
     isMagInit = true;
   }
@@ -77,17 +85,51 @@ void takeCommand(Stream &input, Stream &output) {
 
   long id = input.parseInt();
 
-  output.write("ACK:");
-  output.print(id, DEC);
-  output.write(':');
-
-
   if (input.read() != ':') {
+    writeAck(id, output, true);
     output.write("=40\n");
     return;
   }
 
   String command = input.readStringUntil(' ');
+  if (command.toInt() < 70) {
+
+    // forward to motorcontroller
+
+    readMcState();
+    if (mcState != HIGH) {
+      input.readStringUntil(';');
+      writeAck(id, output, true);
+      output.write("=04\n");
+      return;
+    }
+
+    mcSerial.write(':');
+    mcSerial.print(command);
+    mcSerial.write(' ');
+    mcSerial.print(input.readStringUntil(';'));
+    mcSerial.write(';');
+
+    int d = 0;
+    while (!mcSerial.available()) {
+      delay(1);
+      d += 1;
+      if (d > mcTimeout) {
+        writeAck(id, output, true);
+        output.write("=02\n");
+        return;
+      }
+    }
+
+    String res = mcSerial.readStringUntil("\n");
+    writeAck(id, output, false);
+    output.print(res);
+    output.write("\n");
+
+    return;
+  }
+
+  writeAck(id, output, true);
 
   if (command.equals("71")) {
     // set mode
@@ -109,6 +151,14 @@ void takeCommand(Stream &input, Stream &output) {
     output.write("=00\n");
   } else {
     output.write("=44\n");
+  }
+}
+
+void writeAck(long &id, Stream &output, boolean withColon) {
+  output.write("ACK:");
+  output.print(id, DEC);
+  if (withColon) {
+    output.write(':');
   }
 }
 
@@ -142,10 +192,15 @@ void writeMag(Stream &output) {
 }
 
 void readAll() {
+  readMcState();
   readGps();
   if (isMagInit) {
     readMag();
   }
+}
+
+void readMcState() {
+  mcState = digitalRead(mcStatePin);
 }
 
 void readGps() {
