@@ -10,23 +10,11 @@
     <div class="content">
         <div class="panel">
             <form>
-                <!-- <a href="javascript:" class="gpio button green" id="gpio_controller_state">State</a> -->
-                <a href="javascript" class="button <%= status.controllerConnectedStatus.toLowerCase() %>" id="controller_connected_status">
-                    <%= status.controllerConnectedStatus %>
-                </a>
-                <a href="javascript:" class="gpio button red" id="gpio_controller_stop">Stop</a>
-                <a href="javascript:" class="gpio button magenta" id="gpio_controller_reset">Reset</a>
-            </form>
-        </div>
-        <hr>
-        <div class="panel">
-            <form>
-                
                 <table>
                     <thead></thead>
                     <tbody>
                         <tr>
-                            <td>State</td>
+                            <td>Controller</td>
                             <td><span id="controller_state"><%= '' + status.controllerState %></span></td>
                             <td>x = <span id="orientation_x"><%= '' + status.orientation[0] %></span></td>
                         </tr>
@@ -96,6 +84,9 @@
         <hr>
         <div class="panel">
             <form>
+                <div>
+                    <a href="javascript:" class="gpio button red" id="gpio_controller_stop">Stop</a>
+                </div>
                 <table>
                     <tr>
                         <td><a href="javascript:" class="go button blue" id="home_1">Home Scope</a></td>
@@ -189,6 +180,16 @@
                     <button class="go" id="go_raw">Raw</button>
                     <a target="_blank" href="doc/commands">?</a>
                 </div>
+            </form>
+        </div>
+        <hr>
+        <div class="panel">
+            <form>
+                <!-- <a href="javascript:" class="gpio button green" id="gpio_controller_state">State</a> -->
+                <a href="javascript" class="button <%= status.controllerConnectedStatus.toLowerCase() %>" id="controller_connected_status">
+                    <%= status.controllerConnectedStatus %>
+                </a>
+                <a href="javascript:" class="gpio button magenta" id="gpio_controller_reset">Reset</a>
             </form>
         </div>
         <hr>
