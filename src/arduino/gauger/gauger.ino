@@ -14,6 +14,11 @@
 #include <SoftwareSerial.h> 
 #include <TinyGPS.h>
 
+
+//#include <LiquidCrystal_I2C.h>
+////LiquidCrystal_I2C  lcd(0x27,2,1,0,4,5,6,7); // 0x27 is the I2C bus address for an unmodified module
+//LiquidCrystal_I2C lcd(0x3F, 2, 1, 0, 4, 5, 6, 7, 3, POSITIVE);
+
 // Modes
 // 1: quiet
 // 2: stream all
@@ -23,15 +28,19 @@ byte mode = 1;
 
 // Motor Controller
 #define mcStatePin 5
-SoftwareSerial mcSerial(6, 7); //rx, tx
+#define mcRxPin 6
+#define mcTxPin 7
+SoftwareSerial mcSerial(mcRxPin, mcTxPin); //rx, tx
 #define mcTimeout 2000
 byte mcState = LOW;
 
 // GPS
-SoftwareSerial gpsSerial(8, 9); //rx, tx
+#define gspRxPin 8
+#define gpsTxPin 9 // not functional
+SoftwareSerial gpsSerial(gspRxPin, gpsTxPin); //rx, tx
 TinyGPS gps;
-float gps_lat = -1;
-float gps_lon = -1;
+float gps_lat = 1000;
+float gps_lon = 1000;
 
 // Mag
 
@@ -46,6 +55,9 @@ float mag_z = 0;
 float mag_heading = -1; // degrees
 
 void setup() {
+  //lcd.begin(20, 4);
+  //lcd.clear();
+  //lcd.backlight();
   pinMode(mcStatePin, INPUT);
   Serial.begin(9600);
   gpsSerial.begin(9600);
@@ -53,6 +65,8 @@ void setup() {
   if (mag.begin()) {
     isMagInit = true;
   }
+
+  
 }
 
 void loop() {
@@ -63,10 +77,18 @@ void loop() {
   } else if (mode == 3) {
     streamGps(Serial);
   }
+  //updateDisplay();
   takeCommand(Serial, Serial);
   delay(1000);
 }
 
+/*
+void updateDisplay() {
+  lcd.setCursor(0, 0);
+  lcd.print("Heading: ");
+  lcd.print(mag_heading, 2);
+}
+*/
 void takeCommand(Stream &input, Stream &output) {
 
   if (!input.available()) {
