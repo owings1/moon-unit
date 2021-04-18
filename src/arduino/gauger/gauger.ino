@@ -9,15 +9,16 @@
  *
  *  :<id>:02 <radians>;
  */
+#include <Adafruit_BNO055.h>
 #include <Adafruit_Sensor.h>
 #include <Adafruit_HMC5883_U.h>
 #include <SoftwareSerial.h> 
 #include <TinyGPS.h>
 
-
-//#include <LiquidCrystal_I2C.h>
-////LiquidCrystal_I2C  lcd(0x27,2,1,0,4,5,6,7); // 0x27 is the I2C bus address for an unmodified module
-//LiquidCrystal_I2C lcd(0x3F, 2, 1, 0, 4, 5, 6, 7, 3, POSITIVE);
+// hardware enable
+#define gpsEnabled false
+#define orientationEnabled true
+#define magEnabled true
 
 // Modes
 // 1: quiet
@@ -33,6 +34,23 @@ byte mode = 1;
 SoftwareSerial mcSerial(mcRxPin, mcTxPin); //rx, tx
 #define mcTimeout 2000
 byte mcState = LOW;
+
+// Orientation sensor
+
+// https://learn.adafruit.com/adafruit-bno055-absolute-orientation-sensor/arduino-code
+Adafruit_BNO055 bno = Adafruit_BNO055(55);
+// whether it is initialized properly
+boolean isOrientationInit = false;
+boolean isOrientationCalibrated = false;
+// latest read
+float orientation_x;
+float orientation_y;
+float orientation_z;
+// calibration
+uint8_t cal_system = 0;
+uint8_t cal_gyro = 0;
+uint8_t cal_accel = 0;
+uint8_t cal_mag = 0;
 
 // GPS
 #define gspRxPin 8
@@ -55,18 +73,20 @@ float mag_z = 0;
 float mag_heading = -1; // degrees
 
 void setup() {
-  //lcd.begin(20, 4);
-  //lcd.clear();
-  //lcd.backlight();
   pinMode(mcStatePin, INPUT);
   Serial.begin(9600);
-  gpsSerial.begin(9600);
+  
   mcSerial.begin(9600);
-  if (mag.begin()) {
+  if (gpsEnabled) {
+    gpsSerial.begin(9600);
+  }
+  if (magEnabled && mag.begin()) {
     isMagInit = true;
   }
-
-  
+  if (orientationEnabled && bno.begin()) {
+    isOrientationInit = true;
+    bno.setExtCrystalUse(true);
+  }
 }
 
 void loop() {
@@ -74,21 +94,13 @@ void loop() {
   if (mode == 2) {
     readAll();
     writeAll(Serial);
-  } else if (mode == 3) {
+  } else if (mode == 3 && gpsEnabled) {
     streamGps(Serial);
   }
-  //updateDisplay();
   takeCommand(Serial, Serial);
   delay(1000);
 }
 
-/*
-void updateDisplay() {
-  lcd.setCursor(0, 0);
-  lcd.print("Heading: ");
-  lcd.print(mag_heading, 2);
-}
-*/
 void takeCommand(Stream &input, Stream &output) {
 
   if (!input.available()) {
@@ -185,14 +197,76 @@ void writeAck(long &id, Stream &output, boolean withColon) {
 }
 
 void writeAll(Stream &output) {
-  output.write("GPS:");
-  writeGps(output);
+
+  output.write("MOD:");
+  writeModules(output);
   output.write("\n");
+
+  if (isOrientationInit) {
+    output.write("ORI:");
+    writeOrientation(output);
+    output.write("\n");
+  }
+  
+  if (gpsEnabled) {
+    output.write("GPS:");
+    writeGps(output);
+    output.write("\n");
+  }
+
   if (isMagInit) {
     output.write("MAG:");
     writeMag(output);
     output.write("\n");
   }
+}
+
+void writeModules(Stream &output) {
+
+  boolean doPrefix = false;
+
+  if (isOrientationInit) {
+    if (doPrefix) {
+      output.write('|');
+    }
+    output.write("ORI");
+    doPrefix = true;
+  }
+
+  if (gpsEnabled) {
+    if (doPrefix) {
+      output.write('|');
+    }
+    output.write("GPS");
+    doPrefix = true;
+  }
+
+  if (isMagInit) {
+    if (doPrefix) {
+      output.write('|');
+    }
+    output.write("MAG");
+    doPrefix = true;
+  }
+}
+
+void writeOrientation(Stream &output) {
+  // x|y|z|cal_system|cal_gyro|cal_accel|cal_mag|isCalibrated
+  output.print(orientation_x, 4);
+  output.write('|');
+  output.print(orientation_y, 4);
+  output.write('|');
+  output.print(orientation_z, 4);
+  output.write('|');
+  output.print(cal_system);
+  output.write('|');
+  output.print(cal_gyro);
+  output.write('|');
+  output.print(cal_accel);
+  output.write('|');
+  output.print(cal_mag);
+  output.write('|');
+  output.write(isOrientationCalibrated ? 'T' : 'F');
 }
 
 void writeGps(Stream &output) {
@@ -215,7 +289,12 @@ void writeMag(Stream &output) {
 
 void readAll() {
   readMcState();
-  readGps();
+  if (isOrientationInit) {
+    readOrientation();
+  }
+  if (gpsEnabled) {
+    readGps();
+  }
   if (isMagInit) {
     readMag();
   }
@@ -223,6 +302,22 @@ void readAll() {
 
 void readMcState() {
   mcState = digitalRead(mcStatePin);
+}
+
+void readOrientation() {
+  /* Get a new sensor event */ 
+  sensors_event_t event; 
+  bno.getEvent(&event);
+
+  orientation_x = event.orientation.x;
+  orientation_y = event.orientation.y;
+  orientation_z = event.orientation.z;
+  if (!isOrientationCalibrated) {
+    bno.getCalibration(&cal_system, &cal_gyro, &cal_accel, &cal_mag);
+    if (cal_system == 3 && cal_gyro == 3 && cal_accel == 3 && cal_mag == 3) {
+      isOrientationCalibrated = true;
+    }
+  }
 }
 
 void readGps() {
