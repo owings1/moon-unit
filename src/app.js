@@ -38,11 +38,10 @@ class App {
     defaults(env) {
         env = env || process.env
         return {
-            controllerPath     : env.CONTROLLER_PORT,
-            controllerBaudRate : +env.CONTROLLER_BAUD_RATE || 9600, //115200,
+            //controllerPath     : env.CONTROLLER_PORT,
+            //controllerBaudRate : +env.CONTROLLER_BAUD_RATE || 9600, //115200,
             gaugerPath         : env.GAUGER_PORT,
             gaugerBaudRate     : +env.GAUGER_BAUD_RATE || 9600, //115200,
-            gaugerEnabled      : !env.GAUGER_DISABLED,
             mock        : !!env.MOCK,
             port        : env.HTTP_PORT || 8080,
             quiet       : !!env.QUIET,
@@ -51,12 +50,13 @@ class App {
             
             
             gpioEnabled : !!env.GPIO_ENABLED,
-            pinControllerReset    : +env.PIN__CONTROLLER_RESET || 37,
-            pinControllerStop     : +env.PIN_CONTROLLER_STOP || 35,
-            pinControllerReady   : +env.PIN_CONTROLLER_READY || 38,
+            pinControllerReset  : +env.PIN_CONTROLLER_RESET || 37,
+            pinControllerStop   : +env.PIN_CONTROLLER_STOP || 35,
+            pinControllerReady  : +env.PIN_CONTROLLER_READY || 38,
+            pinGaugerReset      : +env.PIN_GAGUER_RESET || 36,
             //pinState2   : +env.PIN_STATE2 || 36,
             // how long to wait after reset to reopen device
-            resetDelay  : +env.RESET_DELAY || 5000,
+            resetDelay     : +env.RESET_DELAY || 5000,
             commandTimeout : +env.COMMAND_TIMEOUT || 5000
         }
     }
@@ -65,6 +65,7 @@ class App {
 
         this.opts = merge(this.defaults(env), opts)
 
+        /*
         if (!this.opts.controllerPath) {
             throw new ConfigError('path not set, you can use CONTROLLER_PORT')
         }
@@ -73,6 +74,7 @@ class App {
         this.controllerBusy         = false
         this.controllerWorkerHandle = null
         this.isControllerConnected  = false
+        */
 
         this.gaugerJobs         = {}
         this.gaugerQueue        = []
@@ -90,15 +92,15 @@ class App {
 
     clearStatus() {
         this.position      = [null, null]
-        this.orientation   = [null, null, null]
         this.limitsEnabled = [null, null]
-        this.isOrientationCalibrated = null
-        
     }
+
     clearGauges() {
         this.gpsCoords = [null, null]
         this.magHeading = null
         this.declinationAngle = null
+        this.orientation   = [null, null, null]
+        this.isOrientationCalibrated = null
     }
 
     async status() {
@@ -107,12 +109,11 @@ class App {
             controllerState,
             position                  : this.position,
             orientation               : this.orientation,
-            isControllerConnected     : this.isControllerConnected,
+            //isControllerConnected     : this.isControllerConnected,
             limitsEnabled             : this.limitsEnabled,
-            isGaugerEnabled           : this.opts.gaugerEnabled,
             isGaugerConnected         : this.isGaugerConnected,
             isOrientationCalibrated   : this.isOrientationCalibrated,
-            controllerConnectedStatus : this.isControllerConnected ? 'Connected' : 'Disconnected',
+            //controllerConnectedStatus : this.isControllerConnected ? 'Connected' : 'Disconnected',
             gaugerConnectedStatus     : this.isGaugerConnected ? 'Connected' : 'Disconnected',
             gpsCoords                 : this.gpsCoords,
             magHeading                : this.magHeading,
@@ -126,9 +127,12 @@ class App {
                 this.initGpio().then(() => {
                     this.httpServer = this.app.listen(this.opts.port, () => {
                         this.log('Listening on', this.httpServer.address())
+                        this.openGauger().then(resolve).catch(reject)
+                        /*
                         this.openController().then(() =>
                             this.openGauger()
                         ).then(resolve).catch(reject)
+                        */
                     })
                 }).catch(reject)
             } catch (err) {
@@ -137,6 +141,7 @@ class App {
         })
     }
 
+    /*
     async openController() {
         this.closeController()
         this.log('Opening controller', this.opts.controllerPath)
@@ -173,13 +178,10 @@ class App {
         this.drainControllerQueue()
         this.stopControllerWorker()
     }
+    */
 
     async openGauger() {
         this.closeGauger()
-        if (!this.opts.gaugerEnabled) {
-            this.log('Gauger is disabled')
-            return
-        }
         this.log('Opening gauger', this.opts.gaugerPath)
         this.gauger = this.createDevice(this.opts.gaugerPath, this.opts.gaugerBaudRate)
         await new Promise((resolve, reject) => {
@@ -237,14 +239,23 @@ class App {
 
     handleGaugeData(data) {
         const [module, text] = data.split(':')
+        const values = text.split('|')
+        const floats = Util.floats(values)
         switch (module) {
             case 'GPS':
-                this.gpsCoords = text.split('|').map(parseFloat)
+                this.gpsCoords = values.map(parseFloat)
                 break
             case 'MAG':
-                const values = text.split('|').map(parseFloat)
-                this.magHeading = values[0]
-                this.declinationAngle = values[4]
+                const values = values.map(parseFloat)
+                this.magHeading = floats[0]
+                this.declinationAngle = floats[4]
+                break
+            case 'ORI':
+                // x|y|z|cal_system|cal_gyro|cal_accel|cal_mag|isCalibrated
+                this.orientation = floats.slice(0, 3)
+                this.isOrientationCalibrated = values[7] == 'T'
+            case 'MOD':
+                // names the modules available
                 break
             default:
                 this.log('Unknown module', module)
@@ -261,7 +272,7 @@ class App {
         this.isGaugerConnected = false
         this.drainGaugerQueue()
         
-        //this.clearStatus()
+        this.clearStatus()
         this.stopGaugerWorker()
     }
 
@@ -273,7 +284,7 @@ class App {
     close() {
         return new Promise(resolve => {
             this.log('Shutting down')
-            this.closeController()
+            //this.closeController()
             this.closeGauger()
             if (this.httpServer) {
                 this.httpServer.close()
@@ -282,6 +293,7 @@ class App {
         })
     }
 
+    /*
     controllerCommand(body, params = {}) {
         return new Promise((resolve, reject) => {
             this.log('Enqueuing controller command', body.trim())
@@ -357,13 +369,14 @@ class App {
             })
         })
     }
-
+    */
     gaugerLoop() {
         if (this.gaugerBusy) {
             return
         }
 
         if (!this.gaugerQueue.length) {
+            // TODO: get controller position
             return   
         }
 
@@ -397,6 +410,7 @@ class App {
         return ++this._gid
     }
 
+    /*
     initControllerWorker() {
         this.log('Initializing controller worker to run every', this.opts.workerDelay, 'ms')
         this.stopControllerWorker()
@@ -415,6 +429,7 @@ class App {
             handler({status: 1, message: DeviceCodes[1]})
         }
     }
+    */
 
     initGaugerWorker() {
         this.log('Initializing gauger worker to run every', this.opts.workerDelay, 'ms')
@@ -427,11 +442,13 @@ class App {
         this.gaugerBusy = false
     }
 
+    /*
     async flushController() {
         // TODO: figure out why device.flush does not return a promise
         // commenting out for debug (getting errors)
         //return this.controller.flush()
     }
+    */
 
     initApp(app) {
 
@@ -464,7 +481,8 @@ class App {
                         res.status(503).json({error: 'not ready', isReady})
                         return
                     }
-                    this.controllerCommand(req.body.command)
+                    //this.controllerCommand(req.body.command)
+                    this.gaugerCommand(req.body.command)
                         .then(response => res.status(200).json({response}))
                         .catch(error => {
                             this.error(error)
@@ -480,6 +498,7 @@ class App {
             }
         })
 
+        /*
         app.post('/controller/disconnect', (req, res) => {
             this.closeController()
             this.status().then(status => {
@@ -500,6 +519,7 @@ class App {
                 res.status(500).json({error})
             })
         })
+        */
 
         app.post('/gauger/command/sync', (req, res) => {
             if (!req.body.command) {
@@ -639,23 +659,9 @@ class App {
                 }
                
                 const arr = res.body.split('|')
-                 // normalize NaN, undefined, etc. to null
-                const nums = JSON.parse(
-                    JSON.stringify(
-                        arr.map(parseFloat)
-                    )
-                )
-                this.position = [nums[0], nums[1]]
-                this.orientation = [nums[2], nums[3], nums[4]]
-                switch (arr[5]) {
-                    case 'T':
-                        this.isOrientationCalibrated = true
-                    case 'F':
-                        this.isOrientationCalibrated = false
-                    default:
-                        this.isOrientationCalibrated = null
-                }
-                this.limitsEnabled = [arr[6], arr[7]]
+                const floats = Util.floats(arr)
+                this.position = [floats[0], floats[1]]
+                this.limitsEnabled = [arr[2], arr[3]].map(it => it == 'T')
             }
         }
     }

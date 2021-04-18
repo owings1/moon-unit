@@ -28,7 +28,7 @@ class Gpio {
         if (!pins) {
             throw new Error('Invalid argument: pins')
         }
-        for (var k of ['controllerReset', 'controllerStop', 'controllerReady']) {
+        for (var k of ['controllerReset', 'controllerStop', 'controllerReady', 'gaugerReset']) {
             if (!pins[k]) {
                 throw new Error('Missing pin: ' + k)
             }
@@ -47,6 +47,7 @@ class Gpio {
         }
 
         await gpio.setup(this.pins.controllerReset, gpio.DIR_HIGH)
+        await gpio.setup(this.pins.gaugerReset, gpio.DIR_HIGH)
         await gpio.setup(this.pins.controllerStop, gpio.DIR_LOW)
         await gpio.setup(this.pins.controllerReady, gpio.DIR_IN)
     }
@@ -64,7 +65,7 @@ class Gpio {
         }
 
         const value = await gpio.read(this.pins.controllerReady)
-        return !value
+        return value
     }
 
     async getControllerState() {
@@ -94,6 +95,18 @@ class Gpio {
         await new Promise((resolve, reject) =>
             setTimeout(() => {
                 gpio.write(this.pins.controllerReset, true).then(resolve).catch(reject)
+            }, 100)
+        )
+    }
+
+    async sendGaugerReset() {
+        if (!this.enabled) {
+            return
+        }
+        await gpio.write(this.pins.gaugerReset, false)
+        await new Promise((resolve, reject) =>
+            setTimeout(() => {
+                gpio.write(this.pins.gaugerReset, true).then(resolve).catch(reject)
             }, 100)
         )
     }

@@ -1,5 +1,13 @@
 class Util {
 
+    static floats(arr) {
+         // normalize NaN, undefined, etc. to null
+        return JSON.parse(
+            JSON.stringify(
+                arr.map(parseFloat)
+            )
+        )
+    }
     static radians(degrees) {
         return degrees * Math.PI / 180
     }

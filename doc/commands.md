@@ -145,6 +145,12 @@ Commands
     :17 <motorId> <T|F>;
     ```
 
+ - **71** - Set mode
+ 
+    ```
+    :71 <mode>;
+    ```
+     
 ## Parameters
 
 - `<motorId>`
@@ -166,6 +172,7 @@ Commands
 | `01` | Device closed              | sent by app
 | `02` | Command timeout            | sent by app
 | `03` | Flush error                | sent by app
+| `04` | Device busy                |
 | `40` | Missing : before command   |
 | `44` | Invalid command            |
 | `45` | Invalid motorId            |
