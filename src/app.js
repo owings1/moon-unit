@@ -7,6 +7,7 @@ const express    = require('express')
 const path       = require('path')
 const prom       = require('prom-client')
 const showdown   = require('showdown')
+const Util       = require('./util')
 
 const MockBinding = require('@serialport/binding-mock')
 const SerPortFull = require('serialport')
@@ -239,7 +240,7 @@ class App {
 
     handleGaugeData(data) {
         const [module, text] = data.split(':')
-        const values = text.split('|')
+        const values = (text ||'').split('|')
         const floats = Util.floats(values)
         switch (module) {
             case 'GPS':
@@ -254,6 +255,7 @@ class App {
                 // x|y|z|cal_system|cal_gyro|cal_accel|cal_mag|isCalibrated
                 this.orientation = floats.slice(0, 3)
                 this.isOrientationCalibrated = values[7] == 'T'
+                break
             case 'MOD':
                 // names the modules available
                 break

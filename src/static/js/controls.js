@@ -190,7 +190,7 @@ $(document).ready(function() {
             position: ['Error', 'Error'],
             orientation: ['Error', 'Error', 'Error'],
             limitsEnabled: ['Error', 'Error'],
-            controllerConnectedStatus: 'Error',
+            gaugerConnectedStatus: 'Error',
             gaugerConnectedStatus: 'Error',
             gpsCoords: ['Error', 'Error'],
             magHeading: 'Error',
@@ -203,9 +203,9 @@ $(document).ready(function() {
             status.position[1] + (!isNaN(parseFloat(status.position[1])) ? '&deg;' : '')
         )
         $('#controller_state').text('' + status.controllerState)
-        $('#controller_connected_status').text(status.controllerConnectedStatus)
+        $('#gauger_connected_status').text(status.controllerConnectedStatus)
             .removeClass('connected disconnected')
-            .addClass(status.controllerConnectedStatus.toLowerCase())
+            .addClass(status.gaugerConnectedStatus.toLowerCase())
         $('#orientation_x').text('' + status.orientation[0])
         $('#orientation_y').text('' + status.orientation[1])
         $('#orientation_z').text('' + status.orientation[2])

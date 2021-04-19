@@ -3,11 +3,15 @@
  *
  * 71 - Set mode
  *
- *  :<id>:01 <mode>;
+ *  :<id>:71 <mode>;
  *
  * 72 - Set declination angle
  *
- *  :<id>:02 <radians>;
+ *  :<id>:72 <radians>;
+ *
+ * 73 - Set loop delay in milliseconds
+ *
+ *  :<id>:73 <milliseconds>;
  */
 #include <Adafruit_BNO055.h>
 #include <Adafruit_Sensor.h>
@@ -16,8 +20,8 @@
 #include <TinyGPS.h>
 
 // hardware enable
-#define gpsEnabled false
-#define orientationEnabled true
+#define gpsEnabled true
+#define orientationEnabled false
 #define magEnabled true
 
 // Modes
@@ -26,6 +30,9 @@
 // 3: stream gps
 #define maxMode 3
 byte mode = 1;
+
+// Loop delay
+long loopDelay = 1000;
 
 // Motor Controller
 #define mcStatePin 5
@@ -98,7 +105,7 @@ void loop() {
     streamGps(Serial);
   }
   takeCommand(Serial, Serial);
-  delay(1000);
+  delay(loopDelay);
 }
 
 void takeCommand(Stream &input, Stream &output) {
@@ -182,6 +189,15 @@ void takeCommand(Stream &input, Stream &output) {
       return;
     }
     declinationAngle = newValue;
+    output.write("=00\n");
+  } else if (command.equals("73")) {
+    // set loop delay
+    long newValue = input.readStringUntil(';').toInt();
+    if (newValue < 1) {
+      output.write("=49\n");
+      return;
+    }
+    loopDelay = newValue;
     output.write("=00\n");
   } else {
     output.write("=44\n");
