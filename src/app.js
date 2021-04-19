@@ -138,11 +138,16 @@ class App {
                         this.gauger.flush()
                         this.initGaugerWorker()
                         this.gaugerParser.on('data', data => {
-                            if (data.indexOf('ACK:') == 0) {
-                                this.handleGaugerAckData(data)
-                            } else {
-                                this.handleGaugeData(data)
+                            try {
+                                if (data.indexOf('ACK:') == 0) {
+                                    this.handleGaugerAckData(data)
+                                } else {
+                                    this.handleGaugeData(data)
+                                }
+                            } catch (err) {
+                                this.error('Exception while handling response data', err)
                             }
+                            
                         })
                         this.log('Setting gauger to streaming mode')
                         this.gaugerCommand(':71 2;\n').then(res => {
@@ -163,17 +168,22 @@ class App {
 
     handleGaugerAckData(data) {
         const [ack, id, resText] = data.split(':')
-        const status = parseInt(resText.substring(1, 3))
+        this.log('Gauger ACK job', id)
         if (this.gaugerJobs[id]) {
-            this.log('Gauger ACK job', id)
-            this.gaugerJobs[id].handler({
-                status,
-                message : DeviceCodes[status],
-                body    : resText.substring(4),
-                raw     : resText
-            })
+            try {
+                const status = parseInt(resText.substring(1, 3))
+                var res = {
+                    status,
+                    message : DeviceCodes[status],
+                    body    : resText.substring(4),
+                    raw     : resText
+                }
+            } catch (error) {
+                var res = {error}
+            }
+            this.gaugerJobs[id].handler(res)
         } else {
-            this.log('Unknown gauger job ackd', id)
+            this.log('Unknown gauger job ACKd', id)
         }
     }
 
