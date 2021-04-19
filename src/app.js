@@ -168,8 +168,8 @@ class App {
 
     handleGaugerAckData(data) {
         const [ack, id, resText] = data.split(':')
-        this.log('Gauger ACK job', id)
         if (this.gaugerJobs[id]) {
+            this.log('Gauger ACK job', {id, resText})
             try {
                 const status = parseInt(resText.substring(1, 3))
                 var res = {
@@ -183,7 +183,7 @@ class App {
             }
             this.gaugerJobs[id].handler(res)
         } else {
-            this.log('Unknown gauger job ACKd', id)
+            this.log('Unknown gauger job ACKd', {id, resText})
         }
     }
 
