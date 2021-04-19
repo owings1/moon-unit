@@ -39,7 +39,7 @@ long loopDelay = 1000;
 #define mcRxPin 6
 #define mcTxPin 7
 SoftwareSerial mcSerial(mcRxPin, mcTxPin); //rx, tx
-#define mcTimeout 2000
+#define mcTimeout 10000
 byte mcState = LOW;
 
 // Orientation sensor
@@ -133,6 +133,7 @@ void takeCommand(Stream &input, Stream &output) {
   }
 
   String command = input.readStringUntil(' ');
+
   if (command.toInt() < 70) {
 
     // forward to motorcontroller
@@ -144,6 +145,8 @@ void takeCommand(Stream &input, Stream &output) {
       output.write("=04\n");
       return;
     }
+
+    mcSerial.listen();
 
     mcSerial.write(':');
     mcSerial.print(command);
@@ -337,6 +340,7 @@ void readOrientation() {
 }
 
 void readGps() {
+  gpsSerial.listen();
   while (gpsSerial.available()) {
     if (gps.encode(gpsSerial.read())) {
       gps.f_get_position(&gps_lat, &gps_lon);
@@ -345,6 +349,7 @@ void readGps() {
 }
 
 void streamGps(Stream &output) {
+  gpsSerial.listen();
   while (gpsSerial.available()) {
     output.write(gpsSerial.read());
   }
