@@ -28,8 +28,8 @@ motor controller
 |  A1 |                             |        | 
 |  A2 |                             |        |
 |  A3 |                             |        |
-| SCL |                             |        | I2C for orientation sensor*
-| SDA |                             |        | I2C for orientation sensor
+| SCL |                             |        |
+| SDA |                             |        |
 | Rst | reset pin                   | blue   | for pi to reset when `LOW`
 
 Nano
@@ -38,7 +38,7 @@ Nano
 |-----|-----------------------------|--------|------------------
 |   5 | controller state            | green  | controller A0
 |   6 | RX from controller          | blue   | controller 1
-|   7 | TX to controller            | green  | controller 0
+|   7 | TX to controller            | yellow | controller 0
 |   8 | RX from gps                 | green  |
 |   9 | TX to gps (NC)              |        |
 |  A4 | I2C SDA                     | white  |
