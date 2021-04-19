@@ -196,8 +196,8 @@ class App {
                 this.gaugerParser = this.gauger.pipe(new Readline)
                 setTimeout(() => {
                     try {
-                        this.initGaugerWorker()
                         this.gauger.flush()
+                        this.initGaugerWorker()
                         this.gaugerParser.on('data', data => {
                             if (data.indexOf('ACK:') == 0) {
                                 this.handleGaugerAckData(data)
@@ -240,14 +240,13 @@ class App {
 
     handleGaugeData(data) {
         const [module, text] = data.split(':')
-        const values = (text ||'').split('|')
+        const values = (text || '').split('|')
         const floats = Util.floats(values)
         switch (module) {
             case 'GPS':
-                this.gpsCoords = values.map(parseFloat)
+                this.gpsCoords = floats
                 break
             case 'MAG':
-                const values = values.map(parseFloat)
                 this.magHeading = floats[0]
                 this.declinationAngle = floats[4]
                 break
