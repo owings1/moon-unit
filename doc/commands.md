@@ -35,6 +35,11 @@ Commands
 
     example response: `=00;TFFT|F`
 
+    Indexes:
+
+    * `0`: `<m1_cw><m1_acw><m2_cw><m2_acw>`
+    * `1`: `<shouldStop>`
+
 - **06** - Home a single motor
 
     ```
@@ -93,19 +98,7 @@ Commands
 
     This is for testing the app command response timeout.
 
-- **14** - Get orientation (x|y|z)
-
-    ```
-    :14 ;
-    ```
-
-    example responses:
-    ```
-    =00;143.2|43.0231|123.5
-    =50;
-    ```
-
-- **15** - Get motor positions in degrees, and orientation, followed by limits enabled
+- **15** - Get motor positions in degrees, followed by limits enabled
 
     ```
     :15 ;
@@ -113,44 +106,44 @@ Commands
 
     example reponses:
     ```
-    =00;?|120.43|143.2|43.0231|123.5|F|T
-    =00;12.02|120.43|?|?|?|T|T
-    =00;?|?|?|?|?|F|F
+    =00;?|120.43|F|T
+    =00;12.02|120.43|T|T
+    =00;?|?|F|F
     ```
 
-- **16** - Get orientation calibration status
 
-    ```
-    :16 ;
-    ```
+    Indexes
 
-    Indexes:
+    * `0`: m1 position
+    * `1`: m2 position
+    * `2`: m1 limits enabled
+    * `3`: m2 limits enabled
 
-    * `0`: system (0-3)
-    * `1`: gyro (0-3)
-    * `2`: accel (0-3)
-    * `3`: mag (0-3)
-    * `4`: T/F whether all values are 3
-
-    example responses:
-
-    ```
-    =00;0|3|1|2|F
-    =50;
-    ```
-
- - **17** - Set limit switch enablement for a motor
+- **17** - Set limit switch enablement for a motor
 
     ```
     :17 <motorId> <T|F>;
     ```
 
- - **71** - Set mode
+- **71** - Set gauger mode
  
     ```
     :71 <mode>;
     ```
-     
+
+- **72** - Set declination angle
+
+    ```
+    :72 <radians>;
+    ```
+
+- **73** - Set gauger loop delay
+
+    ```
+    :73 <milliseconds>
+    ```
+
+
 ## Parameters
 
 - `<motorId>`
@@ -160,8 +153,8 @@ Commands
     - `1` - clockwise
     - `2` - anti-clockwise
 - `<format>`
-    - 1 - steps
-    - 2 - degrees
+    - `1` - steps
+    - `2` - degrees
 
 
 ## Response Codes
