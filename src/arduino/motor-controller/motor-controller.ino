@@ -145,10 +145,10 @@
 #define stepPin_m2 9
 #define enablePin_m1 7
 #define enablePin_m2 10
-#define limitPinCw_m1 3
-#define limitPinAcw_m1 4
-#define limitPinCw_m2 11
-#define limitPinAcw_m2 12
+#define limitPin_m1_cw 3
+#define limitPin_m1_acw 4
+#define limitPin_m2_cw 11
+#define limitPin_m2_acw 12
 #define maxSpeed_m1 1800L
 #define maxSpeed_m2 1800L
 #define degreesPerStep_m1 0.0008125
@@ -165,10 +165,10 @@
 boolean limitsEnabled_m1 = false;
 boolean limitsEnabled_m2 = false;
 // limit switch states
-boolean isLimitCw_m1 = false;
-boolean isLimitAcw_m1 = false;
-boolean isLimitCw_m2 = false;
-boolean isLimitAcw_m2 = false;
+boolean isLimit_m1_cw = false;
+boolean isLimit_m1_acw = false;
+boolean isLimit_m2_cw = false;
+boolean isLimit_m2_acw = false;
 
 // track the acceleration value set in stepper objects.
 long acceleration_m1;
@@ -368,10 +368,10 @@ void takeCommand(Stream &input, Stream &output) {
     input.readStringUntil(';');
 
     char states[7] = {
-      isLimitCw_m1  ? 'T' : 'F',
-      isLimitAcw_m1 ? 'T' : 'F',
-      isLimitCw_m2  ? 'T' : 'F',
-      isLimitAcw_m2 ? 'T' : 'F',
+      isLimit_m1_cw  ? 'T' : 'F',
+      isLimit_m1_acw ? 'T' : 'F',
+      isLimit_m2_cw  ? 'T' : 'F',
+      isLimit_m2_acw ? 'T' : 'F',
       '|',
       shouldStop ? 'T' : 'F'
     };
@@ -648,8 +648,6 @@ void writePositions(Stream &output, int format) {
   }
 }
 
-
-
 void writeString(Stream &output, String s) {
   for (int i = 0; i < s.length(); i++) {
     output.write(s.charAt(i));
@@ -680,13 +678,13 @@ int getDirMultiplier(int dirInput) {
 void readLimitSwitches() {
 
   if (limitsConnected_m1) {
-    isLimitCw_m1  = digitalReadFast(limitPinCw_m1)  == HIGH;
-    isLimitAcw_m1 = digitalReadFast(limitPinAcw_m1) == HIGH;
+    isLimit_m1_cw  = digitalReadFast(limitPin_m1_cw)  == HIGH;
+    isLimit_m1_acw = digitalReadFast(limitPin_m1_acw) == HIGH;
   }
 
   if (limitsConnected_m2) {
-    isLimitCw_m2  = digitalReadFast(limitPinCw_m2)  == HIGH;
-    isLimitAcw_m2 = digitalReadFast(limitPinAcw_m2) == HIGH;
+    isLimit_m2_cw  = digitalReadFast(limitPin_m2_cw)  == HIGH;
+    isLimit_m2_acw = digitalReadFast(limitPin_m2_acw) == HIGH;
   }
 }
 
@@ -697,9 +695,9 @@ boolean motorCanMove(int motorId, long howMuch) {
       return true;
     }
     if (howMuch > 0) {
-      return !isLimitCw_m1;
+      return !isLimit_m1_cw;
     } else {
-      return !isLimitAcw_m1;
+      return !isLimit_m1_acw;
     }
   }
   if (motorId == 2) {
@@ -707,9 +705,9 @@ boolean motorCanMove(int motorId, long howMuch) {
       return true;
     }
     if (howMuch > 0) {
-      return !isLimitCw_m2;
+      return !isLimit_m2_cw;
     } else {
-      return !isLimitAcw_m2;
+      return !isLimit_m2_acw;
     }
   }
 }
@@ -728,9 +726,9 @@ boolean isMotorHome(int motorId) {
     return false;
   }
   if (motorId == 1) {
-    return isLimitAcw_m1;
+    return isLimit_m1_acw;
   } else if (motorId == 2) {
-    return isLimitAcw_m2;
+    return isLimit_m2_acw;
   }
 }
 
@@ -806,7 +804,7 @@ void stopMotor(int motorId) {
     setAcceleration(1, oldAcceleration_m1);
     if (!shouldStop) {
       // we have reached a limit switch, see if we are home
-      if (isMotorHome(1)) {
+      if (isMotorHome(motorId)) {
         hasHomed_m1 = true;
         stepper_m1.setCurrentPosition(0);
       }
@@ -821,7 +819,7 @@ void stopMotor(int motorId) {
     setAcceleration(2, oldAcceleration_m2);
     if (!shouldStop) {
     // we have reached a limit switch, see if we are home
-      if (isMotorHome(2)) {
+      if (isMotorHome(motorId)) {
         hasHomed_m2 = true;
         stepper_m2.setCurrentPosition(0);
       }
@@ -948,16 +946,16 @@ void setupMotors() {
 
   if (limitsConnected_m1) {
     // Declare limit switch pins as input
-    pinMode(limitPinCw_m1, INPUT);
-    pinMode(limitPinAcw_m1, INPUT);
+    pinMode(limitPin_m1_cw, INPUT);
+    pinMode(limitPin_m1_acw, INPUT);
     // set enabled
     limitsEnabled_m1 = true;
   }
 
   if (limitsConnected_m2) {
     // Declare limit switch pins as input
-    pinMode(limitPinCw_m2, INPUT);
-    pinMode(limitPinAcw_m2, INPUT);
+    pinMode(limitPin_m2_cw, INPUT);
+    pinMode(limitPin_m2_acw, INPUT);
     // set enabled
     limitsEnabled_m2 = true;
   }

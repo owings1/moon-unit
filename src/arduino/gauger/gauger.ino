@@ -166,7 +166,7 @@ void takeCommand(Stream &input, Stream &output) {
     }
 
     String res = mcSerial.readStringUntil("\n");
-    writeAck(id, output, false);
+    writeAck(id, output, true);
     output.print(res);
     output.write("\n");
 
