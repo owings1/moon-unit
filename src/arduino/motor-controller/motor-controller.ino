@@ -62,31 +62,36 @@
  *
  *  :13 ;
  *
- * 14 RETIRED - Get orientation (x|y|z|isCalibrated)
- *
- *  :14 ;
- *
- *    example responses:
- *      =00;143.2|43.02|123.5|F
- *      =50;
- *
  * 15- Get position in degrees, followed by limits enabled
  *
  *  :15 ;
- *
- * 16 RETIRED - Get orientation calibration status
- *
- *  :16 ;
- *
- *    example responses:
- *      =00;0|3|1|2|F
- *      =50;
  *
  * 17 - Set limit switch enablement for a motor
  *
  *  :17 <motorId> <T|F>;
  *
  *    must be compiled with limitsConnected or will return 51.
+ *
+ * 18 - Get full status
+ *
+ *  :18 ;
+ *
+ *    values separated by |:
+ *
+ *    - <position_m1_degrees>
+ *    - <position_m2_degrees>
+ *    - <limitsEnabled_m1>
+ *    - <limitsEnabled_m2>
+ *    - <degreesPerStep_m1>
+ *    - <degreesPerStep_m2>
+ *    - <maxSpeed_m1>
+ *    - <maxSpeed_m2>
+ *    - <acceleration_m1>
+ *    - <acceleration_m2>
+ *    - limit states: <m1_cw><m1_acw><m2_cw><m2_acw>
+ *    - <shouldStop>
+ *
+ * ===================================================
  *
  * Parameters
  * ----------
@@ -118,7 +123,6 @@
 
 // TODO:
 //  - have separate maxAcceleration values for m1 and m2
-//  - write real encoder/lcd interface
 
 #include <AccelStepper.h>
 #include <MultiStepper.h>
@@ -149,8 +153,8 @@
 #define limitPin_m1_acw 4
 #define limitPin_m2_cw 11
 #define limitPin_m2_acw 12
-#define maxSpeed_m1 1800L
-#define maxSpeed_m2 1800L
+#define absMaxSpeed_m1 1800L
+#define absMaxSpeed_m2 1800L
 #define degreesPerStep_m1 0.0008125
 #define degreesPerStep_m2 0.001125
 // for homing, will not overshoot limit switches
@@ -170,9 +174,11 @@ boolean isLimit_m1_acw = false;
 boolean isLimit_m2_cw = false;
 boolean isLimit_m2_acw = false;
 
-// track the acceleration value set in stepper objects.
+// track the max speed and acceleration values set in stepper objects.
 long acceleration_m1;
 long acceleration_m2;
+long maxSpeed_m1;
+long maxSpeed_m2;
 
 unsigned long lastMotorActionTime = millis();
 boolean isMotorEnabled = false;
@@ -294,12 +300,7 @@ void takeCommand(Stream &input, Stream &output) {
       return;
     }
 
-    if (motorId == 1) {
-      // TODO: figure out why we couldn't dynamically assign this
-      stepper_m1.setMaxSpeed(min(newSpeed, maxSpeed_m1));
-    } else if (motorId == 2) {
-      stepper_m2.setMaxSpeed(min(newSpeed, maxSpeed_m2));
-    }
+    setMaxSpeed(motorId, newSpeed);
 
     output.write("=00\n");
 
@@ -625,6 +626,61 @@ void takeCommand(Stream &input, Stream &output) {
       limitsEnabled_m2 = flag == 'T';
     }
     output.write("=00\n");
+  } else if (command.equals("18")) {
+
+    // get full status
+
+    input.readStringUntil(';');
+
+    output.write("=00;");
+
+    // <position_m1_degrees>
+    // <position_m2_degrees>
+    writePositions(output, 2);
+    output.write('|');
+    
+    // <limitsEnabled_m1>
+    // <limitsEnabled_m2>
+    
+    output.write(limitsEnabled_m1 ? 'T' : 'F');
+    output.write('|');
+    output.write(limitsEnabled_m2 ? 'T' : 'F');
+    output.write('|');
+
+    // <degreesPerStep_m1>
+    // <degreesPerStep_m2>
+    output.print(degreesPerStep_m1, 8);
+    output.write('|');
+    output.print(degreesPerStep_m2, 8);
+    output.write('|');
+
+    // <maxSpeed_m1>
+    // <maxSpeed_m2>
+    output.print(maxSpeed_m1);
+    output.write('|');
+    output.print(maxSpeed_m2);
+    output.write('|');
+
+    // <acceleration_m1>
+    // <acceleration_m2>
+    output.print(acceleration_m1);
+    output.write('|');
+    output.print(acceleration_m2);
+    output.write('|');
+
+    // limit states: <m1_cw><m1_acw><m2_cw><m2_acw>
+    // <shouldStop>
+    char states[7] = {
+      isLimit_m1_cw  ? 'T' : 'F',
+      isLimit_m1_acw ? 'T' : 'F',
+      isLimit_m2_cw  ? 'T' : 'F',
+      isLimit_m2_acw ? 'T' : 'F',
+      '|',
+      shouldStop ? 'T' : 'F'
+    };
+    output.write(states);
+
+    output.write("\n");
   } else {
     output.write("=44\n");
   }
@@ -633,7 +689,7 @@ void takeCommand(Stream &input, Stream &output) {
 void writePositions(Stream &output, int format) {
   if (hasHomed_m1) {
     long mpos = stepper_m1.currentPosition();
-    writeString(output, String(format == 1 ? mpos : (mpos * degreesPerStep_m1)));
+    output.print(String(format == 1 ? mpos : (mpos * degreesPerStep_m1)));
   } else {
     output.write("?");
   }
@@ -642,15 +698,9 @@ void writePositions(Stream &output, int format) {
 
   if (hasHomed_m2) {
     long mpos = stepper_m2.currentPosition();
-    writeString(output, String(format == 1 ? mpos : (mpos * degreesPerStep_m2)));
+    output.print(String(format == 1 ? mpos : (mpos * degreesPerStep_m2)));
   } else {
     output.write("?");
-  }
-}
-
-void writeString(Stream &output, String s) {
-  for (int i = 0; i < s.length(); i++) {
-    output.write(s.charAt(i));
   }
 }
 
@@ -678,13 +728,13 @@ int getDirMultiplier(int dirInput) {
 void readLimitSwitches() {
 
   if (limitsConnected_m1) {
-    isLimit_m1_cw  = digitalReadFast(limitPin_m1_cw)  == HIGH;
-    isLimit_m1_acw = digitalReadFast(limitPin_m1_acw) == HIGH;
+    isLimit_m1_cw  = digitalReadFast(limitPin_m1_cw)  == LOW;//HIGH;
+    isLimit_m1_acw = digitalReadFast(limitPin_m1_acw) == LOW;//HIGH;
   }
 
   if (limitsConnected_m2) {
-    isLimit_m2_cw  = digitalReadFast(limitPin_m2_cw)  == HIGH;
-    isLimit_m2_acw = digitalReadFast(limitPin_m2_acw) == HIGH;
+    isLimit_m2_cw  = digitalReadFast(limitPin_m2_cw)  == LOW;//HIGH;
+    isLimit_m2_acw = digitalReadFast(limitPin_m2_acw) == LOW;//HIGH;
   }
 }
 
@@ -869,9 +919,11 @@ void jumpOneByDegrees(int motorId, float howMuch) {
 
 void setMaxSpeed(int motorId, long value) {
   if (motorId == 1) {
-    stepper_m1.setMaxSpeed(min(value, maxSpeed_m1));
+    maxSpeed_m1 = min(value, absMaxSpeed_m1);
+    stepper_m1.setMaxSpeed(maxSpeed_m1);
   } else if (motorId == 2) {
-    stepper_m2.setMaxSpeed(min(value, maxSpeed_m2));
+    maxSpeed_m2 = min(value, absMaxSpeed_m2);
+    stepper_m2.setMaxSpeed(maxSpeed_m2);
   }
 }
 
@@ -966,8 +1018,8 @@ void setupMotors() {
   isMotorEnabled = false;
 
   // AccelStepper
-  stepper_m1.setMaxSpeed(maxSpeed_m1);
-  stepper_m2.setMaxSpeed(maxSpeed_m2);
+  setMaxSpeed(1, absMaxSpeed_m1);
+  setMaxSpeed(2, absMaxSpeed_m2);
   setAcceleration(1, maxAcceleration);
   setAcceleration(2, maxAcceleration);
 }

@@ -31,8 +31,8 @@
 #define maxMode 3
 byte mode = 1;
 
-// Loop delay
-long loopDelay = 1000;
+// Loop delay in milliseconds
+long loopDelay = 250;
 
 // Motor Controller
 #define mcStatePin 5
@@ -148,11 +148,19 @@ void takeCommand(Stream &input, Stream &output) {
 
     mcSerial.listen();
 
-    mcSerial.write(':');
-    mcSerial.print(command);
-    mcSerial.write(' ');
-    mcSerial.print(input.readStringUntil(';'));
-    mcSerial.write(';');
+    String mcBody = String(":");
+    mcBody.concat(command);
+    mcBody.concat(" ");
+    mcBody.concat(input.readStringUntil(';'));
+    mcBody.concat(";");
+    mcSerial.print(mcBody);
+    //output.print("mcBody#");
+    //output.println(mcBody);
+    //mcSerial.write(':');
+    //mcSerial.print(command);
+    //mcSerial.write(' ');
+    //mcSerial.print(input.readStringUntil(';'));
+    //mcSerial.write(';');
 
     int d = 0;
     while (!mcSerial.available()) {
@@ -170,6 +178,8 @@ void takeCommand(Stream &input, Stream &output) {
     output.print(res);
     output.write("\n");
 
+    //delay(100);
+ 
     return;
   }
 
