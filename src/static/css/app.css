@@ -11,9 +11,6 @@ body {
     border-width: 1px;
     border-color: #a953b3;
 }
-hr {
-    border-color: #a953b3;
-}
 button {
     padding: 5px;
 }
@@ -60,6 +57,10 @@ a.button.green, a.button.connected {
 a.button.disabled {
     background-color: #ddd;
 }
+.warning {
+    background-color: yellow;
+    padding: 5px;
+}
 #clear_outputs {
     margin-top: 14px;
 }
@@ -83,6 +84,7 @@ td {
 .panel {
     padding: 10px;
     text-align: center;
+    border-bottom: 1px solid #a953b3;
 }
 input[type="text"], textarea, select {
     background-color: #eee;

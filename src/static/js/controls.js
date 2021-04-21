@@ -59,22 +59,36 @@ $(document).ready(function() {
 
             e.preventDefault()
 
+            if ($target.hasClass('disabled') || $target.prop('disabled')) {
+                return
+            }
+
             clearOutputs()
+
             if ($target.is('#gpio_controller_state')) {
                 sendRequest('controller/gpio/state')
             } else if ($target.is('#gpio_controller_stop')) {
                 sendRequest('controller/gpio/stop', 'POST')
             } else if ($target.is('#gpio_controller_reset')) {
-                if (confirm('Reset, are you sure?')) {
+                if (confirm('Reset controller, are you sure?')) {
                     sendRequest('controller/gpio/reset', 'POST')
+                }
+            } else if ($target.is('#gpio_gauger_reset')) {
+                if (confirm('Reset gauger, are you sure?')) {
+                    sendRequest('gauger/gpio/reset', 'POST')
                 }
             }
         } else if ($target.is('#refresh_status')) {
+
             e.preventDefault()
+
             refreshStatus()
-        } else if ($target.is('#controller_connected_status')) {
+
+        } else if ($target.is('#gauger_connected_status')) {
+
             e.preventDefault()
-            handleControllerConnectButton()
+
+            handleGaugerConnectButton()
         }
     })
 
@@ -87,8 +101,8 @@ $(document).ready(function() {
 
     $('#clear_outputs').on('click', clearOutputs)
 
-    async function handleControllerConnectButton() {
-        const $target = $('#controller_connected_status')
+    async function handleGaugerConnectButton() {
+        const $target = $('#gauger_connected_status')
         if ($target.hasClass('disabled')) {
             return
         }
@@ -98,7 +112,7 @@ $(document).ready(function() {
             if (confirm('Are you sure you want to ' + action + '?')) {
                 clearRefreshInterval()
                 $target.text(action + 'ing...')
-                const res = await fetch('controller/' + action, {method: 'POST'})
+                const res = await fetch('gauger/' + action, {method: 'POST'})
                 const {status} = await res.json()
                 writeStatus(status)
             }
@@ -184,36 +198,38 @@ $(document).ready(function() {
         })
     }
 
+    // return 'Error' if undefined
+    function ed(value) {
+        return typeof value == 'undefined' ? 'Error' : value
+    }
+
     function writeStatus(status) {
         status = status || {
-            controllerState: 'Error',
-            position: ['Error', 'Error'],
-            orientation: ['Error', 'Error', 'Error'],
-            limitsEnabled: ['Error', 'Error'],
-            gaugerConnectedStatus: 'Error',
-            gaugerConnectedStatus: 'Error',
-            gpsCoords: ['Error', 'Error'],
-            magHeading: 'Error',
-            declinationAngle: 'Error'
+            // just make defaults for arrays
+            position              : [],
+            orientation           : [],
+            limitsEnabled         : [],
+            gpsCoords             : []
         }
         $('#position_m1').html(
-            status.position[0] + (!isNaN(parseFloat(status.position[0])) ? '&deg;' : '')
+            ed(status.position[0]) + (!isNaN(parseFloat(status.position[0])) ? '&deg;' : '')
         )
         $('#position_m2').html(
-            status.position[1] + (!isNaN(parseFloat(status.position[1])) ? '&deg;' : '')
+            ed(status.position[1]) + (!isNaN(parseFloat(status.position[1])) ? '&deg;' : '')
         )
-        $('#controller_state').text('' + status.controllerState)
-        $('#gauger_connected_status').text(status.controllerConnectedStatus)
+        $('#controller_state').text('' + ed(status.controllerState))
+        $('#gauger_connected_status').text(ed(status.gaugerConnectedStatus))
             .removeClass('connected disconnected')
-            .addClass(status.gaugerConnectedStatus.toLowerCase())
-        $('#orientation_x').text('' + status.orientation[0])
-        $('#orientation_y').text('' + status.orientation[1])
-        $('#orientation_z').text('' + status.orientation[2])
-        $('#limitsEnabled_m1').text('' + status.limitsEnabled[0])
-        $('#limitsEnabled_m2').text('' + status.limitsEnabled[1])
-        $('#gps_lat').text('' + status.gpsCoords[0])
-        $('#gps_long').text('' + status.gpsCoords[1])
-        $('#mag_heading').text('' + status.magHeading)
+            .addClass(ed(status.gaugerConnectedStatus).toLowerCase())
+        $('#orientation_x').text('' + ed(status.orientation[0]))
+        $('#orientation_y').text('' + ed(status.orientation[1]))
+        $('#orientation_z').text('' + ed(status.orientation[2]))
+        $('#limitsEnabled_m1').text('' + ed(status.limitsEnabled[0]))
+        $('#limitsEnabled_m2').text('' + ed(status.limitsEnabled[1]))
+        $('#gps_lat').text('' + ed(status.gpsCoords[0]))
+        $('#gps_long').text('' + ed(status.gpsCoords[1]))
+        $('#mag_heading').text('' + ed(status.magHeading))
+        $('#declination_angle').text('' + ed(status.declinationAngle))
     }
 
     // :04 <motorId> <direction> <degrees>;

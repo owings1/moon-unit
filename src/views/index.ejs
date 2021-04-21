@@ -8,19 +8,25 @@
 </head>
 <body>
     <div class="content">
+        <% if (!status.gpioEnabled) { %>
+            <div class="warning">GPIO is not enabled. Functions like stop and reset are disabled.</div>
+        <% } %>
         <div class="panel">
             <form>
-                <a href="javascript:" class="" id="refresh_status">Refresh</a>
-                <select name="refresh_interval" id="refresh_interval">
-                    <option value="0">Never</option>
-                    <option value="1">1s</option>
-                    <option value="2">2s</option>
-                    <option value="5" selected>5s</option>
-                    <option value="10">10s</option>
-                    <option value="30">30s</option>
-                    <option value="60">60s</option>
-                </select>
+                <div class="right">
+                    <a href="javascript:" class="" id="refresh_status">Refresh</a>
+                    <select name="refresh_interval" id="refresh_interval">
+                        <option value="0">Never</option>
+                        <option value="1">1s</option>
+                        <option value="2">2s</option>
+                        <option value="5" selected>5s</option>
+                        <option value="10">10s</option>
+                        <option value="30">30s</option>
+                        <option value="60">60s</option>
+                    </select>
+                </div>
             </form>
+            <div class="clear"></div>
         </div>
         <div class="panel">
             <form>
@@ -87,6 +93,7 @@
                 <div>
                     MAG:
                     heading = <span class="mag-heading" id="mag_heading"><%= '' + status.magHeading %></span>
+                    d.a. = <span class="" id="declination_angle"><%= '' + status.declinationAngle %></span>
                 </div>
                 <div>
                     ORI:
@@ -96,11 +103,10 @@
                 </div>
             </form>
         </div>
-        <hr>
         <div class="panel">
             <form>
                 <div>
-                    <a href="javascript:" class="gpio button red" id="gpio_controller_stop">Stop</a>
+                    <a href="javascript:" class="gpio button <%= status.gpioEnabled ? 'red' : 'disabled' %>" id="gpio_controller_stop">Stop</a>
                 </div>
                 <table>
                     <tr>
@@ -118,7 +124,6 @@
                 </table>
             </form>
         </div>
-        <hr>
         <div class="panel">
             <form>
                 <div>
@@ -149,7 +154,6 @@
                 </div>
             </form>
         </div>
-        <hr>
         <div class="panel">
             <form>
                 <table>
@@ -187,7 +191,6 @@
                 </table>
             </form>
         </div>
-        <hr>
         <div class="panel">
             <form>
                 <div>
@@ -197,17 +200,16 @@
                 </div>
             </form>
         </div>
-        <hr>
         <div class="panel">
             <form>
                 <!-- <a href="javascript:" class="gpio button green" id="gpio_controller_state">State</a> -->
-                <a href="javascript" class="button <%= status.gaugerConnectedStatus.toLowerCase() %>" id="controller_connected_status">
-                    <%= status.controllerConnectedStatus %>
+                <a href="javascript:" class="button <%= status.gaugerConnectedStatus.toLowerCase() %>" id="gauger_connected_status">
+                    <%= status.gaugerConnectedStatus %>
                 </a>
-                <a href="javascript:" class="gpio button magenta" id="gpio_controller_reset">Reset</a>
+                <a href="javascript:" class="gpio button <%= status.gpioEnabled ? 'magenta' : 'disabled' %>" id="gpio_controller_reset">Reset Controller</a>
+                <a href="javascript:" class="gpio button <%= status.gpioEnabled ? 'magenta' : 'disabled' %>" id="gpio_gauger_reset">Reset Gauger</a>
             </form>
         </div>
-        <hr>
         <div class="panel">
             <h3>Request</h3>
             <div id="request_output" class="output json"></div>

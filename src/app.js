@@ -341,7 +341,6 @@ class App {
                         res.status(503).json({error: 'not ready', isReady})
                         return
                     }
-                    //this.controllerCommand(req.body.command)
                     this.gaugerCommand(req.body.command)
                         .then(response => res.status(200).json({response}))
                         .catch(error => {
@@ -397,34 +396,15 @@ class App {
             })
         })
 
-        /*
-        app.get('/controller/gpio/state', (req, res) => {
-            if (!this.opts.gpioEnabled) {
-                res.status(400).json({error: 'gpio not enabled'})
-                return
-            }
-            this.gpio.getControllerState().then(state =>
-                res.status(200).json({state})
-            ).catch(error => {
-                this.error(error)
-                res.status(500).json({error})
-            })
-        })
-        */
-
         app.post('/controller/gpio/reset', (req, res) => {
             if (!this.opts.gpioEnabled) {
                 res.status(400).json({error: 'gpio not enabled'})
                 return
             }
-            this.closeController()
-            this.log('Sending reset')
+            this.log('Sending reset to controller')
             this.gpio.sendControllerReset().then(() => {
-                res.status(200).json({message: 'reset sent'})
-                this.log('Reset sent, delaying', this.opts.resetDelay, 'to reopen')
-                setTimeout(() => {
-                    this.openController().catch(err => this.error(err))
-                }, this.opts.resetDelay)
+                res.status(200).json({message: 'controller reset sent'})
+                this.log('Controller reset sent')
             }).catch(error => {
                 this.error(error)
                 res.status(500).json({error})
@@ -438,6 +418,25 @@ class App {
             }
             this.gpio.sendControllerStop().then(() => {
                 res.status(200).json({message: 'stop sent'})
+            }).catch(error => {
+                this.error(error)
+                res.status(500).json({error})
+            })
+        })
+
+        app.post('/gauger/gpio/reset', (req, res) => {
+            if (!this.opts.gpioEnabled) {
+                res.status(400).json({error: 'gpio not enabled'})
+                return
+            }
+            this.closeGauger()
+            this.log('Sending reset to gauger')
+            this.gpio.sendGaugerReset().then(() => {
+                res.status(200).json({message: 'reset sent'})
+                this.log('Gauger reset sent, delaying', this.opts.resetDelay, 'to reopen')
+                setTimeout(() => {
+                    this.openGauger().catch(err => this.error(err))
+                }, this.opts.resetDelay)
             }).catch(error => {
                 this.error(error)
                 res.status(500).json({error})

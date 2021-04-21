@@ -190,7 +190,20 @@ app.post('/controller/connect', (req, res) => {
     })
 })
 */
-
+/*
+app.get('/controller/gpio/state', (req, res) => {
+    if (!this.opts.gpioEnabled) {
+        res.status(400).json({error: 'gpio not enabled'})
+        return
+    }
+    this.gpio.getControllerState().then(state =>
+        res.status(200).json({state})
+    ).catch(error => {
+        this.error(error)
+        res.status(500).json({error})
+    })
+})
+*/
 /*
 
     getPositionJob() {
