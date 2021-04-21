@@ -195,15 +195,15 @@ class App {
         const floats = Util.floats(values)
         switch (module) {
             case 'GPS':
-                this.gpsCoords = floats
+                this.gpsCoords = floats.map(v => v == DEG_NULL ? null : v)
                 break
             case 'MAG':
-                this.magHeading = floats[0]
-                this.declinationAngle = floats[4]
+                this.magHeading = floats[0] == DEG_NULL ? null : floats[0]
+                this.declinationAngle = floats[4] == DEG_NULL ? null : floats[4]
                 break
             case 'ORI':
                 // x|y|z|cal_system|cal_gyro|cal_accel|cal_mag|isCalibrated
-                this.orientation = floats.slice(0, 3)
+                this.orientation = floats.slice(0, 3).map(v => v == DEG_NULL ? null : v)
                 this.isOrientationCalibrated = values[7] == 'T'
                 break
             case 'MCC':
