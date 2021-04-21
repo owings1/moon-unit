@@ -14,6 +14,8 @@ const SerPortFull = require('serialport')
 const SerPortMock = require('@serialport/stream')
 const Readline    = require('@serialport/parser-readline')
 
+const DEG_NULL = 1000
+
 prom.collectDefaultMetrics()
 
 const DeviceCodes = {
@@ -203,6 +205,17 @@ class App {
                 // x|y|z|cal_system|cal_gyro|cal_accel|cal_mag|isCalibrated
                 this.orientation = floats.slice(0, 3)
                 this.isOrientationCalibrated = values[7] == 'T'
+                break
+            case 'MCC':
+                // motor controller status
+                this.position = [
+                    floats[0] == DEG_NULL ? null : floats[0],
+                    floats[1] == DEG_NULL ? null : floats[1]
+                ]
+                this.limitsEnabled = [
+                    values[2] == 'T',
+                    values[3] == 'T'
+                ]
                 break
             case 'MOD':
                 // names the modules available

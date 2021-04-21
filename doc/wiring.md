@@ -13,16 +13,16 @@ motor controller
 | Pin | Description                 | Color  | Notes
 |-----|-----------------------------|--------|------------------
 |   2 |                             |        | 
-|   3 | m1 limit switch CW          | white  |
-|   4 | m1 limit switch ACW         | white  |
+|   3 | m1 limit switch CW          | yellow | inverter pin 2
+|   4 | m1 limit switch ACW         | yellow | inverter pin 4
 |   5 | m1 direction                | blue   |
 |   6 | m1 step                     | yellow |
 |   7 | m1 enable                   | white  | to motor controller
 |   8 | m2 direction                | blue   |
 |   9 | m2 step                     | yellow |
 |  10 | m2 enable                   | white  | to motor controller
-|  11 | m2 limit switch CW          | white  |
-|  12 | m2 limit switch ACW         | white  |
+|  11 | m2 limit switch CW          | yellow | inverter pin 6
+|  12 | m2 limit switch ACW         | yellow | inverter pin 8
 |  13 | stop signal                 | yellow | signal to stop all motors when `HIGH`
 |  A0 | ready signal                | green  | ready when `HIGH`
 |  A1 |                             |        | 
@@ -44,6 +44,22 @@ Nano
 |  A4 | I2C SDA                     | white  |
 |  A5 | I2C SCL                     | blue   |
 | Rst | reset pin                   | white  | connected to 5-pin special I/O to pi
+
+Schmitt Inverter
+
+| Pin | Name  | Description          | Color  | Notes
+|-----|-------|----------------------|--------|--------------------
+|   1 | A in  | m1 cw in             | white  |
+|   2 | A out | m1 cw out            | yellow | controller pin 3
+|   3 | B in  | m1 acw in            | white  |
+|   4 | B out | m1 acw out           | yellow | controller pin 4
+|   5 | C in  | m2 cw in             | white  |
+|   6 | C out | m2 cw out            | yellow | controller pin 11
+|   7 | VSS   | Ground               | black  |
+|   8 | D out | m2 acw out           | yellow | controller pin 12
+|   9 | D in  | m2 acw in            | white  |
+|  14 | VDD   | +3.3v                | red    | nano 3.3v
+
 ### Cables
 
 See [raspberry pi GPIO pinout image][gpio]

@@ -82,6 +82,11 @@ Commands
     :12 <format>;
     ```
 
+    Formats:
+
+    * `1`: steps
+    * `2`: degrees
+
     example responses:
 
     ```
@@ -124,6 +129,29 @@ Commands
     ```
     :17 <motorId> <T|F>;
     ```
+
+    Must be compiled with limitsConnected or will return 51.
+
+- **18** - Get full controller status
+
+    ```
+    :18 ;
+    ```
+
+    Indexes
+    
+    * `0`  : `<position_m1_degrees>`
+    * `1`  : `<position_m2_degrees>`
+    * `2`  : `<limitsEnabled_m1>`
+    * `3`  : `<limitsEnabled_m2>`
+    * `4`  : `<degreesPerStep_m1>`
+    * `5`  : `<degreesPerStep_m2>`
+    * `6`  : `<maxSpeed_m1>`
+    * `7`  : `<maxSpeed_m2>`
+    * `8`  : `<acceleration_m1>`
+    * `9`  : `<acceleration_m2>`
+    * `10` : limit states: `<m1_cw><m1_acw><m2_cw><m2_acw>`
+    * `11` : `<shouldStop>`
 
 - **71** - Set gauger mode
  
