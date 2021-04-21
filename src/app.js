@@ -141,6 +141,9 @@ class App {
                         this.initGaugerWorker()
                         this.gaugerParser.on('data', data => {
                             try {
+                                if (!data.trim().length) {
+                                    return
+                                }
                                 if (data.indexOf('ACK:') == 0) {
                                     this.handleGaugerAckData(data)
                                 } else {
