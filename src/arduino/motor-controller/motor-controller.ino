@@ -55,8 +55,11 @@
  *
  *    example responses:
  *      =00;8500|1200
- *      =00;?|130.195
- *      =00;?|?
+ *      =00;1000|130.195
+ *      =00;1000|1000
+ *
+ *    NB: 1000 degrees means no value
+ *        -1 steps means no value
  *
  * 13 - No response (debug)
  *
@@ -140,6 +143,8 @@
 /******************************************/
 
 #define baudRate 9600L
+#define DEG_NULL 1000.00
+#define STEPS_NULL -1L
 
 // Motor
 
@@ -691,7 +696,7 @@ void writePositions(Stream &output, int format) {
     long mpos = stepper_m1.currentPosition();
     output.print(String(format == 1 ? mpos : (mpos * degreesPerStep_m1)));
   } else {
-    output.write("?");
+    output.print(format == 1 ? STEPS_NULL : DEG_NULL);
   }
 
   output.write("|");
@@ -700,7 +705,7 @@ void writePositions(Stream &output, int format) {
     long mpos = stepper_m2.currentPosition();
     output.print(String(format == 1 ? mpos : (mpos * degreesPerStep_m2)));
   } else {
-    output.write("?");
+    output.print(format == 1 ? STEPS_NULL : DEG_NULL);
   }
 }
 
