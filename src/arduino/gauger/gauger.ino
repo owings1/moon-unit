@@ -37,26 +37,30 @@ byte mode = 1;
 long loopDelay = 250;
 
 // Motor Controller
-#define mcStatePin 5
+#define mc_statePin 5
 #define mcRxPin 6
 #define mcTxPin 7
 SoftwareSerial mcSerial(mcRxPin, mcTxPin); //rx, tx
 #define mcTimeout 10000
-byte mcState = LOW;
-float mcPosition_m1;
-float mcPosition_m2;
-boolean mcLimitsEnabled_m1;
-boolean mcLimitsEnabled_m2;
-float mcDegreesPerStep_m1;
-float mcDegreesPerStep_m2;
-long mcMaxSpeed_m1;
-long mcMaxSpeed_m2;
-boolean mcLimitState_m1_cw;
-boolean mcLimitState_m1_acw;
-boolean mcLimitState_m2_cw;
-boolean mcLimitState_m2_acw;
-boolean mcShouldStop;
+byte mc_state = LOW;
+String mc_statusStr;
 
+// Parse from status as needed
+/*
+float mc_position_m1;
+float mc_position_m2;
+boolean mc_limitsEnabled_m1;
+boolean mc_limitsEnabled_m2;
+float mc_degreesPerStep_m1;
+float mc_degreesPerStep_m2;
+long mc_maxSpeed_m1;
+long mc_maxSpeed_m2;
+boolean mc_limitState_m1_cw;
+boolean mc_limitState_m1_acw;
+boolean mc_limitState_m2_cw;
+boolean mc_limitState_m2_acw;
+boolean mc_shouldStop;
+*/
 // Orientation sensor
 
 // https://learn.adafruit.com/adafruit-bno055-absolute-orientation-sensor/arduino-code
@@ -95,7 +99,7 @@ float mag_z = 0;
 float mag_heading = DEG_NULL; // degrees
 
 void setup() {
-  pinMode(mcStatePin, INPUT);
+  pinMode(mc_statePin, INPUT);
   Serial.begin(9600);
   
   mcSerial.begin(9600);
@@ -113,13 +117,16 @@ void setup() {
 
 void loop() {
 
+  takeCommand(Serial, Serial);
   if (mode == 2) {
     readAll();
     writeAll(Serial);
   } else if (mode == 3 && gpsEnabled) {
     streamGps(Serial);
   }
+  // take command twice, since readAll takes time.
   takeCommand(Serial, Serial);
+
   delay(loopDelay);
 }
 
@@ -154,7 +161,7 @@ void takeCommand(Stream &input, Stream &output) {
     // forward to motorcontroller
 
     readMcState();
-    if (mcState != HIGH) {
+    if (mc_state != HIGH) {
       input.readStringUntil(';');
       writeAck(id, output, true);
       output.write("=04\n");
@@ -254,6 +261,12 @@ void writeAll(Stream &output) {
     writeMag(output);
     output.write("\n");
   }
+
+  if (mc_statusStr.length() > 0) {
+    output.write("MCC:");
+    writeMcStatus(output);
+    output.write("\n");
+  }
 }
 
 void writeModules(Stream &output) {
@@ -283,6 +296,18 @@ void writeModules(Stream &output) {
     output.write("MAG");
     doPrefix = true;
   }
+
+  if (mc_statusStr.length() > 0) {
+    if (doPrefix) {
+      output.write('|');
+    }
+    output.write("MCC");
+    doPrefix = true;
+  }
+}
+
+void writeMcStatus(Stream &output) {
+  output.print(mc_statusStr);
 }
 
 void writeOrientation(Stream &output) {
@@ -324,6 +349,7 @@ void writeMag(Stream &output) {
 
 void readAll() {
   readMcState();
+  readMcStatus();
   if (isOrientationInit) {
     readOrientation();
   }
@@ -336,12 +362,35 @@ void readAll() {
 }
 
 void readMcState() {
-  mcState = digitalRead(mcStatePin);
+  mc_state = digitalRead(mc_statePin);
 }
 
+// this causes a significant delay
+// TODO: only do this occasionally
 void readMcStatus() {
-  
+  if (mc_state != HIGH) {
+    return;
+  }
+  mcSerial.listen();
+  mcSerial.write(":18 ;");
+  // only timeout 250ms
+  int d = 0;
+  while (!mcSerial.available()) {
+    delay(1);
+    d += 1;
+    if (d > 250) {
+      return;
+    }
+  }
+  String codeStr = mcSerial.readStringUntil(';');
+  if (!codeStr.equals("=00")) {
+    return;
+  }
+  mc_statusStr = mcSerial.readStringUntil("\n");
+  mc_statusStr.trim();
+  // TODO: map values
 }
+
 void readOrientation() {
   /* Get a new sensor event */ 
   sensors_event_t event; 
@@ -360,6 +409,9 @@ void readOrientation() {
 
 void readGps() {
   gpsSerial.listen();
+  // we have to set a delay here after listen, otherwise we
+  // never read values. this value MUST be at least 50ms.
+  delay(60);
   while (gpsSerial.available()) {
     if (gps.encode(gpsSerial.read())) {
       gps.f_get_position(&gps_lat, &gps_lon);
