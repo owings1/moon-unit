@@ -24,6 +24,8 @@
 #define orientationEnabled false
 #define magEnabled true
 
+#define DEG_NULL 1000.00
+
 // Modes
 // 1: quiet
 // 2: stream all
@@ -41,6 +43,19 @@ long loopDelay = 250;
 SoftwareSerial mcSerial(mcRxPin, mcTxPin); //rx, tx
 #define mcTimeout 10000
 byte mcState = LOW;
+float mcPosition_m1;
+float mcPosition_m2;
+boolean mcLimitsEnabled_m1;
+boolean mcLimitsEnabled_m2;
+float mcDegreesPerStep_m1;
+float mcDegreesPerStep_m2;
+long mcMaxSpeed_m1;
+long mcMaxSpeed_m2;
+boolean mcLimitState_m1_cw;
+boolean mcLimitState_m1_acw;
+boolean mcLimitState_m2_cw;
+boolean mcLimitState_m2_acw;
+boolean mcShouldStop;
 
 // Orientation sensor
 
@@ -50,9 +65,9 @@ Adafruit_BNO055 bno = Adafruit_BNO055(55);
 boolean isOrientationInit = false;
 boolean isOrientationCalibrated = false;
 // latest read
-float orientation_x;
-float orientation_y;
-float orientation_z;
+float orientation_x = DEG_NULL;
+float orientation_y = DEG_NULL;
+float orientation_z = DEG_NULL;
 // calibration
 uint8_t cal_system = 0;
 uint8_t cal_gyro = 0;
@@ -64,8 +79,8 @@ uint8_t cal_mag = 0;
 #define gpsTxPin 9 // not functional
 SoftwareSerial gpsSerial(gspRxPin, gpsTxPin); //rx, tx
 TinyGPS gps;
-float gps_lat = 1000;
-float gps_lon = 1000;
+float gps_lat = DEG_NULL;
+float gps_lon = DEG_NULL;
 
 // Mag
 
@@ -77,7 +92,7 @@ boolean isMagInit = false;
 float mag_x = 0; // micro-Tesla (uT)
 float mag_y = 0;
 float mag_z = 0;
-float mag_heading = -1; // degrees
+float mag_heading = DEG_NULL; // degrees
 
 void setup() {
   pinMode(mcStatePin, INPUT);
@@ -154,13 +169,6 @@ void takeCommand(Stream &input, Stream &output) {
     mcBody.concat(input.readStringUntil(';'));
     mcBody.concat(";");
     mcSerial.print(mcBody);
-    //output.print("mcBody#");
-    //output.println(mcBody);
-    //mcSerial.write(':');
-    //mcSerial.print(command);
-    //mcSerial.write(' ');
-    //mcSerial.print(input.readStringUntil(';'));
-    //mcSerial.write(';');
 
     int d = 0;
     while (!mcSerial.available()) {
@@ -177,8 +185,6 @@ void takeCommand(Stream &input, Stream &output) {
     writeAck(id, output, true);
     output.print(res);
     output.write("\n");
-
-    //delay(100);
  
     return;
   }
@@ -333,6 +339,9 @@ void readMcState() {
   mcState = digitalRead(mcStatePin);
 }
 
+void readMcStatus() {
+  
+}
 void readOrientation() {
   /* Get a new sensor event */ 
   sensors_event_t event; 
