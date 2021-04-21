@@ -190,3 +190,26 @@ app.post('/controller/connect', (req, res) => {
     })
 })
 */
+
+/*
+
+    getPositionJob() {
+        return {
+            isSystem : true,
+            body     : ':15 ;\n',
+            handler  : res => {
+                if (res.status != 0) {
+                    if (!this.opts.mock) {
+                        this.error('Failed to get positions', res)
+                    }
+                    return
+                }
+               
+                const arr = res.body.split('|')
+                const floats = Util.floats(arr)
+                this.position = [floats[0], floats[1]]
+                this.limitsEnabled = [arr[2], arr[3]].map(it => it == 'T')
+            }
+        }
+    }
+*/

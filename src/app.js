@@ -92,9 +92,10 @@ class App {
     }
 
     async status() {
-        const controllerState = this.gpio ? (await this.gpio.getControllerState()) : null
+        const controllerState = (this.opts.gpioEnabled && this.gpio) ? (await this.gpio.getControllerState()) : null
         return {
             controllerState,
+            gpioEnabled               : this.opts.gpioEnabled,
             position                  : this.position,
             orientation               : this.orientation,
             limitsEnabled             : this.limitsEnabled,
@@ -141,7 +142,8 @@ class App {
                         this.initGaugerWorker()
                         this.gaugerParser.on('data', data => {
                             try {
-                                if (!data.trim().length) {
+                                data = data.trim()
+                                if (!data.length) {
                                     return
                                 }
                                 if (data.indexOf('ACK:') == 0) {
@@ -250,7 +252,6 @@ class App {
     close() {
         return new Promise(resolve => {
             this.log('Shutting down')
-            //this.closeController()
             this.closeGauger()
             if (this.httpServer) {
                 this.httpServer.close()
@@ -265,7 +266,6 @@ class App {
         }
 
         if (!this.gaugerQueue.length) {
-            // TODO: get controller position
             return   
         }
 
@@ -397,6 +397,7 @@ class App {
             })
         })
 
+        /*
         app.get('/controller/gpio/state', (req, res) => {
             if (!this.opts.gpioEnabled) {
                 res.status(400).json({error: 'gpio not enabled'})
@@ -409,6 +410,7 @@ class App {
                 res.status(500).json({error})
             })
         })
+        */
 
         app.post('/controller/gpio/reset', (req, res) => {
             if (!this.opts.gpioEnabled) {
@@ -481,26 +483,6 @@ class App {
             MockBinding.createPort(devicePath, {echo: true, readyData: []})
         }
         return new SerialPort(devicePath, {baudRate, autoOpen: false})
-    }
-
-    getPositionJob() {
-        return {
-            isSystem : true,
-            body     : ':15 ;\n',
-            handler  : res => {
-                if (res.status != 0) {
-                    if (!this.opts.mock) {
-                        this.error('Failed to get positions', res)
-                    }
-                    return
-                }
-               
-                const arr = res.body.split('|')
-                const floats = Util.floats(arr)
-                this.position = [floats[0], floats[1]]
-                this.limitsEnabled = [arr[2], arr[3]].map(it => it == 'T')
-            }
-        }
     }
 
     async initGpio() {
