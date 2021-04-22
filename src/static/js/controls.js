@@ -225,6 +225,7 @@ $(document).ready(function() {
         $('#orientation_x').text('' + ed(status.orientation[0]))
         $('#orientation_y').text('' + ed(status.orientation[1]))
         $('#orientation_z').text('' + ed(status.orientation[2]))
+        $('#orienation_calibration').text(status.orientationCalibration.map(v => '' + ed(v)).join('|'))
         $('#is_orientation_calibrated').text('' + ed(status.isOrientationCalibrated))
         $('#limitsEnabled_m1').text('' + ed(status.limitsEnabled[0]))
         $('#limitsEnabled_m2').text('' + ed(status.limitsEnabled[1]))

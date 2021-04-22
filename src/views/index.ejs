@@ -100,7 +100,8 @@
                     x = <span id="orientation_x"><%= '' + status.orientation[0] %></span>,
                     y = <span id="orientation_y"><%= '' + status.orientation[1] %></span>,
                     z = <span id="orientation_z"><%= '' + status.orientation[2] %></span>,
-                    cal = <span id="is_orientation_calibrated"><%= '' + status.isOrientationCalibrated %></span>,
+                    iscal = <span id="is_orientation_calibrated"><%= '' + status.isOrientationCalibrated %></span>,
+                    cal = <span id="orienation_calibration"><%= status.orientationCalibration.map(v => '' + v).join('|') %></span>,
                     init = <span id="is_orientation_init"><%= '' + status.isOrientationInit %></span>
                 </div>
             </form>
