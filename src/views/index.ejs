@@ -92,14 +92,16 @@
                 </div>
                 <div>
                     MAG:
-                    heading = <span class="mag-heading" id="mag_heading"><%= '' + status.magHeading %></span>
+                    heading = <span class="mag-heading" id="mag_heading"><%= '' + status.magHeading %></span>,
                     d.a. = <span class="" id="declination_angle"><%= '' + status.declinationAngle %></span>
                 </div>
                 <div>
                     ORI:
-                    x = <span id="orientation_x"><%= '' + status.orientation[0] %></span>
-                    y = <span id="orientation_y"><%= '' + status.orientation[1] %></span>
-                    z = <span id="orientation_z"><%= '' + status.orientation[2] %></span>
+                    x = <span id="orientation_x"><%= '' + status.orientation[0] %></span>,
+                    y = <span id="orientation_y"><%= '' + status.orientation[1] %></span>,
+                    z = <span id="orientation_z"><%= '' + status.orientation[2] %></span>,
+                    cal = <span id="is_orientation_calibrated"><%= '' + status.isOrientationCalibrated %></span>,
+                    init = <span id="is_orientation_init"><%= '' + status.isOrientationInit %></span>
                 </div>
             </form>
         </div>

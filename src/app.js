@@ -88,7 +88,9 @@ class App {
         this.magHeading = null
         this.declinationAngle = null
         this.orientation   = [null, null, null]
+        this.orientationCalibration = [null, null, null, null]
         this.isOrientationCalibrated = null
+        this.isOrientationInit = null
     }
 
     async status() {
@@ -101,6 +103,8 @@ class App {
             limitsEnabled             : this.limitsEnabled,
             isGaugerConnected         : this.isGaugerConnected,
             isOrientationCalibrated   : this.isOrientationCalibrated,
+            isOrientationInit         : this.isOrientationInit,
+            orientationCalibration    : this.orientationCalibration,
             gaugerConnectedStatus     : this.isGaugerConnected ? 'Connected' : 'Disconnected',
             gpsCoords                 : this.gpsCoords,
             magHeading                : this.magHeading,
@@ -207,9 +211,11 @@ class App {
                 this.declinationAngle = floats[4] == DEG_NULL ? null : floats[4]
                 break
             case 'ORI':
-                // x|y|z|cal_system|cal_gyro|cal_accel|cal_mag|isCalibrated
+                // x|y|z|cal_system|cal_gyro|cal_accel|cal_mag|isCalibrated|isInit
                 this.orientation = floats.slice(0, 3).map(v => v == DEG_NULL ? null : v)
+                this.orientationCalibration = floats.slice(3, 7)
                 this.isOrientationCalibrated = values[7] == 'T'
+                this.isOrientationInit = values[8] == 'T'
                 break
             case 'MCC':
                 // motor controller status

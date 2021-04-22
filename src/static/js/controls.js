@@ -206,10 +206,11 @@ $(document).ready(function() {
     function writeStatus(status) {
         status = status || {
             // just make defaults for arrays
-            position              : [],
-            orientation           : [],
-            limitsEnabled         : [],
-            gpsCoords             : []
+            position               : [],
+            orientation            : [],
+            orientationCalibration : [].
+            limitsEnabled          : [],
+            gpsCoords              : []
         }
         $('#position_m1').html(
             ed(status.position[0]) + (!isNaN(parseFloat(status.position[0])) ? '&deg;' : '')
@@ -224,6 +225,7 @@ $(document).ready(function() {
         $('#orientation_x').text('' + ed(status.orientation[0]))
         $('#orientation_y').text('' + ed(status.orientation[1]))
         $('#orientation_z').text('' + ed(status.orientation[2]))
+        $('#is_orientation_calibrated').text('' + ed(status.isOrientationCalibrated))
         $('#limitsEnabled_m1').text('' + ed(status.limitsEnabled[0]))
         $('#limitsEnabled_m2').text('' + ed(status.limitsEnabled[1]))
         $('#gps_lat').text('' + ed(status.gpsCoords[0]))
