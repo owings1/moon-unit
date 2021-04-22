@@ -210,7 +210,8 @@ $(document).ready(function() {
             orientation            : [],
             orientationCalibration : [],
             limitsEnabled          : [],
-            gpsCoords              : []
+            gpsCoords              : [],
+            maxSpeeds              : []
         }
         $('#position_m1').html(
             ed(status.position[0]) + (!isNaN(parseFloat(status.position[0])) ? '&deg;' : '')
@@ -233,6 +234,8 @@ $(document).ready(function() {
         $('#gps_long').text('' + ed(status.gpsCoords[1]))
         $('#mag_heading').text('' + ed(status.magHeading))
         $('#declination_angle').text('' + ed(status.declinationAngle))
+        $('#maxSpeed_m1').text('' + ed(status.maxSpeeds[0]))
+        $('#maxSpeed_m2').text('' + ed(status.maxSpeeds[1]))
     }
 
     // :04 <motorId> <direction> <degrees>;

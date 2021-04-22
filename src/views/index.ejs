@@ -29,8 +29,8 @@
             <div class="clear"></div>
         </div>
         <div class="panel">
-            <form>
-                <table>
+            <div>
+                <table class="status-table">
                     <thead>
                         <tr>
                             <th colspan="2">State</th>
@@ -42,8 +42,6 @@
                             <td><span id="controller_state"><%= '' + status.controllerState %></span></td>
                         </tr>
                     </tbody>
-                </table>
-                <table>
                     <thead>
                         <tr>
                             <th colspan="2">Position</th>
@@ -67,8 +65,6 @@
                             </td>
                         </tr>
                     </tbody>
-                </table>
-                <table>
                     <thead>
                         <tr>
                             <th colspan="2">Limits Enabled</th>
@@ -81,30 +77,87 @@
                         </tr>
                         <tr>
                             <td>Base</td>
-                            <td><span id="limitsEnabled_m2"><%= '' + status.limitsEnabled[0] %></span></td>
+                            <td><span id="limitsEnabled_m2"><%= '' + status.limitsEnabled[1] %></span></td>
+                        </tr>
+                    </tbody>
+                    <thead>
+                        <tr>
+                            <th colspan="2">Max Speeds</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td>Scope</td>
+                            <td><span id="maxSpeed_m1"><%= '' + status.maxSpeeds[0] %></span></td>
+                        </tr>
+                        <tr>
+                            <td>Base</td>
+                            <td><span id="maxSpeed_m2"><%= '' + status.maxSpeeds[1] %></span></td>
+                        </tr>
+                    </tbody>
+                    <thead>
+                        <tr>
+                            <th colspan="2">GPS</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td>Lat</td>
+                            <td><span class="gps-coord" id="gps_lat"><%= '' + status.gpsCoords[0] %></span></td>
+                        </tr>
+                        <tr>
+                            <td>Lon</td>
+                            <td><span class="gps-coord" id="gps_long"><%= '' + status.gpsCoords[1] %></span></td>
+                        </tr>
+                    </tbody>
+                    <thead>
+                        <tr>
+                            <th colspan="2">Base Mag</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td>Heading</td>
+                            <td><span class="mag-heading" id="mag_heading"><%= '' + status.magHeading %></span></td>
+                        </tr>
+                        <tr>
+                            <td>Declination (rad)</td>
+                            <td><span class="" id="declination_angle"><%= '' + status.declinationAngle %></span></td>
+                        </tr>
+                    </tbody>
+                    <thead>
+                        <tr>
+                            <th colspan="2">Orientation</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td>x</td>
+                            <td><span id="orientation_x"><%= '' + status.orientation[0] %></span></td>
+                        </tr>
+                        <tr>
+                            <td>y</td>
+                            <td><span id="orientation_y"><%= '' + status.orientation[1] %></span></td>
+                        </tr>
+                        <tr>
+                            <td>z</td>
+                            <td><span id="orientation_z"><%= '' + status.orientation[2] %></span></td>
+                        </tr>
+                        <tr>
+                            <td>isCalibrated</td>
+                            <td><span id="is_orientation_calibrated"><%= '' + status.isOrientationCalibrated %></span></td>
+                        </tr>
+                        <tr>
+                            <td>Calibration</td>
+                            <td><span id="orienation_calibration"><%= status.orientationCalibration.map(v => '' + v).join('|') %></span></td>
+                        </tr>
+                        <tr>
+                            <td>isInit</td>
+                            <td><span id="is_orientation_init"><%= '' + status.isOrientationInit %></span></td>
                         </tr>
                     </tbody>
                 </table>
-                <div>
-                    GPS:
-                    lat = <span class="gps-coord" id="gps_lat"><%= '' + status.gpsCoords[0] %></span>,
-                    long = <span class="gps-coord" id="gps_long"><%= '' + status.gpsCoords[1] %></span>
-                </div>
-                <div>
-                    MAG:
-                    heading = <span class="mag-heading" id="mag_heading"><%= '' + status.magHeading %></span>,
-                    d.a. = <span class="" id="declination_angle"><%= '' + status.declinationAngle %></span>
-                </div>
-                <div>
-                    ORI:
-                    x = <span id="orientation_x"><%= '' + status.orientation[0] %></span>,
-                    y = <span id="orientation_y"><%= '' + status.orientation[1] %></span>,
-                    z = <span id="orientation_z"><%= '' + status.orientation[2] %></span>,
-                    iscal = <span id="is_orientation_calibrated"><%= '' + status.isOrientationCalibrated %></span>,
-                    cal = <span id="orienation_calibration"><%= status.orientationCalibration.map(v => '' + v).join('|') %></span>,
-                    init = <span id="is_orientation_init"><%= '' + status.isOrientationInit %></span>
-                </div>
-            </form>
+            </div>
         </div>
         <div class="panel">
             <form>

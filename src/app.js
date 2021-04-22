@@ -91,6 +91,7 @@ class App {
         this.orientationCalibration = [null, null, null, null]
         this.isOrientationCalibrated = null
         this.isOrientationInit = null
+        this.maxSpeeds = [null, null]
     }
 
     async status() {
@@ -108,7 +109,8 @@ class App {
             gaugerConnectedStatus     : this.isGaugerConnected ? 'Connected' : 'Disconnected',
             gpsCoords                 : this.gpsCoords,
             magHeading                : this.magHeading,
-            declinationAngle          : this.declinationAngle
+            declinationAngle          : this.declinationAngle,
+            maxSpeeds                 : this.maxSpeeds
         }
     }
 

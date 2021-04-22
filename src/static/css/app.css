@@ -103,3 +103,14 @@ input.howmuch {
 .clear {
     clear: both;
 }
+.status-table {
+    display: block;
+}
+.status-table th, .status-table td {
+    text-align: left;
+    padding: 5px;
+    border: 1px solid black;
+}
+.status-table td {
+    padding-left: 10px;
+}
