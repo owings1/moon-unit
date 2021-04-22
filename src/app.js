@@ -293,7 +293,7 @@ class App {
         const id = this._newGaugerJobId()
         body = ':' + id + body
         return new Promise((resolve, reject) => {
-            this.log('Enqueuing gauger command', body.trim())
+            this.log('Enqueuing gauger command', {id, body: body.trim()})
             this.gaugerQueue.unshift({isSystem: false, ...params, body, id, handler: resolve})
         })
     }
