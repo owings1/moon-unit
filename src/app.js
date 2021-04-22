@@ -53,7 +53,7 @@ class App {
             pinControllerReset : +env.PIN_CONTROLLER_RESET || 37,
             pinControllerStop  : +env.PIN_CONTROLLER_STOP || 35,
             pinControllerReady : +env.PIN_CONTROLLER_READY || 38,
-            pinGaugerReset     : +env.PIN_GAGUER_RESET || 36,
+            pinGaugerReset     : +env.PIN_GAUGER_RESET || 36,
             // how long to wait after reset to reopen device
             resetDelay     : +env.RESET_DELAY || 5000,
             commandTimeout : +env.COMMAND_TIMEOUT || 5000
@@ -489,9 +489,10 @@ class App {
         this.log('Gpio is', this.opts.gpioEnabled ? 'enabled' : 'disabled')
 
         this.gpio = new Gpio(this.opts.gpioEnabled, {
-            controllerReset    : this.opts.pinControllerReset, 
-            controllerStop     : this.opts.pinControllerStop,
-            controllerReady   : this.opts.pinControllerReady
+            controllerReset : this.opts.pinControllerReset,
+            controllerStop  : this.opts.pinControllerStop,
+            controllerReady : this.opts.pinControllerReady,
+            gaugerReset     : this.opts.pinGaugerReset
         })
         await this.gpio.open()
     }
