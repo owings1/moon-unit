@@ -142,7 +142,7 @@ class App {
                         this.initGaugerWorker()
                         this.gaugerParser.on('data', data => {
                             try {
-                                data = data.trim()
+                                data = data.trim().replace(/^[^a-zA-Z0-9=]+/, '')
                                 if (!data.length) {
                                     return
                                 }
