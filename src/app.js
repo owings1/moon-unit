@@ -229,6 +229,7 @@ class App {
                     values[2] == 'T',
                     values[3] == 'T'
                 ]
+                this.maxSpeeds = floats.slice(6, 8)
                 break
             case 'MOD':
                 // names the modules available
