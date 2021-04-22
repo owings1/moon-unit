@@ -395,7 +395,10 @@ void readMcStatus() {
 }
 
 void readOrientation() {
-  
+  /* Get a new sensor event */ 
+  sensors_event_t event; 
+  bno.getEvent(&event);
+
   if (!isOrientationCalibrated) {
     bno.getCalibration(&cal_system, &cal_gyro, &cal_accel, &cal_mag);
     if (cal_system == 3 && cal_gyro == 3 && cal_accel == 3 && cal_mag == 3) {
@@ -405,10 +408,6 @@ void readOrientation() {
       return;
     }
   }
-
-  /* Get a new sensor event */ 
-  sensors_event_t event; 
-  bno.getEvent(&event);
 
   orientation_x = event.orientation.x;
   orientation_y = event.orientation.y;
