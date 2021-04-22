@@ -21,7 +21,7 @@
 
 // hardware enable
 #define gpsEnabled true
-#define orientationEnabled false
+#define orientationEnabled true
 #define magEnabled true
 
 #define DEG_NULL 1000.00
@@ -312,7 +312,7 @@ void writeMcStatus(Stream &output) {
 }
 
 void writeOrientation(Stream &output) {
-  // x|y|z|cal_system|cal_gyro|cal_accel|cal_mag|isCalibrated
+  // x|y|z|cal_system|cal_gyro|cal_accel|cal_mag|isCalibrated|isInit
   output.print(orientation_x, 4);
   output.write('|');
   output.print(orientation_y, 4);
@@ -328,6 +328,8 @@ void writeOrientation(Stream &output) {
   output.print(cal_mag);
   output.write('|');
   output.write(isOrientationCalibrated ? 'T' : 'F');
+  output.write('|');
+  output.write(isOrientationInit ? 'T' : 'F');
 }
 
 void writeGps(Stream &output) {
@@ -393,6 +395,17 @@ void readMcStatus() {
 }
 
 void readOrientation() {
+  
+  if (!isOrientationCalibrated) {
+    bno.getCalibration(&cal_system, &cal_gyro, &cal_accel, &cal_mag);
+    if (cal_system == 3 && cal_gyro == 3 && cal_accel == 3 && cal_mag == 3) {
+      isOrientationCalibrated = true;
+    } else {
+      // do not set values if not calibrated
+      return;
+    }
+  }
+
   /* Get a new sensor event */ 
   sensors_event_t event; 
   bno.getEvent(&event);
@@ -400,12 +413,6 @@ void readOrientation() {
   orientation_x = event.orientation.x;
   orientation_y = event.orientation.y;
   orientation_z = event.orientation.z;
-  if (!isOrientationCalibrated) {
-    bno.getCalibration(&cal_system, &cal_gyro, &cal_accel, &cal_mag);
-    if (cal_system == 3 && cal_gyro == 3 && cal_accel == 3 && cal_mag == 3) {
-      isOrientationCalibrated = true;
-    }
-  }
 }
 
 void readGps() {
