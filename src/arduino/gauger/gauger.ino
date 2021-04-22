@@ -231,7 +231,8 @@ void takeCommand(Stream &input, Stream &output) {
 }
 
 void writeAck(long &id, Stream &output, boolean withColon) {
-  output.write("ACK:");
+  // clear with newline, for initialization and mode change
+  output.write("\nACK:");
   output.print(id, DEC);
   if (withColon) {
     output.write(':');
