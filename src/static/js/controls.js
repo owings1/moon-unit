@@ -208,7 +208,7 @@ $(document).ready(function() {
             // just make defaults for arrays
             position               : [],
             orientation            : [],
-            orientationCalibration : [].
+            orientationCalibration : [],
             limitsEnabled          : [],
             gpsCoords              : []
         }
