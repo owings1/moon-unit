@@ -27,19 +27,6 @@ Commands
     :04 <motorId> <direction> <degrees>;
     ```
 
-- **05** - Get state of limit switches and stop pin
-
-    ```
-    :05 ;
-    ```
-
-    example response: `=00;TFFT|F`
-
-    Indexes:
-
-    * `0`: `<m1_cw><m1_acw><m2_cw><m2_acw>`
-    * `1`: `<shouldStop>`
-
 - **06** - Home a single motor
 
     ```
@@ -74,25 +61,6 @@ Commands
 
     ```
     :11 <direction_1> <degrees_1> <direction_2> <degrees_2>;
-    ```
-
-- **12** - Get motor positions
-
-    ```
-    :12 <format>;
-    ```
-
-    Formats:
-
-    * `1`: steps
-    * `2`: degrees
-
-    example responses:
-
-    ```
-    =00;8500|1200
-    =00;?|130.195
-    =00;?|?
     ```
 
 - **13** - No response (debug)
@@ -198,8 +166,6 @@ Commands
 | `47` | Invalid steps/degrees      |
 | `48` | Invalid speed/acceleration |
 | `49` | Invalid other parameter    |
-| `50` | Orientation unavailable    | either not enabled at compile, or initialization error
-| `51` | Limits unavailable         | not enabled at compile
 
 ## States
 

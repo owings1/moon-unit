@@ -1,30 +1,22 @@
 
-motor controller
-----------------
-
-### Motors
-
-`m1` - This is the motor that pitches the telescope up and down
-`m2` - This is the motor that yaws (rotates) the base
-
-
-### Arduino pins
+### Motor Controller (Uno)
 
 | Pin | Description                 | Color  | Notes
 |-----|-----------------------------|--------|------------------
-|   2 |                             |        | 
-|   3 | m1 limit switch CW          | yellow | inverter pin 2
-|   4 | m1 limit switch ACW         | yellow | inverter pin 4
+|   0 | RX                          | yellow | via rocker switch to nano 7
+|   2 | TX                          | blue   | via rocker switch to nano 6
+|   3 | m1 limit switch CW          | yellow | inverter 2
+|   4 | m1 limit switch ACW         | yellow | inverter 4
 |   5 | m1 direction                | blue   |
 |   6 | m1 step                     | yellow |
-|   7 | m1 enable                   | white  | to motor controller
+|   7 | m1 enable                   | white  | to motor driver
 |   8 | m2 direction                | blue   |
 |   9 | m2 step                     | yellow |
-|  10 | m2 enable                   | white  | to motor controller
-|  11 | m2 limit switch CW          | yellow | inverter pin 6
-|  12 | m2 limit switch ACW         | yellow | inverter pin 8
-|  13 | stop signal                 | yellow | signal to stop all motors when `HIGH`
-|  A0 | ready signal                | green  | ready when `HIGH`
+|  10 | m2 enable                   | white  | to motor driver
+|  11 | m2 limit switch CW          | yellow | inverter 6
+|  12 | m2 limit switch ACW         | yellow | inverter 8
+|  13 | stop signal                 | yellow | to pi 35, signal to stop all motors when `HIGH`
+|  A0 | ready signal                | green  | to nano 5 and pi 38, ready when `HIGH`
 |  A1 |                             |        | 
 |  A2 |                             |        |
 |  A3 |                             |        |
@@ -32,20 +24,39 @@ motor controller
 | SDA |                             |        |
 | Rst | reset pin                   | blue   | for pi to reset when `LOW`
 
-Nano
+###  Gauger (Nano)
 
 | Pin | Description                 | Color  | Notes
 |-----|-----------------------------|--------|------------------
-|   5 | controller state            | green  | controller A0
-|   6 | RX from controller          | blue   | controller 1
-|   7 | TX to controller            | yellow | controller 0
+| RX0 | RX from pi                  | yellow | via rocker switch to pi 8
+| TX1 | TX to pi                    | blue   | via rocker switch to pi 10
+|   5 | Controller ready            | green  | uno A0 and pi 38
+|   6 | RX from controller          | blue   | via rocker switch to uno 1
+|   7 | TX to controller            | yellow | via rocker switch to uno 0
 |   8 | RX from gps                 | green  |
 |   9 | TX to gps (NC)              |        |
 |  A4 | I2C SDA                     | white  |
 |  A5 | I2C SCL                     | blue   |
-| Rst | reset pin                   | white  | connected to 5-pin special I/O to pi
+| Rst | Reset pin                   | white  | to pi 36
 
-Schmitt Inverter
+### Pi Zero
+
+See [raspberry pi GPIO pinout image][gpio]. Pin 1 is on the SD card side.
+
+| Pin  | Name    | Description         | Color  | Notes
+|------|---------|---------------------|--------|--------
+|   2  | 5V      | Power in            | red    | from voltage regulator pre-diode
+|   6  | GND     | Ground              | black  |
+|   8  | GPIO 14 | TX to gauger        | yellow | via rocker switch to nano pin RX0
+|  10  | GPIO 15 | RX from gauger      | blue   | via rocker switch to nano pin TX1
+|  29  | GPIO 5  | Shutdown button     | white  | shutdown pi when `HIGH` for 2s
+|  35  | GPIO 19 | Controller stop     | yellow | to uno 13
+|  36  | GPIO 16 | Gauger reset        | white  | to nano Rst
+|  37  | GPIO 26 | Controller reset    | blue   | to uno Rst
+|  38  | GPIO 20 | Controller ready    | green  | to uno A0 and nano 5
+
+
+### Schmitt Inverter
 
 | Pin | Name  | Description          | Color  | Notes
 |-----|-------|----------------------|--------|--------------------
@@ -60,19 +71,7 @@ Schmitt Inverter
 |   9 | D in  | m2 acw in            | white  |
 |  14 | VDD   | +3.3v                | red    | nano 3.3v
 
-### Cables
 
-See [raspberry pi GPIO pinout image][gpio]
-
-- 5-pin special I/O from arduino to pi
-
-| Color  | arduino | pi              | Function
-|--------|---------|-----------------|--------------------------
-| black  | GND     | GND             | 
-| blue   | Rst     | GPIO26 - pin 37 | reset controller when `LOW`
-| yellow | 13      | GPIO19 - pin 35 | stop signal
-| green  | A0      | GPIO20 - pin 38 | ready signal
-| white  | Rst     | GPIO16 - pin 36 | reset gauger when `LOW`
 
 
 [gpio]: https://elinux.org/images/5/5c/Pi-GPIO-header.png
