@@ -103,6 +103,89 @@ void loop() {
     //}
 }
 
+/*
+ * 05 - RETIRED - Get state of limit switches and stop pin
+ *
+ *  :05 ;
+ *
+ *    example response:
+ *      =00;TFFT|F
+else if (command.equals("05")) {
+
+    // read limit switch and stop pin states
+
+    input.readStringUntil(';');
+
+    char states[7] = {
+      isLimit_m1_cw  ? 'T' : 'F',
+      isLimit_m1_acw ? 'T' : 'F',
+      isLimit_m2_cw  ? 'T' : 'F',
+      isLimit_m2_acw ? 'T' : 'F',
+      '|',
+      shouldStop ? 'T' : 'F'
+    };
+
+    output.write("=00;");
+    output.write(states);
+    output.write("\n");
+
+  }*/
+/*
+
+ * 12 - RETIRED - Get motor positions
+ *
+ *  :12 <format>;
+ *
+ *    example responses:
+ *      =00;8500|1200
+ *      =00;1000|130.195
+ *      =00;1000|1000
+ *
+ *    NB: 1000 degrees means no value
+ *        -1 steps means no value
+
+else if (command.equals("12")) {
+
+    // get motor positions
+
+    // param is format
+    int format = input.readStringUntil(';').toInt();
+
+    if (format != 1 && format != 2) {
+      output.write("=49\n");
+      return;
+    }
+
+    output.write("=00;");
+
+    writePositions(output, format);
+
+
+    output.write("\n");
+
+  }*/ 
+/*
+ * 15 - RETIRED - Get position in degrees, followed by limits enabled
+ *
+ *  :15 ;
+else if (command.equals("15")) {
+
+   // get position in degrees, followed by limits enabled
+   input.readStringUntil(';');
+
+   output.write("=00;");
+
+   writePositions(output, 2);
+
+   output.write('|');
+   output.write(limitsEnabled_m1 ? 'T' : 'F');
+
+   output.write('|');
+   output.write(limitsEnabled_m2 ? 'T' : 'F');
+
+   output.write("\n");
+
+ }*/
 void writeOrientation(Stream &output) {
   if (isOrientation) {
     writeString(output, String(orientation_x, 4));

@@ -18,13 +18,6 @@
  * 
  *  :04 <motorId> <direction> <degrees>;
  *
- * 05 - Get state of limit switches and stop pin
- *
- *  :05 ;
- *
- *    example response:
- *      =00;TFFT|F
- *
  * 06 - Home a single motor
  *
  *  :06 <motorId>;
@@ -49,31 +42,13 @@
  *
  *  :11 <direction_1> <degrees_1> <direction_2> <degrees_2>;
  *
- * 12 - Get motor positions
- *
- *  :12 <format>;
- *
- *    example responses:
- *      =00;8500|1200
- *      =00;1000|130.195
- *      =00;1000|1000
- *
- *    NB: 1000 degrees means no value
- *        -1 steps means no value
- *
  * 13 - No response (debug)
  *
  *  :13 ;
  *
- * 15- Get position in degrees, followed by limits enabled
- *
- *  :15 ;
- *
  * 17 - Set limit switch enablement for a motor
  *
  *  :17 <motorId> <T|F>;
- *
- *    must be compiled with limitsConnected or will return 51.
  *
  * 18 - Get full status
  *
@@ -100,7 +75,6 @@
  * ----------
  * motorId   - 1: scope, 2: base
  * direction - 1: clockwise, 2: anti-clockwise
- * format    - 1: steps, 2: degrees
  *
  * Response Codes
  * --------------
@@ -115,8 +89,6 @@
  * 47 - Invalid steps/degrees
  * 48 - Invalid speed/acceleration
  * 49 - Invalid other parameter
- * 50 - Orientation unavailable
- * 51 - Limits unavailable
  *
  * State/Ready pin
  * ------
@@ -124,8 +96,7 @@
  * LOW  - busy
  */
 
-// TODO:
-//  - have separate maxAcceleration values for m1 and m2
+// TODO: enable/disable/sleep motors individually
 
 #include <AccelStepper.h>
 #include <MultiStepper.h>
@@ -134,9 +105,6 @@
 /******************************************/
 /* Features/Hardware Enable               */
 /* ****************************************/
-// Whether the limit switches are connected
-#define limitsConnected_m1 true
-#define limitsConnected_m2 true
 
 // Stop Signal pin
 #define stopPinEnabled true
@@ -169,10 +137,9 @@
 #define maxAcceleration 10000L
 #define motorSleepTimeout 2000L
 
-// limit switches can be disabled during runtime, these
-// are set to the value of limitsConnected at setup.
-boolean limitsEnabled_m1 = false;
-boolean limitsEnabled_m2 = false;
+// limit switches can be disabled during runtime.
+boolean limitsEnabled_m1 = true;
+boolean limitsEnabled_m2 = true;
 // limit switch states
 boolean isLimit_m1_cw = false;
 boolean isLimit_m1_acw = false;
@@ -184,6 +151,12 @@ long acceleration_m1;
 long acceleration_m2;
 long maxSpeed_m1;
 long maxSpeed_m2;
+// flag to reset acceleration to oldAcceleration after motors are finished
+// running, for smooth stop on limits.
+boolean isStopping_m1 = false;
+boolean isStopping_m2 = false;
+long oldAcceleration_m1;
+long oldAcceleration_m2;
 
 unsigned long lastMotorActionTime = millis();
 boolean isMotorEnabled = false;
@@ -194,7 +167,6 @@ AccelStepper stepper_m2(AccelStepper::FULL2WIRE, stepPin_m2, dirPin_m2);
 // the position is only meaningful if homed
 boolean hasHomed_m1 = false;
 boolean hasHomed_m2 = false;
-
 
 // State output
 #define statePin A0
@@ -366,25 +338,6 @@ void takeCommand(Stream &input, Stream &output) {
     jumpOneByDegrees(motorId, howMuch);
 
     output.write("=00\n");
-
-  } else if (command.equals("05")) {
-
-    // read limit switch and stop pin states
-
-    input.readStringUntil(';');
-
-    char states[7] = {
-      isLimit_m1_cw  ? 'T' : 'F',
-      isLimit_m1_acw ? 'T' : 'F',
-      isLimit_m2_cw  ? 'T' : 'F',
-      isLimit_m2_acw ? 'T' : 'F',
-      '|',
-      shouldStop ? 'T' : 'F'
-    };
-
-    output.write("=00;");
-    output.write(states);
-    output.write("\n");
 
   } else if (command.equals("06")) {
 
@@ -560,45 +513,9 @@ void takeCommand(Stream &input, Stream &output) {
 
     output.write("=00\n");
 
-  } else if (command.equals("12")) {
-
-    // get motor positions
-
-    // param is format
-    int format = input.readStringUntil(';').toInt();
-
-    if (format != 1 && format != 2) {
-      output.write("=49\n");
-      return;
-    }
-
-    output.write("=00;");
-
-    writePositions(output, format);
-
-
-    output.write("\n");
-
   } else if (command.equals("13")) {
     // no response
     input.readStringUntil(';');
-
-  } else if (command.equals("15")) {
-
-    // get position in degrees, followed by limits enabled
-    input.readStringUntil(';');
-
-    output.write("=00;");
-
-    writePositions(output, 2);
-
-    output.write('|');
-    output.write(limitsEnabled_m1 ? 'T' : 'F');
-
-    output.write('|');
-    output.write(limitsEnabled_m2 ? 'T' : 'F');
-
-    output.write("\n");
 
   } else if (command.equals("17")) {
 
@@ -618,19 +535,13 @@ void takeCommand(Stream &input, Stream &output) {
       return;
     }
     if (motorId == 1) {
-      if (!limitsConnected_m1) {
-        output.write("=51\n");
-        return;
-      }
       limitsEnabled_m1 = flag == 'T';
     } else if (motorId == 2) {
-      if (!limitsConnected_m2) {
-        output.write("=51\n");
-        return;
-      }
       limitsEnabled_m2 = flag == 'T';
     }
+
     output.write("=00\n");
+
   } else if (command.equals("18")) {
 
     // get full status
@@ -732,15 +643,15 @@ int getDirMultiplier(int dirInput) {
 
 void readLimitSwitches() {
 
-  if (limitsConnected_m1) {
+  //if (limitsConnected_m1) {
     isLimit_m1_cw  = digitalReadFast(limitPin_m1_cw)  == LOW;//HIGH;
     isLimit_m1_acw = digitalReadFast(limitPin_m1_acw) == LOW;//HIGH;
-  }
+    //}
 
-  if (limitsConnected_m2) {
+  //if (limitsConnected_m2) {
     isLimit_m2_cw  = digitalReadFast(limitPin_m2_cw)  == LOW;//HIGH;
     isLimit_m2_acw = digitalReadFast(limitPin_m2_acw) == LOW;//HIGH;
-  }
+    //}
 }
 
 // the howMuch is just a positive/negative direction reference.
@@ -800,6 +711,7 @@ void homeMotor(int motorId) {
     return;
   }
   if (isMotorHome(motorId)) {
+    // TODO: make this non-blocking
     // move forward just a little
     jumpOneByDegrees(motorId, 1.5);
     setState(STATE_BUSY);
@@ -813,6 +725,7 @@ void homeMotor(int motorId) {
     }
     readLimitSwitches();
   }
+  // TODO: if we know position, don't way overshoot
   jumpOneByDegrees(motorId, -1 * getMaxDegreesForMotor(motorId));
 }
 
@@ -826,23 +739,47 @@ void endMotor(int motorId) {
 boolean runMotorsIfNeeded() {
   
   boolean isRun = false;
+
   if (stepper_m1.distanceToGo() != 0) {
+    // this will move at most one step
+    stepper_m1.run();
     if (shouldStop || !motorCanMove(1, stepper_m1.distanceToGo())) {
       stopMotor(1);
-    } else {
-      stepper_m1.run();
     }
     registerMotorAction();
     isRun = true;
+  } else if (isStopping_m1) {
+    // we have finished stopping
+    isStopping_m1 = false;
+    setAcceleration(1, oldAcceleration_m1);
+    if (!shouldStop) {
+      // we have reached a limit switch, see if we are home
+      if (isMotorHome(1)) {
+        hasHomed_m1 = true;
+        stepper_m1.setCurrentPosition(0);
+      }
+    }
   }
+
   if (stepper_m2.distanceToGo() != 0) {
+    // this will move at most one step
+    stepper_m2.run();
     if (shouldStop || !motorCanMove(2, stepper_m2.distanceToGo())) {
       stopMotor(2);
-    } else {
-      stepper_m2.run();
     }
     registerMotorAction();
     isRun = true;
+  } else if (isStopping_m2) {
+    // we have finished stopping
+    isStopping_m2 = false;
+    setAcceleration(2, oldAcceleration_m2);
+    if (!shouldStop) {
+    // we have reached a limit switch, see if we are home
+      if (isMotorHome(2)) {
+        hasHomed_m2 = true;
+        stepper_m2.setCurrentPosition(0);
+      }
+    }
   }
 
   return isRun;
@@ -850,35 +787,23 @@ boolean runMotorsIfNeeded() {
 
 void stopMotor(int motorId) {
   if (motorId == 1) {
-    long oldAcceleration_m1 = acceleration_m1;
+    if (isStopping_m1) {
+      // don't duplicate action
+      return;
+    }
+    isStopping_m1 = true;
+    oldAcceleration_m1 = acceleration_m1;
     setAcceleration(1, maxAcceleration);
     stepper_m1.stop();
-    while (stepper_m1.distanceToGo() != 0) {
-      stepper_m1.run();
-    }
-    setAcceleration(1, oldAcceleration_m1);
-    if (!shouldStop) {
-      // we have reached a limit switch, see if we are home
-      if (isMotorHome(motorId)) {
-        hasHomed_m1 = true;
-        stepper_m1.setCurrentPosition(0);
-      }
-    }
   } else if (motorId == 2) {
-    long oldAcceleration_m2 = acceleration_m2;
+    if (isStopping_m2) {
+      // don't duplicate action
+      return;
+    }
+    isStopping_m2 = true;
+    oldAcceleration_m2 = acceleration_m2;
     setAcceleration(2, maxAcceleration);
     stepper_m2.stop();
-    while (stepper_m2.distanceToGo() != 0) {
-      stepper_m2.run();
-    }
-    setAcceleration(2, oldAcceleration_m2);
-    if (!shouldStop) {
-    // we have reached a limit switch, see if we are home
-      if (isMotorHome(motorId)) {
-        hasHomed_m2 = true;
-        stepper_m2.setCurrentPosition(0);
-      }
-    }
   }
 }
 
@@ -942,6 +867,7 @@ void setAcceleration(int motorId, long value) {
   }
 }
 
+// TODO: enable/disable/sleep motors individually
 void enableMotors() {
   if (!isMotorEnabled) {
     digitalWrite(enablePin_m1, LOW);
@@ -952,6 +878,7 @@ void enableMotors() {
   registerMotorAction();
 }
 
+// TODO: enable/disable/sleep motors individually
 void disableMotors() {
   if (isMotorEnabled) {
     digitalWrite(enablePin_m1, HIGH);
@@ -960,10 +887,12 @@ void disableMotors() {
   }
 }
 
+// TODO: enable/disable/sleep motors individually
 void registerMotorAction() {
   lastMotorActionTime = millis();
 }
 
+// TODO: enable/disable/sleep motors individually
 void checkMotorSleep() {
   unsigned long elapsed = millis() - lastMotorActionTime;
   if (elapsed > motorSleepTimeout) {
@@ -1001,21 +930,13 @@ void setupMotors() {
   pinMode(enablePin_m1, OUTPUT);
   pinMode(enablePin_m2, OUTPUT);
 
-  if (limitsConnected_m1) {
-    // Declare limit switch pins as input
-    pinMode(limitPin_m1_cw, INPUT);
-    pinMode(limitPin_m1_acw, INPUT);
-    // set enabled
-    limitsEnabled_m1 = true;
-  }
+  // Declare limit switch pins as input
+  pinMode(limitPin_m1_cw, INPUT);
+  pinMode(limitPin_m1_acw, INPUT);
 
-  if (limitsConnected_m2) {
-    // Declare limit switch pins as input
-    pinMode(limitPin_m2_cw, INPUT);
-    pinMode(limitPin_m2_acw, INPUT);
-    // set enabled
-    limitsEnabled_m2 = true;
-  }
+  // Declare limit switch pins as input
+  pinMode(limitPin_m2_cw, INPUT);
+  pinMode(limitPin_m2_acw, INPUT);
 
   // set initial state of motor to disabled
   digitalWrite(enablePin_m1, HIGH);

@@ -6,7 +6,8 @@
 #
 #   vncserver -geometry 1440x900 :1
 #
-# then stop
+# then stop:
+#
 #   vncserver -kill :1
 #
 # From: https://gist.github.com/spinxz/1692ff042a7cfd17583b

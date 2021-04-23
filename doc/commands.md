@@ -116,7 +116,6 @@ Commands
     =00;?|?|F|F
     ```
 
-
     Indexes
 
     * `0`: m1 position
@@ -129,8 +128,6 @@ Commands
     ```
     :17 <motorId> <T|F>;
     ```
-
-    Must be compiled with limitsConnected or will return 51.
 
 - **18** - Get full controller status
 
