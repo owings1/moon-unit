@@ -95,9 +95,6 @@
  * HIGH - ready
  * LOW  - busy
  */
-
-// TODO: enable/disable/sleep motors individually
-
 #include <AccelStepper.h>
 #include <MultiStepper.h>
 #include "dwf/digitalWriteFast.h"
@@ -113,8 +110,15 @@
 #define baudRate 9600L
 #define DEG_NULL 1000.00
 #define STEPS_NULL -1L
+#define STATE_READY HIGH
+#define STATE_BUSY LOW
 
-// Motor
+/////////////////////
+// Pins            //
+/////////////////////
+
+#define statePin A0
+#define stopPin 13
 
 #define dirPin_m1 5
 #define dirPin_m2 8
@@ -126,11 +130,12 @@
 #define limitPin_m1_acw 4
 #define limitPin_m2_cw 11
 #define limitPin_m2_acw 12
-#define absMaxSpeed_m1 1800L
-#define absMaxSpeed_m2 1800L
+
+#define absMaxSpeed_m1 1600L
+#define absMaxSpeed_m2 1600L
 #define degreesPerStep_m1 0.0008125
 #define degreesPerStep_m2 0.001125
-// for homing, will not overshoot limit switches
+// for homing, will try not to overshoot limit switches
 #define maxDegrees_m1 190
 #define maxDegrees_m2 380
 
@@ -157,25 +162,25 @@ boolean isStopping_m1 = false;
 boolean isStopping_m2 = false;
 long oldAcceleration_m1;
 long oldAcceleration_m2;
+// flag for when we are backing up for homing purposes, so that immediately
+// after we can re-initiate homing.
+boolean isBacking_m1 = false;
+boolean isBacking_m2 = false;
 
-unsigned long lastMotorActionTime = millis();
-boolean isMotorEnabled = false;
-
-AccelStepper stepper_m1(AccelStepper::FULL2WIRE, stepPin_m1, dirPin_m1);
-AccelStepper stepper_m2(AccelStepper::FULL2WIRE, stepPin_m2, dirPin_m2);
+unsigned long lastMotorActionTime_m1 = millis();
+unsigned long lastMotorActionTime_m2 = millis();
+boolean isMotorEnabled_m1 = false;
+boolean isMotorEnabled_m2 = false;
 
 // the position is only meaningful if homed
 boolean hasHomed_m1 = false;
 boolean hasHomed_m2 = false;
 
-// State output
-#define statePin A0
-#define STATE_READY HIGH
-#define STATE_BUSY LOW
-
-// Stop/cancel
-#define stopPin 13
+// Stop signal
 boolean shouldStop = false;
+
+AccelStepper stepper_m1(AccelStepper::FULL2WIRE, stepPin_m1, dirPin_m1);
+AccelStepper stepper_m2(AccelStepper::FULL2WIRE, stepPin_m2, dirPin_m2);
 
 void setup() {
   setupStatePin();
@@ -194,7 +199,7 @@ void loop() {
   if (runMotorsIfNeeded()) {
     setState(STATE_BUSY);
   } else {
-    checkMotorSleep();
+    checkMotorsSleep();
     setState(STATE_READY);
     takeCommand(Serial, Serial);
   }
@@ -620,6 +625,8 @@ void writePositions(Stream &output, int format) {
   }
 }
 
+
+
 int readMotorIdFromInput(Stream &input) {
   int motorId = input.readStringUntil(' ').toInt();
   if (motorId == 1 || motorId == 2) {
@@ -643,15 +650,11 @@ int getDirMultiplier(int dirInput) {
 
 void readLimitSwitches() {
 
-  //if (limitsConnected_m1) {
-    isLimit_m1_cw  = digitalReadFast(limitPin_m1_cw)  == LOW;//HIGH;
-    isLimit_m1_acw = digitalReadFast(limitPin_m1_acw) == LOW;//HIGH;
-    //}
+  isLimit_m1_cw  = digitalReadFast(limitPin_m1_cw)  == LOW;//HIGH;
+  isLimit_m1_acw = digitalReadFast(limitPin_m1_acw) == LOW;//HIGH;
 
-  //if (limitsConnected_m2) {
-    isLimit_m2_cw  = digitalReadFast(limitPin_m2_cw)  == LOW;//HIGH;
-    isLimit_m2_acw = digitalReadFast(limitPin_m2_acw) == LOW;//HIGH;
-    //}
+  isLimit_m2_cw  = digitalReadFast(limitPin_m2_cw)  == LOW;//HIGH;
+  isLimit_m2_acw = digitalReadFast(limitPin_m2_acw) == LOW;//HIGH;
 }
 
 // the howMuch is just a positive/negative direction reference.
@@ -676,6 +679,20 @@ boolean motorCanMove(int motorId, long howMuch) {
       return !isLimit_m2_acw;
     }
   }
+}
+
+// returns DEG_NULL if motor has not homed.
+float getMotorPositionDegrees(int motorId) {
+  if (motorId == 1) {
+    if (hasHomed_m1) {
+      return stepper_m1.currentPosition() * degreesPerStep_m1;
+    }
+  } else if (motorId == 2) {
+    if (hasHomed_m2) {
+      return stepper_m2.currentPosition() * degreesPerStep_m2;
+    }
+  }
+  return DEG_NULL;
 }
 
 boolean motorCanHome(int motorId) {
@@ -711,22 +728,25 @@ void homeMotor(int motorId) {
     return;
   }
   if (isMotorHome(motorId)) {
-    // TODO: make this non-blocking
     // move forward just a little
-    jumpOneByDegrees(motorId, 1.5);
-    setState(STATE_BUSY);
-    while (runMotorsIfNeeded()) {
-      readLimitSwitches();
-      // TODO: fix physical tab for M2 optical switches. This code works
-      //       fine, and it's better than moving a full 1.5 degrees.
-      if (!isMotorHome(motorId)) {
-        //stopMotor(motorId);
-      }
+    if (motorId == 1) {
+      isBacking_m1 = true;
+    } else if (motorId == 2) {
+      isBacking_m2 = true;
     }
-    readLimitSwitches();
+    jumpOneByDegrees(motorId, 1.5);
+    // homing will recommence after backing is complete
+    return;
   }
-  // TODO: if we know position, don't way overshoot
-  jumpOneByDegrees(motorId, -1 * getMaxDegreesForMotor(motorId));
+
+  float degreesToMove = getMaxDegreesForMotor(motorId);
+  float mposDegrees = getMotorPositionDegrees(motorId);
+  // if we know position, don't way overshoot
+  if (mposDegrees != DEG_NULL && mposDegrees > 0) {
+    degreesToMove = degreesToMove - mposDegrees + 10;
+  }
+
+  jumpOneByDegrees(motorId, -1 * degreesToMove);
 }
 
 void endMotor(int motorId) {
@@ -746,7 +766,7 @@ boolean runMotorsIfNeeded() {
     if (shouldStop || !motorCanMove(1, stepper_m1.distanceToGo())) {
       stopMotor(1);
     }
-    registerMotorAction();
+    registerMotorAction(1);
     isRun = true;
   } else if (isStopping_m1) {
     // we have finished stopping
@@ -759,6 +779,10 @@ boolean runMotorsIfNeeded() {
         stepper_m1.setCurrentPosition(0);
       }
     }
+  } else if (isBacking_m1) {
+    // we have finished backing for home
+    isBacking_m1 = false;
+    homeMotor(1);
   }
 
   if (stepper_m2.distanceToGo() != 0) {
@@ -767,7 +791,7 @@ boolean runMotorsIfNeeded() {
     if (shouldStop || !motorCanMove(2, stepper_m2.distanceToGo())) {
       stopMotor(2);
     }
-    registerMotorAction();
+    registerMotorAction(2);
     isRun = true;
   } else if (isStopping_m2) {
     // we have finished stopping
@@ -780,6 +804,10 @@ boolean runMotorsIfNeeded() {
         stepper_m2.setCurrentPosition(0);
       }
     }
+  } else if (isBacking_m2) {
+    // we have finished backing for home
+    isBacking_m2 = false;
+    homeMotor(2);
   }
 
   return isRun;
@@ -825,7 +853,7 @@ void jumpOne(int motorId, long howMuch) {
     } else if (motorId == 2) {
       stepper_m2.move(howMuch);
     }
-    enableMotors();
+    enableMotor(motorId);
   }
 }
 
@@ -836,13 +864,13 @@ void jumpOneByDegrees(int motorId, float howMuch) {
     steps = howMuch / degreesPerStep_m1;
     if (motorCanMove(motorId, steps)) {
       stepper_m1.move(steps);
-      enableMotors();
+      enableMotor(motorId);
     }
   } else if (motorId == 2) {
     steps = howMuch / degreesPerStep_m2;
     if (motorCanMove(motorId, steps)) {
       stepper_m2.move(steps);
-      enableMotors();
+      enableMotor(motorId);
     }
   }
 }
@@ -867,36 +895,58 @@ void setAcceleration(int motorId, long value) {
   }
 }
 
-// TODO: enable/disable/sleep motors individually
-void enableMotors() {
-  if (!isMotorEnabled) {
-    digitalWrite(enablePin_m1, LOW);
-    digitalWrite(enablePin_m2, LOW);
-    isMotorEnabled = true;
-    delay(2);
+void enableMotor(int motorId) {
+  if (motorId == 1) {
+    if (!isMotorEnabled_m1) {
+      digitalWrite(enablePin_m1, LOW);
+      isMotorEnabled_m1 = true;
+      delay(2);
+    }
+  } else if (motorId == 2) {
+    if (!isMotorEnabled_m2) {
+      digitalWrite(enablePin_m2, LOW);
+      isMotorEnabled_m2 = true;
+      delay(2);
+    }
   }
-  registerMotorAction();
+  registerMotorAction(motorId);
 }
 
-// TODO: enable/disable/sleep motors individually
+void disableMotor(int motorId) {
+  if (motorId == 1) {
+    if (isMotorEnabled_m1) {
+      digitalWrite(enablePin_m1, HIGH);
+      isMotorEnabled_m1 = false;
+    }
+  } else if (motorId == 2) {
+    if (isMotorEnabled_m2) {
+      digitalWrite(enablePin_m2, HIGH);
+      isMotorEnabled_m2 = false;
+    }
+  }
+}
+
 void disableMotors() {
-  if (isMotorEnabled) {
-    digitalWrite(enablePin_m1, HIGH);
-    digitalWrite(enablePin_m2, HIGH);
-    isMotorEnabled = false;
+  disableMotor(1);
+  disableMotor(2);
+}
+
+void registerMotorAction(int motorId) {
+  if (motorId == 1) {
+    lastMotorActionTime_m1 = millis();
+  } else if (motorId == 2) {
+    lastMotorActionTime_m2 = millis();
   }
 }
 
-// TODO: enable/disable/sleep motors individually
-void registerMotorAction() {
-  lastMotorActionTime = millis();
-}
-
-// TODO: enable/disable/sleep motors individually
-void checkMotorSleep() {
-  unsigned long elapsed = millis() - lastMotorActionTime;
-  if (elapsed > motorSleepTimeout) {
-    disableMotors();
+void checkMotorsSleep() {
+  unsigned long elapsed_m1 = millis() - lastMotorActionTime_m1;
+  unsigned long elapsed_m2 = millis() - lastMotorActionTime_m2;
+  if (elapsed_m1 > motorSleepTimeout) {
+    disableMotor(1);
+  }
+  if (elapsed_m2 > motorSleepTimeout) {
+    disableMotor(2);
   }
 }
 
@@ -941,7 +991,8 @@ void setupMotors() {
   // set initial state of motor to disabled
   digitalWrite(enablePin_m1, HIGH);
   digitalWrite(enablePin_m2, HIGH);
-  isMotorEnabled = false;
+  isMotorEnabled_m1 = false;
+  isMotorEnabled_m2 = false;
 
   // AccelStepper
   setMaxSpeed(1, absMaxSpeed_m1);
