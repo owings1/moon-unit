@@ -13,12 +13,17 @@ const pinButton = 33 // GPIO 13
 var counter = 0
 var clkLastState
 
+// NB: handlers should catch all errors
 // what to do on a forward move
 var forwardHandler
 // what to do on a backward move
 var backwardHandler
 // what to do on the next button press
 var buttonResolveOnce
+
+function pause(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms))
+}
 
 async function init() {
     // always use sync methods, async methods are buggy
@@ -68,10 +73,17 @@ async function init() {
     })
 }
 
-// this assumes choices has max length 4, or will truncate
+function shutdown() {
+    lcd.noDisplaySync()
+    gpio.destroy()
+}
+
+// this assumes choices has max length 4, or will throw an error
 // declare as async so we can pause if needed
 async function writeMenu(choices, selectedIndex) {
-    choices = choices.slice(0, 4)
+    if (choices.length > 4) {
+        throw new Error('too many choices to display')
+    }
     lcd.clearSync()
     for (var i = 0; i < choices.length; i++) {
         lcd.setCursorSync(0, i)
@@ -90,21 +102,61 @@ async function updateSelectedIndex(selectedIndex) {
 
 // display four line menu with > prefix, move up/down with encoder,
 // wait for button press, then return choice
-async function getMenuChoice() {
-    const choices = ['apples', 'bananas', 'candy', 'drink']
-    var selectedIndex = 0
-    await writeMenu(choices, selectedIndex)
+async function getMenuChoice(choices) {
+    var absoluteSelectedIndex = 0
+    var currentSliceStart = 0
+    var relativeSelectedIndex = 0
+    var currentSlice = choices.slice(currentSliceStart, currentSliceStart + 4)
+    await writeMenu(currentSlice, relativeSelectedIndex)
     // set forward/backward handlers
     forwardHandler = () => {
-        if (selectedIndex < choices.length - 1) {
-            selectedIndex += 1
-            updateSelectedIndex(selectedIndex)
+        try {
+            if (absoluteSelectedIndex >= choices.length - 1) {
+                // we can't go forward anymore
+                return
+            }
+            absoluteSelectedIndex += 1
+            if (relativeSelectedIndex < 3) {
+                // we can keep the current slice, and just increment the relative index
+                relativeSelectedIndex += 1
+                updateSelectedIndex(relativeSelectedIndex)
+            } else {
+                // we must update the slice
+                currentSliceStart += 1
+                currentSlice = choices.slice(currentSliceStart, currentSliceStart + 4)
+                // keep relative index the same since we will be at the end
+                // redraw the whole menu
+                
+                writeMenu(currentSlice, relativeSelectedIndex)
+            }
+            console.log({currentSlice, relativeSelectedIndex, absoluteSelectedIndex})
+        } catch (err) {
+            console.error(err)
         }
+        
     }
     backwardHandler = () => {
-        if (selectedIndex > 0) {
-            selectedIndex -= 1
-            updateSelectedIndex(selectedIndex)
+        try {
+            if (absoluteSelectedIndex < 1) {
+                // we can't go backward anymore
+                return
+            }
+            absoluteSelectedIndex -= 1
+            if (relativeSelectedIndex > 0) {
+                // we can keep the current slice, and just decrement the relative index
+                relativeSelectedIndex -= 1
+                updateSelectedIndex(relativeSelectedIndex)
+            } else {
+                // we must update the slice
+                currentSliceStart -= 1
+                currentSlice = choices.slice(currentSliceStart, currentSliceStart + 4)
+                // keep relative index the same since we will be at the beginning
+                // redraw the whole menu
+                writeMenu(currentSlice, relativeSelectedIndex)
+            }
+            console.log({currentSlice, relativeSelectedIndex, absoluteSelectedIndex})
+        } catch (err) {
+            console.error(err)
         }
     }
     try {
@@ -116,39 +168,38 @@ async function getMenuChoice() {
         backwardHandler = null
     }
 
-    return choices[selectedIndex]
+    return {
+        index: absoluteSelectedIndex,
+        value: choices[absoluteSelectedIndex]
+    }
 }
 
-function shutdown() {
-    lcd.noDisplaySync()
-    gpio.destroy()
+async function printSelection(value) {
+    lcd.clearSync()
+    lcd.setCursorSync(0, 0)
+    lcd.printSync('enjoy your ' + value)
 }
+
 // get menu choice, then say "you selected x", then quit.
 async function main() {
+
     await init()
-    const choice = await getMenuChoice()
-    await lcd.clear()
-    await lcd.setCursor(0, 0)
-    await lcd.print('you selected ' + choice)
-    await new Promise(resolve => setTimeout(resolve, 5000))
-    shutdown()
+
+    try {
+
+        // 4 item menu
+        const choice1 = await getMenuChoice(['apples', 'bananas', 'candy', 'drink'])
+        await printSelection(choice1.value)
+        await pause(5000)
+
+        // 5 item menu
+        const choice2 = await getMenuChoice(['first', 'second', 'third', 'fourth', 'fifth'])
+        await printSelection(choice2.value)
+        await pause(5000)
+    } finally {
+        shutdown()
+    }
 }
 
+// run main
 main()
-
-//lcd.noDisplaySync()
-
-
-async function example1() {
-    await init()
-    await lcd.clear()
-    await new Promise(resolve => setTimeout(resolve, 5000))
-    await lcd.print('Hello')
-    await new Promise(resolve => setTimeout(resolve, 5000))
-    await lcd.setCursor(0, 1)
-    await new Promise(resolve => setTimeout(resolve, 5000))
-    await lcd.print('World')
-    await new Promise(resolve => setTimeout(resolve, 5000))
-    await lcd.noDisplay()
-    shutdown()
-}
