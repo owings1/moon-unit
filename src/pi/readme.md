@@ -23,6 +23,14 @@ https://www.circuitbasics.com/raspberry-pi-i2c-lcd-set-up-and-programming/
     ```
     sudo apt-get install i2c-tools python-smbus
     ```
+
+device should now show up at `/dev/i2c-1`. Scan for screen with:
+
+    ```
+    i2cdetect -y 1
+    ```
+
+
 ### System service setup
 
 - Build tools
