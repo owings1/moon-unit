@@ -1,0 +1,12 @@
+[Unit]
+Description=Moon Unit
+
+[Service]
+Type=simple
+User=pi
+Environment=GAUGER_PORT=/dev/ttyS0
+Environment=GPIO_ENABLED=1
+ExecStart=/usr/local/bin/node /home/pi/git/moon-unit/index.js
+
+[Install]
+WantedBy=multi-user.target

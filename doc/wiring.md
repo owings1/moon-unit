@@ -45,15 +45,15 @@ See [raspberry pi GPIO pinout image][gpio]. Pin 1 is on the SD card side.
 
 | Pin  | Name    | Description         | Color  | Notes
 |------|---------|---------------------|--------|--------
-|   2  | 5V      | Power in            | red    | from voltage regulator pre-diode   (x)
-|   6  | GND     | Ground              | black  |                                    (x)
-|   8  | GPIO 14 | TX to gauger        | yellow | via rocker switch to nano pin RX0  (x)
-|  10  | GPIO 15 | RX from gauger      | blue   | via rocker switch to nano pin TX1  (x)
-|  11  | GPIO 17 | Gauger reset        | white  | to nano Rst                        (x)
-|  13  | GPIO 27 | Controller reset    | blue   | to uno Rst                         (x)
-|  16  | GPIO 20 | Controller ready    | green  | to uno A0 and nano 5               (x)
-|  18  | GPIO 24 | Controller stop     | yellow | to uno 13                          (x)
-|  29  | GPIO 5  | Shutdown button     | white  | shutdown pi when `HIGH` for 2s     (x)
+|   2  | 5V      | Power in            | red    | from voltage regulator pre-diode
+|   6  | GND     | Ground              | black  |
+|   8  | GPIO 14 | TX to gauger        | yellow | via rocker switch to nano pin RX0
+|  10  | GPIO 15 | RX from gauger      | blue   | via rocker switch to nano pin TX1
+|  11  | GPIO 17 | Gauger reset        | white  | to nano Rst
+|  13  | GPIO 27 | Controller reset    | blue   | to uno Rst
+|  16  | GPIO 20 | Controller ready    | green  | to uno A0 and nano 5
+|  18  | GPIO 24 | Controller stop     | yellow | to uno 13
+|  29  | GPIO 5  | Shutdown button     | white  | shutdown pi when `LOW` for 2s
 
 
 ### Schmitt Inverter
