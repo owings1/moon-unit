@@ -1,16 +1,16 @@
-# sudo mkdir -p /var/lib/local/power-switch
-# sudo cp powerswitch.py /var/lib/local/power-switch
-# sudo cp powerbuttons.service /etc/systemd/system/
+# sudo mkdir -p /var/lib/local/shutdown-button
+# sudo cp shutdown-button.py /var/lib/local/shutdown-button
+# sudo cp shutdown-button.service /etc/systemd/system/
 # sudo systemctl daemon-reload
-# sudo systemctl enable powerbuttons.service
-# sudo systemctl restart powerbuttons.service
+# sudo systemctl enable shutdown-button.service
+# sudo systemctl restart shutdown-button.service
 [Unit]
 Description=Power Buttons
 
 [Service]
 Type=simple
 User=root
-ExecStart=/usr/bin/python3 /var/lib/local/power-switch/powerswitch.py
+ExecStart=/usr/bin/python3 /var/lib/local/shutdown-button/shutdown-button.py
 
 [Install]
 WantedBy=multi-user.target
