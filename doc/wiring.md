@@ -15,7 +15,7 @@
 |  10 | m2 enable                   | white  | to motor driver
 |  11 | m2 limit switch CW          | yellow | inverter 6
 |  12 | m2 limit switch ACW         | yellow | inverter 8
-|  13 | stop signal                 | yellow | to pi 35, signal to stop all motors when `HIGH`
+|  13 | stop signal                 | yellow | to pi 18, signal to stop all motors when `HIGH`
 |  A0 | ready signal                | green  | to nano 5 and pi 38, ready when `HIGH`
 |  A1 |                             |        | 
 |  A2 |                             |        |
@@ -30,14 +30,14 @@
 |-----|-----------------------------|--------|------------------
 | RX0 | RX from pi                  | yellow | via rocker switch to pi 8
 | TX1 | TX to pi                    | blue   | via rocker switch to pi 10
-|   5 | Controller ready            | green  | uno A0 and pi 38
+|   5 | Controller ready            | green  | uno A0 and pi 16
 |   6 | RX from controller          | blue   | via rocker switch to uno 1
 |   7 | TX to controller            | yellow | via rocker switch to uno 0
 |   8 | RX from gps                 | green  |
 |   9 | TX to gps (NC)              |        |
 |  A4 | I2C SDA                     | white  |
 |  A5 | I2C SCL                     | blue   |
-| Rst | Reset pin                   | white  | to pi 36
+| Rst | Reset pin                   | white  | to pi 11
 
 ### Pi Zero
 
@@ -45,15 +45,15 @@ See [raspberry pi GPIO pinout image][gpio]. Pin 1 is on the SD card side.
 
 | Pin  | Name    | Description         | Color  | Notes
 |------|---------|---------------------|--------|--------
-|   2  | 5V      | Power in            | red    | from voltage regulator pre-diode
-|   6  | GND     | Ground              | black  |
-|   8  | GPIO 14 | TX to gauger        | yellow | via rocker switch to nano pin RX0
-|  10  | GPIO 15 | RX from gauger      | blue   | via rocker switch to nano pin TX1
-|  29  | GPIO 5  | Shutdown button     | white  | shutdown pi when `HIGH` for 2s
-|  35  | GPIO 19 | Controller stop     | yellow | to uno 13
-|  36  | GPIO 16 | Gauger reset        | white  | to nano Rst
-|  37  | GPIO 26 | Controller reset    | blue   | to uno Rst
-|  38  | GPIO 20 | Controller ready    | green  | to uno A0 and nano 5
+|   2  | 5V      | Power in            | red    | from voltage regulator pre-diode   (x)
+|   6  | GND     | Ground              | black  |                                    (x)
+|   8  | GPIO 14 | TX to gauger        | yellow | via rocker switch to nano pin RX0  (x)
+|  10  | GPIO 15 | RX from gauger      | blue   | via rocker switch to nano pin TX1  (x)
+|  11  | GPIO 17 | Gauger reset        | white  | to nano Rst                        (x)
+|  13  | GPIO 27 | Controller reset    | blue   | to uno Rst                         (x)
+|  16  | GPIO 20 | Controller ready    | green  | to uno A0 and nano 5               (x)
+|  18  | GPIO 24 | Controller stop     | yellow | to uno 13                          (x)
+|  29  | GPIO 5  | Shutdown button     | white  | shutdown pi when `HIGH` for 2s     (x)
 
 
 ### Schmitt Inverter

@@ -50,10 +50,10 @@ class App {
             workerDelay    : +env.WORKER_DELAY || 100,
 
             gpioEnabled        : !!env.GPIO_ENABLED,
-            pinControllerReset : +env.PIN_CONTROLLER_RESET || 37,
-            pinControllerStop  : +env.PIN_CONTROLLER_STOP || 35,
-            pinControllerReady : +env.PIN_CONTROLLER_READY || 38,
-            pinGaugerReset     : +env.PIN_GAUGER_RESET || 36,
+            pinControllerReset : +env.PIN_CONTROLLER_RESET || 13,
+            pinControllerStop  : +env.PIN_CONTROLLER_STOP || 18,
+            pinControllerReady : +env.PIN_CONTROLLER_READY || 16,
+            pinGaugerReset     : +env.PIN_GAUGER_RESET || 11,
             // how long to wait after reset to reopen device
             resetDelay     : +env.RESET_DELAY || 5000,
             commandTimeout : +env.COMMAND_TIMEOUT || 5000
