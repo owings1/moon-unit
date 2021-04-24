@@ -19,7 +19,7 @@ Made available under GNU GENERAL PUBLIC LICENSE
 I2CBUS = 1
 
 # LCD Address
-ADDRESS = 0x3f
+DEFAULT_ADDRESS = 0x3f
 
 import smbus
 from time import sleep
@@ -105,8 +105,8 @@ Rs = 0b00000001 # Register select bit
 
 class lcd:
    #initializes objects and lcd
-   def __init__(self):
-      self.lcd_device = i2c_device(ADDRESS)
+   def __init__(self, address = DEFAULT_ADDRESS):
+      self.lcd_device = i2c_device(address)
 
       self.lcd_write(0x03)
       self.lcd_write(0x03)

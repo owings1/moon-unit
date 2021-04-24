@@ -30,21 +30,15 @@
         </div>
         <div class="panel">
             <div>
+                <h3>Motors</h3>
+                <div id="controller_state"><%= '' + status.controllerState %></div>
+                <div>
+                    <a href="javascript:" class="gpio button gpio_controller_stop <%= status.gpioEnabled ? 'red' : 'disabled' %>">■</a>
+                </div>
                 <table class="status-table">
                     <thead>
                         <tr>
-                            <th colspan="2">State</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <tr>
-                            <td>Controller</td>
-                            <td><span id="controller_state"><%= '' + status.controllerState %></span></td>
-                        </tr>
-                    </tbody>
-                    <thead>
-                        <tr>
-                            <th colspan="2">Position</th>
+                            <th colspan="2">Relative Position</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -95,6 +89,9 @@
                             <td><span id="maxSpeed_m2"><%= '' + status.maxSpeeds[1] %></span></td>
                         </tr>
                     </tbody>
+                </table>
+                <h3>Gauges</h3>
+                <table class="status-table">
                     <thead>
                         <tr>
                             <th colspan="2">GPS</th>
@@ -112,6 +109,21 @@
                     </tbody>
                     <thead>
                         <tr>
+                            <th>Calculations</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td>Declination (rad)</td>
+                            <td><span class="" id="declination_angle"><%= '' + status.declinationAngle %></span></td>
+                        </tr>
+                        <tr>
+                            <td>Declination source</td>
+                            <td><span class="" id="declination_source"><%= '' + status.declinationSource %></span></td>
+                        </tr>
+                    </tbody>
+                    <thead>
+                        <tr>
                             <th colspan="2">Base Mag</th>
                         </tr>
                     </thead>
@@ -119,10 +131,6 @@
                         <tr>
                             <td>Heading</td>
                             <td><span class="mag-heading" id="mag_heading"><%= '' + status.magHeading %></span></td>
-                        </tr>
-                        <tr>
-                            <td>Declination (rad)</td>
-                            <td><span class="" id="declination_angle"><%= '' + status.declinationAngle %></span></td>
                         </tr>
                     </tbody>
                     <thead>
@@ -162,7 +170,7 @@
         <div class="panel">
             <form>
                 <div>
-                    <a href="javascript:" class="gpio button <%= status.gpioEnabled ? 'red' : 'disabled' %>" id="gpio_controller_stop">Stop</a>
+                    <a href="javascript:" class="gpio button gpio_controller_stop <%= status.gpioEnabled ? 'red' : 'disabled' %>">Stop</a>
                 </div>
                 <table>
                     <tr>

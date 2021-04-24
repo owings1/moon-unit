@@ -87,6 +87,7 @@ class App {
         this.gpsCoords = [null, null]
         this.magHeading = null
         this.declinationAngle = null
+        this.declinationSource = null
         this.orientation   = [null, null, null]
         this.orientationCalibration = [null, null, null, null]
         this.isOrientationCalibrated = null
@@ -110,6 +111,7 @@ class App {
             gpsCoords                 : this.gpsCoords,
             magHeading                : this.magHeading,
             declinationAngle          : this.declinationAngle,
+            declinationSource         : this.declinationSource,
             maxSpeeds                 : this.maxSpeeds
         }
     }

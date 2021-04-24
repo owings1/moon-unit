@@ -5,3 +5,5 @@ node_modules
 /build
 /qemu-arm-static
 /.nyc_output
+*.pyc
+__pycache__

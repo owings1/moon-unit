@@ -14,8 +14,15 @@
     ```
 
 
-`raspi-config`: enable UART serial
+`raspi-config`: enable UART serial, I2C
 
+I2C:
+
+https://www.circuitbasics.com/raspberry-pi-i2c-lcd-set-up-and-programming/
+
+    ```
+    sudo apt-get install i2c-tools python-smbus
+    ```
 ### System service setup
 
 - Build tools
@@ -47,6 +54,10 @@
 
 - Service
 
+    ```
+    cd src/pi/service
+    ./install.sh
+    ```
 
 ### Docker setuip
 

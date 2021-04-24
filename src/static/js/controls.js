@@ -67,7 +67,7 @@ $(document).ready(function() {
 
             if ($target.is('#gpio_controller_state')) {
                 sendRequest('controller/gpio/state')
-            } else if ($target.is('#gpio_controller_stop')) {
+            } else if ($target.is('.gpio_controller_stop')) {
                 sendRequest('controller/gpio/stop', 'POST')
             } else if ($target.is('#gpio_controller_reset')) {
                 if (confirm('Reset controller, are you sure?')) {
