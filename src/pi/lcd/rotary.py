@@ -1,3 +1,4 @@
+# from https://www.pinteric.com/rotary.html
 import pigpio
 
 pi = pigpio.pi()
