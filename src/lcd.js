@@ -28,8 +28,8 @@ function pause(ms) {
 async function init() {
     // always use sync methods, async methods are buggy
     lcd.beginSync()
-    //await gpio.setup(pinClk, gpio.DIR_IN, gpio.EDGE_BOTH)
-    await gpio.setup(pinClk, gpio.DIR_IN, gpio.EDGE_RISING)
+    await gpio.setup(pinClk, gpio.DIR_IN, gpio.EDGE_BOTH)
+    //await gpio.setup(pinClk, gpio.DIR_IN, gpio.EDGE_RISING)
     await gpio.setup(pinDt, gpio.DIR_IN)
     await gpio.setup(pinButton, gpio.DIR_IN, gpio.EDGE_RISING)
 

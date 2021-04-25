@@ -51,16 +51,18 @@ See [raspberry pi GPIO pinout image][gpio]. Pin 1 is on the SD card side.
 |   6  | GND     | Ground              | black  |
 |   8  | GPIO 14 | TX to gauger        | yellow | via rocker switch to nano pin RX0
 |  10  | GPIO 15 | RX from gauger      | blue   | via rocker switch to nano pin TX1
-|  12  | GPIO 18 | Encoder CLK         | white  | to encoder CLK via pull-up resistor       (wip)
+|  12  | GPIO 18 | Encoder CLK         | white  | to encoder CLK via schmitt trigger       (wip)
 |  11  | GPIO 17 | Gauger reset        | white  | to nano Rst
 |  13  | GPIO 27 | Controller reset    | blue   | to uno Rst
 |  16  | GPIO 20 | Controller ready    | green  | to uno A0 and nano 5
 |  18  | GPIO 24 | Controller stop     | yellow | to uno 13
 |  29  | GPIO 5  | Shutdown button     | white  | shutdown pi when `LOW` for 2s
 |  33  | GPIO 13 | Encoder button      | blue   | to encoder SW via pull-up resistor        (wip)
-|  35  | GPIO 19 | Encoder DT          | yellow | to encoder DT via pull-up resistor        (wip)
+|  35  | GPIO 19 | Encoder DT          | yellow | to encoder DT via schmitt trigger        (wip)
 
 ### Schmitt Inverter
+
+See [CD40106BE datasheet][schmitt]
 
 | Pin | Name  | Description          | Color  | Notes
 |-----|-------|----------------------|--------|--------------------
@@ -73,7 +75,12 @@ See [raspberry pi GPIO pinout image][gpio]. Pin 1 is on the SD card side.
 |   7 | VSS   | Ground               | black  |
 |   8 | D out | m2 acw out           | yellow | controller pin 12
 |   9 | D in  | m2 acw in            | white  |
+|  10 | E out | enc dt out           | yellow | to pi 35
+|  11 | E in  | enc dt in            | yellow | to encoder DT
+|  12 | F out | enc clk out          | white  | to pi 12
+|  13 | F in  | enc clk in           | white  | to encoder CLK
 |  14 | VDD   | +3.3v                | red    | nano 3.3v
 
 
 [gpio]: https://elinux.org/images/5/5c/Pi-GPIO-header.png
+[schmitt]: https://www.ti.com/lit/ds/symlink/cd40106b.pdf?ts=1619275906436

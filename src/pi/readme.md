@@ -30,6 +30,12 @@ device should now show up at `/dev/i2c-1`. Scan for screen with:
     i2cdetect -y 1
     ```
 
+### Shutdown button
+
+    ```
+    sudo apt-get install python3-pip
+    sudo pip3 install gpiozero
+    ```
 
 ### System service setup
 
@@ -67,7 +73,7 @@ device should now show up at `/dev/i2c-1`. Scan for screen with:
     ./install.sh
     ```
 
-### Docker setuip
+### Docker setup
 
 > NB: not enough memory on Pi Zero to run container.
 
