@@ -9,35 +9,42 @@ documentation below.
 https://elinux.org/images/5/5c/Pi-GPIO-header.png
 
 */
-//async function main() {
-//    await gpio.setup(38, gpio.DIR_IN)
-//    setInterval(() => {
-//        gpio.read(38).then(console.log)
-//    }, 1000)
-//}
 
-//const Ri = require('./ri')
+// TODO: for more precision, investigate debouncing, see
+//          https://best-microcontroller-projects.com/rotary-encoder.html
 
+
+// dynamically load modules, else will fail on non-pi system
 var gpio
 var LCD
 
-class Gpio {
+class GpioHelper {
 
-    constructor(enabled, opts) {
-        this.enabled = enabled
-        if (!enabled) {
+    constructor(app) {
+
+        this.app = app // tightly coupled!
+
+        this.enabled = this.app.opts.gpioEnabled
+
+        if (!this.enabled) {
             return
         }
-        if (!opts) {
-            throw new Error('Invalid argument: opts')
-        }
-        for (var k of ['controllerReset', 'controllerStop', 'controllerReady', 'gaugerReset', 'encoderClk', 'encoderDt', 'encoderButton', 'lcdAddress']) {
-            if (!opts[k]) {
+
+        const requiredKeys = [
+            'pinControllerReset',
+            'pinControllerStop',
+            'pinControllerReady',
+            'pinGaugerReset',
+            'pinEncoderClk',
+            'pinEncoderDt',
+            'pinEncoderButton',
+            'lcdAddress'
+        ]
+        for (var k of requiredKeys) {
+            if (!this.app.opts[k]) {
                 throw new Error('Missing opt: ' + k)
             }
         }
-        this.opts = opts
-        this.opts.menuTimeout = 20000
     }
 
     async open() {
@@ -53,19 +60,23 @@ class Gpio {
             LCD = require('raspberrypi-liquid-crystal')
         }
 
-        await gpio.setup(this.opts.controllerReset, gpio.DIR_HIGH)
-        await gpio.setup(this.opts.gaugerReset, gpio.DIR_HIGH)
-        await gpio.setup(this.opts.controllerStop, gpio.DIR_LOW)
-        await gpio.setup(this.opts.controllerReady, gpio.DIR_IN)
+        await gpio.setup(this.app.opts.pinControllerReset, gpio.DIR_HIGH)
+        await gpio.setup(this.app.opts.pinControllerStop, gpio.DIR_LOW)
+        await gpio.setup(this.app.opts.pinControllerReady, gpio.DIR_IN)
+        await gpio.setup(this.app.opts.pinGaugerReset, gpio.DIR_HIGH)
 
-        //this.ri = new Ri(this.opts)
-        //await this.ri.open()
-        await gpio.setup(this.opts.encoderClk, gpio.DIR_IN, gpio.EDGE_BOTH)
-        //await gpio.setup(pinClk, gpio.DIR_IN, gpio.EDGE_RISING)
-        await gpio.setup(this.opts.encoderDt, gpio.DIR_IN)
-        await gpio.setup(this.opts.encoderButton, gpio.DIR_IN, gpio.EDGE_RISING)
-        this.lcd = new LCD(1, this.opts.lcdAddress, 20, 4)
+        await gpio.setup(this.app.opts.pinEncoderClk, gpio.DIR_IN, gpio.EDGE_BOTH)
+        await gpio.setup(this.app.opts.pinEncoderDt, gpio.DIR_IN)
+        await gpio.setup(this.app.opts.pinEncoderButton, gpio.DIR_IN, gpio.EDGE_RISING)
+
+        this.lcd = new LCD(1, this.app.opts.lcdAddress, 20, 4)
         this.lcd.beginSync()
+
+        // Display state
+        this.isDisplayActive = false
+        this.lastDisplayActionMillis = null
+        clearInterval(this.checkSleepInterval)
+        this.checkSleepInterval = setInterval(() => this.checkSleep(), 1000)
 
         // NB: handlers should catch all errors
         // what to do on a forward move
@@ -73,60 +84,16 @@ class Gpio {
         // what to do on a backward move
         this.backwardHandler = null
         // what to do on the next button press
-        this.buttonResolveOnce = null
+        this.buttonResolve = null
+
+        // Encoder state
+        this.counter = 0
+        this.clkLastState = await gpio.read(this.app.opts.pinEncoderClk)
 
         this.isMenuActive = false
-        this.counter = 0
-        this.clkLastState = await gpio.read(this.opts.encoderClk)
 
-        gpio.on('change', async (pin, value) => {
-            if (pin == this.opts.encoderClk) {
-                if (!this.isMenuActive) {
-                    // wake up from sleep
-                    this.mainMenu()
-                    return
-                }
-                try {
-                    const clkState = value
-                    if (clkState != this.clkLastState) {
-                        const dtState = await gpio.read(this.opts.encoderDt)
-                        if (dtState != clkState) {
-                            this.counter += 1
-                            if (this.forwardHandler) {
-                                this.log('forwardHandler')
-                                this.forwardHandler()
-                            }
-                        } else {
-                            this.counter -= 1
-                            if (this.backwardHandler) {
-                                this.log('backwardHandler')
-                                this.backwardHandler()
-                            }
-                        }
-                    }
-                    this.clkLastState = clkState
-                    this.log({counter: this.counter})
-                } finally {
+        gpio.on('change', (pin, value) => this.handlePinChange(pin, value))
 
-                }
-            } else if (pin == this.opts.encoderButton) {
-                this.log('button', {value})
-                if (!this.isMenuActive) {
-                    // wake up from sleep
-                    this.mainMenu()
-                    return
-                }
-                if (value && this.buttonResolveOnce) {
-                    this.log('buttonResolveOnce')
-                    // TODO: debounce? not needed for simple once event
-                    this.buttonResolveOnce()
-                    this.buttonResolveOnce = null
-                }
-            }
-            //console.log({pin, value})
-        })
-
-        this.shouldExit = false
         this.mainMenu()
     }
 
@@ -134,7 +101,9 @@ class Gpio {
         if (!this.enabled) {
             return
         }
+        clearInterval(this.checkSleepInterval)
         this.lcd.noDisplaySync()
+        this.isDisplayActive = false
         gpio.destroy()
     }
 
@@ -143,7 +112,7 @@ class Gpio {
             return true
         }
 
-        const value = await gpio.read(this.opts.controllerReady)
+        const value = await gpio.read(this.app.opts.pinControllerReady)
         return value
     }
 
@@ -157,11 +126,11 @@ class Gpio {
             return
         }
 
-        await gpio.write(this.opts.controllerStop, true)
+        await gpio.write(this.app.opts.pinControllerStop, true)
         // keep stop pin on for 1 second
         await new Promise((resolve, reject) =>
             setTimeout(() => {
-                gpio.write(this.opts.controllerStop, false).then(resolve).catch(reject)
+                gpio.write(this.app.opts.pinControllerStop, false).then(resolve).catch(reject)
             }, 1000)
         )
     }
@@ -170,10 +139,10 @@ class Gpio {
         if (!this.enabled) {
             return
         }
-        await gpio.write(this.opts.controllerReset, false)
+        await gpio.write(this.app.opts.pinControllerReset, false)
         await new Promise((resolve, reject) =>
             setTimeout(() => {
-                gpio.write(this.opts.controllerReset, true).then(resolve).catch(reject)
+                gpio.write(this.app.opts.pinControllerReset, true).then(resolve).catch(reject)
             }, 100)
         )
     }
@@ -182,57 +151,57 @@ class Gpio {
         if (!this.enabled) {
             return
         }
-        await gpio.write(this.opts.gaugerReset, false)
+        await gpio.write(this.app.opts.pinGaugerReset, false)
         await new Promise((resolve, reject) =>
             setTimeout(() => {
-                gpio.write(this.opts.gaugerReset, true).then(resolve).catch(reject)
+                gpio.write(this.app.opts.pinGaugerReset, true).then(resolve).catch(reject)
             }, 100)
         )
     }
 
     async mainMenu() {
-        // dummy test to see how this behaves
-        if (this.shouldExit) {
+
+        if (this.isMenuActive) {
+            // prevent double-call
             return
         }
+
         this.isMenuActive = true
+
         try {
-            var choices = ['first', 'second', 'third', 'fourth', 'fifth']
-            var choice = await this.getMenuChoice(choice, this.opts.menuTimeout)
+            while (true) {
+                var choices = ['first', 'second', 'third', 'fourth', 'fifth']
+                var choice = await this.getMenuChoice(choices)
 
-            // handle choice
-            this.lcd.clearSync()
-            this.lcd.setCursorSync(0, 0)
-            this.lcd.printSync('enjoy your ' + value)
-            await new Promise(resolve => setTimeout(resolve, 5000))
-
+                // handle choice
+                this.lcd.clearSync()
+                this.lcd.setCursorSync(0, 0)
+                this.lcd.printSync('enjoy your ' + choice.value)
+                await new Promise(resolve => setTimeout(resolve, 5000))
+            }
         } catch (err) {
             if (err instanceof TimeoutError) {
-                // sleep
-                this.lcd.noDisplaySync()
-                this.isMenuActive = false
+
             } else {
                 this.error(err)
             }
+        } finally {
+            this.isMenuActive = false
         }
     }
 
-    async waitForButtonPress(timeout) {
-
-        var isPressed = false
+    async waitForButtonPress() {
 
         return new Promise((resolve, reject) => {
-            if (timeout > 0) {
-                setTimeout(() => {
-                    if (!isPressed) {
-                        this.buttonResolveOnce = null
-                        reject(new TimeoutError('timeout waiting for button press'))
-                    }
-                }, timeout)
-            }
-            this.buttonResolveOnce = () => {
-                isPressed = true
+            this.buttonResolve = () => {
+                this.buttonResolve = null
+                this.buttonReject = null
                 resolve()
+            }
+            this.buttonReject = err => {
+                this.buttonResolve = null
+                this.buttonReject = null
+                reject(err)
             }
         })
     }
@@ -246,9 +215,9 @@ class Gpio {
         this.lcd.clearSync()
         for (var i = 0; i < choices.length; i++) {
             this.lcd.setCursorSync(0, i)
-            this.log({i, selectedIndex})
             this.lcd.printSync(((i == selectedIndex) ? '> ' : '  ') + choices[i])
         }
+        this.registerDisplayAction()
     }
 
     // just rewrite the prefixes, 0 <= selectedIndex <= 3
@@ -262,12 +231,15 @@ class Gpio {
     // display four line menu with > prefix, move up/down with encoder,
     // wait for button press with timeout, then return choice
     async getMenuChoice(choices, timeout) {
-        var absoluteSelectedIndex = 0
+
         var currentSliceStart = 0
         var relativeSelectedIndex = 0
+
         var currentSlice = choices.slice(currentSliceStart, currentSliceStart + 4)
+        var absoluteSelectedIndex = currentSliceStart + relativeSelectedIndex
+
         await this.writeMenu(currentSlice, relativeSelectedIndex)
-        // set forward/backward handlers
+
         this.forwardHandler = () => {
             try {
                 if (absoluteSelectedIndex >= choices.length - 1) {
@@ -285,16 +257,16 @@ class Gpio {
                     currentSlice = choices.slice(currentSliceStart, currentSliceStart + 4)
                     // keep relative index the same since we will be at the end
                     // redraw the whole menu
-                
                     this.writeMenu(currentSlice, relativeSelectedIndex)
                 }
-                this.log({currentSlice, relativeSelectedIndex, absoluteSelectedIndex})
+                //this.log({currentSlice, relativeSelectedIndex, absoluteSelectedIndex})
             } catch (err) {
                 // must handle error
                 this.error(err)
             }
         
         }
+
         this.backwardHandler = () => {
             try {
                 if (absoluteSelectedIndex < 1) {
@@ -314,15 +286,16 @@ class Gpio {
                     // redraw the whole menu
                     this.writeMenu(currentSlice, relativeSelectedIndex)
                 }
-                this.log({currentSlice, relativeSelectedIndex, absoluteSelectedIndex})
+                //this.log({currentSlice, relativeSelectedIndex, absoluteSelectedIndex})
             } catch (err) {
                 // must handle error
                 this.error(err)
             }
         }
+
         try {
-            // wait for button press
-            await this.waitForButtonPress(timeout)
+            // wait for button press, will throw TimeoutError
+            await this.waitForButtonPress()
         } finally {
             // remove forward/backward handlers
             this.forwardHandler = null
@@ -335,8 +308,85 @@ class Gpio {
         }
     }
 
+    async handlePinChange(pin, value) {
+        if (pin == this.app.opts.pinEncoderClk) {
+            if (!this.isDisplayActive) {
+                this.registerDisplayAction()
+                return
+            }
+            this.registerDisplayAction()
+            this.handleClkChange(value)
+        } else if (pin == this.app.opts.pinEncoderButton) {
+            if (!this.isDisplayActive) {
+                this.registerDisplayAction()
+                return
+            }
+            if (value) {
+                this.handleButtonResolve()
+            }
+        }
+    }
+
+    async handleClkChange(clkState) {
+        if (clkState != this.clkLastState) {
+            const dtState = await gpio.read(this.app.opts.pinEncoderDt)
+            if (dtState != clkState) {
+                this.counter += 1
+                if (this.forwardHandler) {
+                    this.log('forwardHandler')
+                    this.forwardHandler()
+                }
+            } else {
+                this.counter -= 1
+                if (this.backwardHandler) {
+                    this.log('backwardHandler')
+                    this.backwardHandler()
+                }
+            }
+        }
+        this.clkLastState = clkState
+        this.log({counter: this.counter})
+    }
+
+    async handleButtonResolve() {
+        if (this.buttonResolve) {
+            //this.log('buttonResolve')
+            // TODO: debounce? not needed for simple once event
+            this.buttonResolve()
+            this.buttonResolve = null
+        }
+    }
+
+    checkSleep() {
+        const {displayTimeout} = this.app.opts
+        if (displayTimeout > 0 && this.lastDisplayActionMillis + displayTimeout < +new Date) {
+            // clear handlers
+            this.buttonResolve = null
+            if (this.buttonReject) {
+                this.log('display sleep timeout')
+                this.buttonReject(new TimeoutError)
+            }
+            this.buttonReject = null
+            // sleep display
+            this.lcd.noDisplaySync()
+            this.isDisplayActive = false
+        }
+    }
+
+    registerDisplayAction() {
+        if (!this.isDisplayActive) {
+            this.lcd.displaySync()
+            this.isDisplayActive = true
+        }
+        this.lastDisplayActionMillis = +new Date
+        // we can add other logic, e.g. to go to last active screen
+        if (!this.isMenuActive) {
+            this.mainMenu()
+        }
+    }
+
     log(...args) {
-        if (!this.opts.quiet) {
+        if (!this.app.opts.quiet) {
             console.log(new Date, ...args)
         }
     }
@@ -348,4 +398,4 @@ class Gpio {
 
 class TimeoutError extends Error {}
 
-module.exports = Gpio
+module.exports = GpioHelper

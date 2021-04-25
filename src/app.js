@@ -1,5 +1,7 @@
 // Serial device command HTTP service
 
+// TODO: garbage collect unacked gauger jobs
+
 const fs         = require('fs')
 const merge      = require('merge')
 const bodyParser = require('body-parser')
@@ -22,7 +24,7 @@ const DeviceCodes = {
      0: 'OK',
      1: 'Device closed',
      2: 'Command timeout',
-     3:  'Flush error',
+     3: 'Flush error',
     40: 'Missing : before command',
     44: 'Invalid command',
     45: 'Invalid motorId',
@@ -34,7 +36,7 @@ const DeviceCodes = {
     51: 'Limits unavailable'
 }
 
-const Gpio = require('./gpio')
+const GpioHelper = require('./gpio')
 
 class App {
 
@@ -59,6 +61,7 @@ class App {
             pinEncoderDt       : +env.PIN_ENCODER_DT || 35,
             pinEncoderButton   : +env.PIN_ENCODER_BUTTON || 33,
             lcdAddress         : +env.LCD_ADDRESS || 0x3f,
+            displayTimeout     : +env.DISPLAY_TIMEOUT || 20 * 1000,
 
             // how long to wait after reset to reopen device
             resetDelay     : +env.RESET_DELAY || 5000,
@@ -270,6 +273,9 @@ class App {
         return new Promise(resolve => {
             this.log('Shutting down')
             this.closeGauger()
+            if (this.gpio) {
+                this.gpio.close()
+            }
             if (this.httpServer) {
                 this.httpServer.close()
             }
@@ -289,6 +295,7 @@ class App {
         this.gaugerBusy = true
 
         const {id, body, handler} = this.gaugerQueue.pop()
+        // TODO: garbage collect unacked jobs
         this.gaugerJobs[id] = {
             handler: res => {
                 this.gaugerBusy = false
@@ -502,21 +509,8 @@ class App {
     }
 
     async initGpio() {
-
         this.log('Gpio is', this.opts.gpioEnabled ? 'enabled' : 'disabled')
-
-        this.gpio = new Gpio(this.opts.gpioEnabled, {
-            controllerReset : this.opts.pinControllerReset,
-            controllerStop  : this.opts.pinControllerStop,
-            controllerReady : this.opts.pinControllerReady,
-            gaugerReset     : this.opts.pinGaugerReset,
-            // 'encoderClk', 'encoderDt', 'encoderButton', 'lcdAddress'
-            encoderClk      : this.opts.pinEncoderClk,
-            encoderDt       : this.opts.pinEncoderDt,
-            encoderButton   : this.opts.pinEncoderButton,
-            lcdAddress      : this.opts.lcdAddress,
-            quiet           : this.opts.quiet
-        })
+        this.gpio = new GpioHelper(this)
         await this.gpio.open()
     }
 
