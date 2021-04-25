@@ -46,15 +46,19 @@ See [raspberry pi GPIO pinout image][gpio]. Pin 1 is on the SD card side.
 | Pin  | Name    | Description         | Color  | Notes
 |------|---------|---------------------|--------|--------
 |   2  | 5V      | Power in            | red    | from voltage regulator pre-diode
+|   3  | SDA     | I2C SDA             | white  | to LCD SDA                                (wip)
+|   5  | SCL     | I2C SCL             | blue   | to LCD SCL                                (wip)
 |   6  | GND     | Ground              | black  |
 |   8  | GPIO 14 | TX to gauger        | yellow | via rocker switch to nano pin RX0
 |  10  | GPIO 15 | RX from gauger      | blue   | via rocker switch to nano pin TX1
+|  12  | GPIO 18 | Encoder CLK         | white  | to encoder CLK via pull-up resistor       (wip)
 |  11  | GPIO 17 | Gauger reset        | white  | to nano Rst
 |  13  | GPIO 27 | Controller reset    | blue   | to uno Rst
 |  16  | GPIO 20 | Controller ready    | green  | to uno A0 and nano 5
 |  18  | GPIO 24 | Controller stop     | yellow | to uno 13
 |  29  | GPIO 5  | Shutdown button     | white  | shutdown pi when `LOW` for 2s
-
+|  33  | GPIO 13 | Encoder button      | blue   | to encoder SW via pull-up resistor        (wip)
+|  35  | GPIO 19 | Encoder DT          | yellow | to encoder DT via pull-up resistor        (wip)
 
 ### Schmitt Inverter
 
@@ -70,8 +74,6 @@ See [raspberry pi GPIO pinout image][gpio]. Pin 1 is on the SD card side.
 |   8 | D out | m2 acw out           | yellow | controller pin 12
 |   9 | D in  | m2 acw in            | white  |
 |  14 | VDD   | +3.3v                | red    | nano 3.3v
-
-
 
 
 [gpio]: https://elinux.org/images/5/5c/Pi-GPIO-header.png
