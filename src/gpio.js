@@ -66,7 +66,8 @@ class GpioHelper {
         await gpio.setup(this.app.opts.pinGaugerReset, gpio.DIR_HIGH)
 
         await gpio.setup(this.app.opts.pinEncoderClk, gpio.DIR_IN, gpio.EDGE_BOTH)
-        await gpio.setup(this.app.opts.pinEncoderDt, gpio.DIR_IN, gpio.EDGE_BOTH)
+        //await gpio.setup(this.app.opts.pinEncoderDt, gpio.DIR_IN, gpio.EDGE_BOTH)
+        await gpio.setup(this.app.opts.pinEncoderDt, gpio.DIR_IN)
         await gpio.setup(this.app.opts.pinEncoderButton, gpio.DIR_IN, gpio.EDGE_RISING)
 
         this.lcd = new LCD(1, this.app.opts.lcdAddress, 20, 4)
@@ -87,8 +88,8 @@ class GpioHelper {
         this.buttonResolve = null
 
         // Encoder state
-        //this.counter = 0
-        //this.clkLastState = await gpio.read(this.app.opts.pinEncoderClk)
+        this.counter = 0
+        this.clkLastState = await gpio.read(this.app.opts.pinEncoderClk)
 
         /*
         // https://www.best-microcontroller-projects.com/rotary-encoder.html
@@ -98,6 +99,7 @@ class GpioHelper {
         this.rotTable = [0, 1, 1, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0, 1, 1, 0]
         */
 
+        /*
         // best debouncing so far, but not as effective as its python impl,
         // probably performance issue
         // https://www.pinteric.com/rotary.html
@@ -105,6 +107,7 @@ class GpioHelper {
         this.lrmem = 3
         this.lrsum = 0
         this.trans = [0, -1, 1, 14, 1, 0, 14, -1, -1, 14, 0, 1, 14, 1, -1, 0]
+        */
 
         this.isMenuActive = false
 
@@ -422,15 +425,17 @@ class GpioHelper {
                 return
             }
             this.registerDisplayAction()
-            this.handleRotChange(value, await gpio.read(this.app.opts.pinEncoderDt))
-            //this.handleClkChange(value)            
+            //this.handleRotChange(value, await gpio.read(this.app.opts.pinEncoderDt))
+            this.handleClkChange(value, await gpio.read(this.app.opts.pinEncoderDt))
         } else if (pin == this.app.opts.pinEncoderDt) {
+
             if (!this.isDisplayActive) {
                 this.registerDisplayAction()
                 return
             }
             this.registerDisplayAction()
-            this.handleRotChange(await gpio.read(this.app.opts.pinEncoderClk), value)
+            //this.handleRotChange(await gpio.read(this.app.opts.pinEncoderClk), value)
+            this.handleClkChange(await gpio.read(this.app.opts.pinEncoderClk), value)
         } else if (pin == this.app.opts.pinEncoderButton) {
             this.log('button')
             if (!this.isDisplayActive) {
@@ -449,10 +454,9 @@ class GpioHelper {
         }
     }
 
-    /*
-    async handleClkChange(clkState) {
+    async handleClkChange(clkState, dtState) {
         if (clkState != this.clkLastState) {
-            const dtState = await gpio.read(this.app.opts.pinEncoderDt)
+            //const dtState = await gpio.read(this.app.opts.pinEncoderDt)
             if (dtState != clkState) {
                 this.counter += 1
                 if (this.forwardHandler) {
@@ -470,8 +474,8 @@ class GpioHelper {
         this.clkLastState = clkState
         this.log({counter: this.counter})
     }
-    */
 
+    /*
     handleRotChange(lft, rght) {
         const val = this.readRotary(lft, rght)
         if (val != 0) {
@@ -504,6 +508,7 @@ class GpioHelper {
         this.lrsum = 0
         return 0
     }
+    */
     /*
     async handleRotChange(clkState) {
         const val = await this.readRotary(clkState)
