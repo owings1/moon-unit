@@ -10,9 +10,9 @@ https://elinux.org/images/5/5c/Pi-GPIO-header.png
 
 */
 
-// TODO: for more precision, investigate debouncing, see
+// TODO: debounce encoder clk
 //          https://best-microcontroller-projects.com/rotary-encoder.html
-
+// TODO: better button debounce
 
 // dynamically load modules, else will fail on non-pi system
 var gpio
@@ -89,6 +89,14 @@ class GpioHelper {
         // Encoder state
         this.counter = 0
         this.clkLastState = await gpio.read(this.app.opts.pinEncoderClk)
+
+        /*
+        // https://www.best-microcontroller-projects.com/rotary-encoder.html
+        this.counter1 = 0
+        this.prevNextCode = 0
+        this.store = 0
+        this.rotTable = [0, 1, 1, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0, 1, 1, 0]
+        */
 
         this.isMenuActive = false
 
@@ -170,14 +178,37 @@ class GpioHelper {
 
         try {
             while (true) {
-                var choices = ['first', 'second', 'third', 'fourth', 'fifth']
-                var choice = await this.getMenuChoice(choices)
+                var choices = ['testNumber', 'testBoolean', 'testNumberDefault', 'fourth', 'fifth']
+                var choice = await this.promptMenuChoice(choices)
 
-                // handle choice
-                this.lcd.clearSync()
-                this.lcd.setCursorSync(0, 0)
-                this.lcd.printSync('enjoy your ' + choice.value)
-                await new Promise(resolve => setTimeout(resolve, 5000))
+                switch (choice.value) {
+                    case 'testNumber':
+                        var value = await this.promptNumber({
+                            label         : 'Position',
+                            initialValue  : 100.2,
+                            decimalPlaces : 2,
+                            increment     : 0.01,
+                            maxValue      : 200,
+                            minValue      : 50
+                        })
+                        this.log({value})
+                        break
+                    case 'testBoolean':
+                        var value = await this.promptBoolean()
+                        this.log({value})
+                        break
+                    case 'testNumberDefault':
+                        var value = await this.promptNumber()
+                        this.log({value})
+                        break
+                    default:
+                        this.lcd.clearSync()
+                        this.lcd.setCursorSync(0, 0)
+                        this.lcd.printSync('enjoy your ' + choice.value)
+                        await new Promise(resolve => setTimeout(resolve, 5000))
+                        break
+                }
+                
             }
         } catch (err) {
             if (err instanceof TimeoutError) {
@@ -190,6 +221,151 @@ class GpioHelper {
         }
     }
 
+    // display four line menu with > prefix, move up/down with encoder,
+    // wait for button press with timeout, then return choice
+    // TODO: support default index - choose slice, relative index differently
+    // TODO: support sticky top/bottom
+    async promptMenuChoice(choices) {
+
+        var currentSliceStart = 0
+        var relativeSelectedIndex = 0
+
+        var currentSlice = choices.slice(currentSliceStart, currentSliceStart + 4)
+        var absoluteSelectedIndex = currentSliceStart + relativeSelectedIndex
+
+        await this.writeMenu(currentSlice, relativeSelectedIndex)
+
+        this.forwardHandler = () => {
+            try {
+                if (absoluteSelectedIndex >= choices.length - 1) {
+                    // we can't go forward anymore
+                    return
+                }
+                absoluteSelectedIndex += 1
+                if (relativeSelectedIndex < 3) {
+                    // we can keep the current slice, and just increment the relative index
+                    relativeSelectedIndex += 1
+                    this.updateSelectedMenuIndex(currentSlice, relativeSelectedIndex)
+                } else {
+                    // we must update the slice
+                    currentSliceStart += 1
+                    currentSlice = choices.slice(currentSliceStart, currentSliceStart + 4)
+                    // keep relative index the same since we will be at the end
+                    // redraw the whole menu
+                    this.writeMenu(currentSlice, relativeSelectedIndex)
+                }
+                //this.log({currentSlice, relativeSelectedIndex, absoluteSelectedIndex})
+            } catch (err) {
+                // must handle error
+                this.error(err)
+            }
+        
+        }
+
+        this.backwardHandler = () => {
+            try {
+                if (absoluteSelectedIndex < 1) {
+                    // we can't go backward anymore
+                    return
+                }
+                absoluteSelectedIndex -= 1
+                if (relativeSelectedIndex > 0) {
+                    // we can keep the current slice, and just decrement the relative index
+                    relativeSelectedIndex -= 1
+                    this.updateSelectedMenuIndex(currentSlice, relativeSelectedIndex)
+                } else {
+                    // we must update the slice
+                    currentSliceStart -= 1
+                    currentSlice = choices.slice(currentSliceStart, currentSliceStart + 4)
+                    // keep relative index the same since we will be at the beginning
+                    // redraw the whole menu
+                    this.writeMenu(currentSlice, relativeSelectedIndex)
+                }
+                //this.log({currentSlice, relativeSelectedIndex, absoluteSelectedIndex})
+            } catch (err) {
+                // must handle error
+                this.error(err)
+            }
+        }
+
+        try {
+            // will throw TimeoutError
+            await this.waitForButtonPress()
+        } finally {
+            // remove forward/backward handlers
+            this.forwardHandler = null
+            this.backwardHandler = null
+        }
+
+        return {
+            index: absoluteSelectedIndex,
+            value: choices[absoluteSelectedIndex]
+        }
+    }
+
+    async promptBoolean(spec = {}) {
+        spec = {
+            label : 'Are you sure',
+            ...spec
+        }
+        const promise = this.promptMenuChoice(['Yes', 'No'])
+        // cheat by putting label at bottom until sticky top is supported
+        this.lcd.setCursorSync(0, 2)
+        this.lcd.printSync(spec.label + '?')
+        const choice = await promise
+        return choice.value == 'Yes'
+    }
+
+    async promptNumber(spec = {}) {
+        spec = {
+            label         : 'Number',
+            initialValue  : 0,
+            decimalPlaces : 0,
+            increment     : 1,
+            maxValue      : Infinity,
+            minValue      : -Infinity,
+            ...spec
+        }
+
+        var value = spec.initialValue
+
+        this.lcd.clearSync()
+        this.lcd.setCursorSync(0, 0)
+        this.lcd.printSync(spec.label)
+        
+        const writeValue = () => {
+            this.lcd.setCursorSync(0, 1)
+            this.lcd.printSync(value.toFixed(spec.decimalPlaces).padStart(20))
+        }
+
+        this.forwardHandler = () => {
+            if (value >= spec.maxValue) {
+                return
+            }
+            value += spec.increment
+            writeValue()
+        }
+        this.backwardHandler = () => {
+            if (value <= spec.minValue) {
+                return
+            }
+            value -= spec.increment
+            writeValue()
+        }
+
+        writeValue()
+
+        try {
+            // will throw TimeoutError
+            await this.waitForButtonPress()
+        } finally {
+            this.forwardHandler = null
+            this.backwardHandler = null
+        }
+        return value
+    }
+
+    // will throw TimeoutError
     async waitForButtonPress() {
 
         return new Promise((resolve, reject) => {
@@ -221,90 +397,13 @@ class GpioHelper {
     }
 
     // just rewrite the prefixes, 0 <= selectedIndex <= 3
-    async updateSelectedMenuIndex(selectedIndex) {
-        for (var i = 0; i < 4; i++) {
+    async updateSelectedMenuIndex(choices, selectedIndex) {
+        if (choices.length > 4) {
+            throw new Error('too many choices to display')
+        }
+        for (var i = 0; i < choices.length; i++) {
             this.lcd.setCursorSync(0, i)
             this.lcd.printSync((i == selectedIndex) ? '> ' : '  ')
-        }
-    }
-
-    // display four line menu with > prefix, move up/down with encoder,
-    // wait for button press with timeout, then return choice
-    async getMenuChoice(choices, timeout) {
-
-        var currentSliceStart = 0
-        var relativeSelectedIndex = 0
-
-        var currentSlice = choices.slice(currentSliceStart, currentSliceStart + 4)
-        var absoluteSelectedIndex = currentSliceStart + relativeSelectedIndex
-
-        await this.writeMenu(currentSlice, relativeSelectedIndex)
-
-        this.forwardHandler = () => {
-            try {
-                if (absoluteSelectedIndex >= choices.length - 1) {
-                    // we can't go forward anymore
-                    return
-                }
-                absoluteSelectedIndex += 1
-                if (relativeSelectedIndex < 3) {
-                    // we can keep the current slice, and just increment the relative index
-                    relativeSelectedIndex += 1
-                    this.updateSelectedMenuIndex(relativeSelectedIndex)
-                } else {
-                    // we must update the slice
-                    currentSliceStart += 1
-                    currentSlice = choices.slice(currentSliceStart, currentSliceStart + 4)
-                    // keep relative index the same since we will be at the end
-                    // redraw the whole menu
-                    this.writeMenu(currentSlice, relativeSelectedIndex)
-                }
-                //this.log({currentSlice, relativeSelectedIndex, absoluteSelectedIndex})
-            } catch (err) {
-                // must handle error
-                this.error(err)
-            }
-        
-        }
-
-        this.backwardHandler = () => {
-            try {
-                if (absoluteSelectedIndex < 1) {
-                    // we can't go backward anymore
-                    return
-                }
-                absoluteSelectedIndex -= 1
-                if (relativeSelectedIndex > 0) {
-                    // we can keep the current slice, and just decrement the relative index
-                    relativeSelectedIndex -= 1
-                    this.updateSelectedMenuIndex(relativeSelectedIndex)
-                } else {
-                    // we must update the slice
-                    currentSliceStart -= 1
-                    currentSlice = choices.slice(currentSliceStart, currentSliceStart + 4)
-                    // keep relative index the same since we will be at the beginning
-                    // redraw the whole menu
-                    this.writeMenu(currentSlice, relativeSelectedIndex)
-                }
-                //this.log({currentSlice, relativeSelectedIndex, absoluteSelectedIndex})
-            } catch (err) {
-                // must handle error
-                this.error(err)
-            }
-        }
-
-        try {
-            // wait for button press, will throw TimeoutError
-            await this.waitForButtonPress()
-        } finally {
-            // remove forward/backward handlers
-            this.forwardHandler = null
-            this.backwardHandler = null
-        }
-
-        return {
-            index: absoluteSelectedIndex,
-            value: choices[absoluteSelectedIndex]
         }
     }
 
@@ -316,11 +415,19 @@ class GpioHelper {
             }
             this.registerDisplayAction()
             this.handleClkChange(value)
+            //this.handleRotChange(value)
         } else if (pin == this.app.opts.pinEncoderButton) {
+            this.log('button')
             if (!this.isDisplayActive) {
                 this.registerDisplayAction()
                 return
             }
+            if (this.isPressingButton) {
+                return
+            }
+            this.isPressingButton = true
+            // debounce
+            setTimeout(() => this.isPressingButton = false, 200)
             if (value) {
                 this.handleButtonResolve()
             }
@@ -348,10 +455,57 @@ class GpioHelper {
         this.log({counter: this.counter})
     }
 
+    /*
+    async handleRotChange(clkState) {
+        const val = await this.readRotary(clkState)
+        this.log({
+            val,
+            prevNextCode: this.prevNextCode,
+            store: this.store
+        })
+        if (val) {
+            this.counter1 += val
+            if (val == 1) {
+                if (this.forwardHandler) {
+                    this.log('forwardHandler')
+                    this.forwardHandler()
+                }
+            } else {
+                if (this.backwardHandler) {
+                    this.log('backwardHandler')
+                    this.backwardHandler()
+                }
+            }
+        }
+        this.log({counter1: this.counter1})
+    }
+
+    async readRotary(clkState) {
+        this.prevNextCode <<= 2
+        const dtState = await gpio.read(this.app.opts.pinEncoderDt)
+        if (dtState) {
+            this.prevNextCode |= 0x02
+        }
+        if (clkState) {
+            this.prevNextCode |= 0x01
+        }
+        this.prevNextCode &= 0x0f
+        if (this.rotTable[this.prevNextCode]) {
+            this.store <<= 4
+            this.store |= this.prevNextCode
+            if ((this.store & 0xff) == 0x2b) {
+                return -1
+            }
+            if ((this.store & 0xff) == 0x17) {
+                return 1
+            }
+        }
+        return 0
+    }
+    */
+
     async handleButtonResolve() {
         if (this.buttonResolve) {
-            //this.log('buttonResolve')
-            // TODO: debounce? not needed for simple once event
             this.buttonResolve()
             this.buttonResolve = null
         }

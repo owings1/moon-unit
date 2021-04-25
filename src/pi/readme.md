@@ -30,6 +30,13 @@ device should now show up at `/dev/i2c-1`. Scan for screen with:
     i2cdetect -y 1
     ```
 
+encoder python test
+
+    ```
+    sudo apt-get install pigpiod
+    sudo pip3 install pigpio
+    ```
+
 ### Shutdown button
 
     ```
