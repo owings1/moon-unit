@@ -78,6 +78,28 @@ function shutdown() {
     gpio.destroy()
 }
 
+class TimeoutError extends Error {}
+
+async function waitForButtonPress(timeout) {
+
+    var isPressed = false
+
+    return new Promise((resolve, reject) => {
+        if (timeout > 0) {
+            setTimeout(() => {
+                if (!isPressed) {
+                    buttonResolveOnce = null
+                    reject(new TimeoutError('timeout waiting for button press'))
+                }
+            }, timeout)
+        }
+        buttonResolveOnce = () => {
+            isPressed = true
+            resolve()
+        }
+    })
+}
+
 // this assumes choices has max length 4, or will throw an error
 // declare as async so we can pause if needed
 async function writeMenu(choices, selectedIndex) {
@@ -101,8 +123,8 @@ async function updateSelectedIndex(selectedIndex) {
 }
 
 // display four line menu with > prefix, move up/down with encoder,
-// wait for button press, then return choice
-async function getMenuChoice(choices) {
+// wait for button press with timeout, then return choice
+async function getMenuChoice(choices, timeout) {
     var absoluteSelectedIndex = 0
     var currentSliceStart = 0
     var relativeSelectedIndex = 0
@@ -131,6 +153,7 @@ async function getMenuChoice(choices) {
             }
             console.log({currentSlice, relativeSelectedIndex, absoluteSelectedIndex})
         } catch (err) {
+            // must handle error
             console.error(err)
         }
         
@@ -156,12 +179,13 @@ async function getMenuChoice(choices) {
             }
             console.log({currentSlice, relativeSelectedIndex, absoluteSelectedIndex})
         } catch (err) {
+            // must handle error
             console.error(err)
         }
     }
     try {
         // wait for button press
-        await new Promise(resolve => buttonResolveOnce = resolve)
+        await waitForButtonPress(timeout)
     } finally {
         // remove forward/backward handlers
         forwardHandler = null
@@ -180,6 +204,12 @@ async function printSelection(value) {
     lcd.printSync('enjoy your ' + value)
 }
 
+async function printTimeoutError(err) {
+    lcd.clearSync()
+    lcd.setCursorSync(0, 0)
+    lcd.printSync('timeout: ' + err.message)
+}
+
 // get menu choice, then say "you selected x", then quit.
 async function main() {
 
@@ -188,14 +218,28 @@ async function main() {
     try {
 
         // 4 item menu
-        const choice1 = await getMenuChoice(['apples', 'bananas', 'candy', 'drink'])
-        await printSelection(choice1.value)
+        var choice = await getMenuChoice(['apples', 'bananas', 'candy', 'drink'])
+        await printSelection(choice.value)
         await pause(5000)
 
         // 5 item menu
-        const choice2 = await getMenuChoice(['first', 'second', 'third', 'fourth', 'fifth'])
-        await printSelection(choice2.value)
+        var choice = await getMenuChoice(['first', 'second', 'third', 'fourth', 'fifth'])
+        await printSelection(choice.value)
         await pause(5000)
+
+        // timeout
+        try {
+            var choice = await getMenuChoice(['there is a god', 'there is no god'], 5000)
+            await printSelection(choice.value)
+        } catch (err) {
+            if (err instanceof TimeoutError) {
+                await printTimeoutError(err)
+            } else {
+                throw err
+            }
+        }
+        await pause(5000)
+
     } finally {
         shutdown()
     }
