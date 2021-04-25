@@ -54,6 +54,12 @@ class App {
             pinControllerStop  : +env.PIN_CONTROLLER_STOP || 18,
             pinControllerReady : +env.PIN_CONTROLLER_READY || 16,
             pinGaugerReset     : +env.PIN_GAUGER_RESET || 11,
+
+            pinEncoderClk      : +env.PIN_ENCODER_CLK || 12,
+            pinEncoderDt       : +env.PIN_ENCODER_DT || 35,
+            pinEncoderButton   : +env.PIN_ENCODER_BUTTON || 33,
+            lcdAddress         : +env.LCD_ADDRESS || 0x3f,
+
             // how long to wait after reset to reopen device
             resetDelay     : +env.RESET_DELAY || 5000,
             commandTimeout : +env.COMMAND_TIMEOUT || 5000
@@ -503,7 +509,13 @@ class App {
             controllerReset : this.opts.pinControllerReset,
             controllerStop  : this.opts.pinControllerStop,
             controllerReady : this.opts.pinControllerReady,
-            gaugerReset     : this.opts.pinGaugerReset
+            gaugerReset     : this.opts.pinGaugerReset,
+            // 'encoderClk', 'encoderDt', 'encoderButton', 'lcdAddress'
+            encoderClk      : this.opts.pinEncoderClk,
+            encoderDt       : this.opts.pinEncoderDt,
+            encoderButton   : this.opts.pinEncoderButton,
+            lcdAddress      : this.opts.lcdAddress,
+            quiet           : this.opts.quiet
         })
         await this.gpio.open()
     }

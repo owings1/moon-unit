@@ -22,7 +22,6 @@ describe('App', () => {
 
         beforeEach(async () => {
             app = new App({
-                controllerPath: '/tmp/test-' + +new Date,
                 gaugerPath: '/tmp/test1-' + +new Date,
                 port: null,
                 openDelay: 1,

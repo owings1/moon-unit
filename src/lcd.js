@@ -1,3 +1,5 @@
+// LCD interface test
+
 const LCD = require('raspberrypi-liquid-crystal')
 const gpio = require('rpi-gpio').promise
 
