@@ -4,16 +4,16 @@
 
 #define WIRE_ADDRESS 0x8
 
+#define pinLeft 2
+#define pinRight 3
+#define pinButton 4
 
-
-#define pinLeft 5//2
-#define pinRight 6//3
-#define pinButton 7//4
-
+byte mode = 0;
 
 int num = 0;    // track absolute position
 int change = 0; // change is reset when 0x0 is sent through I2C
 boolean isPressed = false;
+boolean wasPressed = false;
 
 // rotary reading from: https://www.pinteric.com/rotary.html
 
@@ -35,6 +35,7 @@ void setup() {
   // join bus
   Wire.begin(WIRE_ADDRESS);
   Wire.onRequest(requestEvent);
+  Wire.onReceive(receiveEvent);
 }
 
 void loop() {
@@ -42,29 +43,38 @@ void loop() {
   int8_t res = rotary();
   
   isPressed = digitalRead(pinButton) == LOW;
+  if (isPressed) {
+    wasPressed = true;
+  }
   if (res != 0) {
     num += res;
     change += res;
-    writeStatus(Serial);
+    //if (mode == 3) {
+      writeStatus(Serial);
+    //}
   }
 }
 
 void requestEvent() {
-
-  byte flag = Wire.read();
-
-  if (flag == 0) {
-    Wire.write(getChangeByte());
+  if (mode == 0) {
+    byte changeByte = getChangeByte();
+    Wire.write(changeByte);
     change = 0;
-  } else if (flag == 1) {
+    wasPressed = false;
+  } else if (mode == 1) {
     // legacy
     writeStatus(Wire);
   }
 }
 
+void receiveEvent(int howMany) {
+  mode = Wire.read();
+}
+
 byte getChangeByte() {
   // first bit MSB is button pressed flag
-  byte value = isPressed ? 128 : 0;
+  // TODO: figure out why this is not getting sent
+  byte value = (isPressed || wasPressed) ? 128 : 0;
   // second bit is sign, positive=1 negative=0
   if (change >= 0) {
     value += 64;
@@ -77,10 +87,10 @@ byte getChangeByte() {
     }
   } else {
     if (change > -64) {
-      value += change;
+      value -= change;
     } else {
       // don't overfill
-      value -= 63;
+      value += 63;
     }
   }
   return value;
