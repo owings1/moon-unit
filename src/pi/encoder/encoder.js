@@ -3,8 +3,10 @@ const i2c = require('i2c-bus')
 
 const ADDR = 0x8
 
-const wbuf = Buffer.from([0])
-const rbuf = Buffer.alloc(16)
+// writing 0x0 means clear after send
+const wbuf = Buffer.from([0x0])
+const rbuf = Buffer.alloc(1)
+//const rbuf = Buffer.alloc(16)
 
 
 async function main() {
@@ -13,18 +15,26 @@ async function main() {
         // TODO: handle undefined
         // TODO: handle EREMOTEIO error
         const initialValues = await readValues(conn)
-        const startPos = initialValues.pos
-        console.log({startPos})
+        //const startPos = initialValues.change
+        //const startPos = initialValues.pos
+        console.log({initialValues})
+        const startPos = 0
         var pos = startPos
         while (true) {
             var values = await readValues(conn)
             if (!values) {
                 continue
             }
+            if (values.change) {
+                pos += values.change
+                console.log({pos, change: values.change})
+            }
+            /*
             if (values.pos != pos) {
                 pos = values.pos
                 console.log({pos})
             }
+            */
             if (values.isPressed) {
                 console.log('pressed')
                 break
@@ -43,6 +53,24 @@ async function readValues(conn) {
 }
 
 function getValues(data) {
+    const byte = data.buffer[0]
+    // first (MSB) bit is push button
+    const isPressed = (byte & 128) == 128
+    // second bit is positive=1 negative=0
+    const sign = (byte & 64) == 64 ? 1 : -1
+    // last six bits are the amount
+    const qty = byte & ~192
+    return {
+        isPressed,
+        change: qty * sign
+    }
+}
+
+
+main()
+
+/*
+function getValuesOld(data) {
     const resStr = data.buffer.toString().split('\n')[0]
     if (resStr[0] == '^') {
         const parts = resStr.substring(1).split('|')
@@ -52,8 +80,7 @@ function getValues(data) {
         }
     }
 }
-
-main()
+*/
 /*
 i2c.openPromisified(1)
     .then(conn => {
