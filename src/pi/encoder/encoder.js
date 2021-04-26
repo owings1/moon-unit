@@ -4,50 +4,48 @@ const i2c = require('i2c-bus')
 const ADDR = 0x8
 
 // writing 0x0 means clear after send
-//const wbuf = Buffer.from([8, 8, 8, 8, 8, 8, 8])
 const wbuf = Buffer.from([0x0])
 const rbuf = Buffer.alloc(1)
-//const rbuf = Buffer.alloc(16)
 
 
 async function main() {
     const conn = await i2c.openPromisified(1)
     try {
-        // TODO: handle undefined
         // TODO: handle EREMOTEIO error
-        const initialValues = await readValues(conn)
-        //const startPos = initialValues.change
-        //const startPos = initialValues.pos
-        console.log({initialValues})
+        // clear change counter
+        await readValues(conn)
         const startPos = 0
+        console.log({startPos})
         var pos = startPos
         while (true) {
             var values = await readValues(conn)
-            console.log(values)
-            //if (!values) {
-            //    continue
-            //}
             if (values.change) {
-                pos += values.change
-                console.log({pos, change: values.change})
+                var inc = getIncrement(values.change, 'square')
+                pos += inc
+                console.log({pos, change: values.change, inc})
             }
-            /*
-            if (values.pos != pos) {
-                pos = values.pos
-                console.log({pos})
-            }
-            */
             if (values.isPressed) {
                 console.log('pressed')
                 break
             }
-            await new Promise(resolve => setTimeout(resolve, 100))
+            await new Promise(resolve => setTimeout(resolve, 50))
         }
     } finally {
         conn.close()
     }
 }
 
+function getIncrement(change, type) {
+    type = type || 'linear'
+    const qty = Math.abs(change)
+    switch (type) {
+        case 'square':
+            return change * qty
+        case 'linear':
+        default:
+            return change
+    }
+}
 async function readValues(conn) {
     await conn.i2cWrite(ADDR, wbuf.length, wbuf)
     const data = await conn.i2cRead(ADDR, rbuf.length, rbuf)
@@ -64,10 +62,11 @@ function getValues(data) {
     var qty = byte & ~192
     // ignore noise, TODO figure out why this is happening occasionally
     if (qty > 12) {
+        console.log('dropped', {qty})
         qty = 0
     }
     //console.log({byte, isPressed, sign, qty, buf: data.buffer.toJSON()})
-    console.log({byte})
+    //console.log({byte})
     return {
         isPressed,
         change: qty * sign
