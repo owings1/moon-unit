@@ -13,6 +13,7 @@
  *
  *  :<id>:73 <milliseconds>;
  */
+
 #include <Adafruit_BNO055.h>
 #include <Adafruit_Sensor.h>
 #include <Adafruit_HMC5883_U.h>
@@ -40,6 +41,7 @@ long loopDelay = 250;
 #define mc_statePin 5
 #define mcRxPin 6
 #define mcTxPin 7
+boolean isMcInit = false;
 SoftwareSerial mcSerial(mcRxPin, mcTxPin); //rx, tx
 #define mcTimeout 10000
 byte mc_state = LOW;
@@ -85,6 +87,7 @@ SoftwareSerial gpsSerial(gspRxPin, gpsTxPin); //rx, tx
 TinyGPS gps;
 float gps_lat = DEG_NULL;
 float gps_lon = DEG_NULL;
+boolean isGpsInit = false;
 
 // Mag
 
@@ -101,12 +104,16 @@ float mag_heading = DEG_NULL; // degrees
 void setup() {
   pinMode(mc_statePin, INPUT);
   Serial.begin(9600);
-  
+
   mcSerial.begin(9600);
-  if (gpsEnabled) {
-    gpsSerial.begin(9600);
+  if (checkMcConnected()) {
+    isMcInit = true;
   }
-  if (magEnabled && mag.begin()) {
+  gpsSerial.begin(9600);
+  if (gpsEnabled && checkGpsConnected()) {
+    isGpsInit = true;
+  }
+  if (magEnabled && mag.begin() && checkMagConnected()) {
     isMagInit = true;
   }
   if (orientationEnabled && bno.begin()) {
@@ -158,6 +165,12 @@ void takeCommand(Stream &input, Stream &output) {
 
   if (command.toInt() < 70) {
 
+    if (!isMcInit) {
+      input.readStringUntil(';');
+      writeAck(id, output, true);
+      output.write("=01\n");
+      return;
+    }
     // forward to motorcontroller
 
     readMcState();
@@ -251,7 +264,7 @@ void writeAll(Stream &output) {
     output.write("\n");
   }
   
-  if (gpsEnabled) {
+  if (isGpsInit) {
     output.write("GPS:");
     writeGps(output);
     output.write("\n");
@@ -263,7 +276,7 @@ void writeAll(Stream &output) {
     output.write("\n");
   }
 
-  if (mc_statusStr.length() > 0) {
+  if (isMcInit && mc_statusStr.length() > 0) {
     output.write("MCC:");
     writeMcStatus(output);
     output.write("\n");
@@ -282,7 +295,7 @@ void writeModules(Stream &output) {
     doPrefix = true;
   }
 
-  if (gpsEnabled) {
+  if (isGpsInit) {
     if (doPrefix) {
       output.write('|');
     }
@@ -298,7 +311,7 @@ void writeModules(Stream &output) {
     doPrefix = true;
   }
 
-  if (mc_statusStr.length() > 0) {
+  if (isMcInit) {
     if (doPrefix) {
       output.write('|');
     }
@@ -352,11 +365,13 @@ void writeMag(Stream &output) {
 
 void readAll() {
   readMcState();
-  readMcStatus();
+  if (isMcInit) {
+    readMcStatus();
+  }
   if (isOrientationInit) {
     readOrientation();
   }
-  if (gpsEnabled) {
+  if (isGpsInit) {
     readGps();
   }
   if (isMagInit) {
@@ -459,4 +474,45 @@ void readMag() {
    
   // Convert radians to degrees for readability.
   mag_heading = heading * 180/M_PI; 
+}
+
+// Utilities
+
+// the begin method in the Adafruit library just writes to
+// the device address and returns true. We need to check for
+// a response at address 0x3C >> 1
+boolean checkMagConnected() {
+  Wire.beginTransmission(0x3C >> 1);
+  return Wire.endTransmission() == 0;
+}
+
+// send a status request with a 2 second timeout
+boolean checkMcConnected() {
+  mcSerial.listen();
+  mcSerial.write(":18 ;");
+  // timeout 2 second
+  int d = 0;
+  while (!mcSerial.available()) {
+    delay(1);
+    d += 1;
+    if (d > 2000) {
+      return false;
+    }
+  }
+  mcSerial.readStringUntil("\n");
+  return true;
+}
+
+boolean checkGpsConnected() {
+  gpsSerial.listen();
+  // timeout 3 seconds
+  int d = 0;
+  while (!gpsSerial.available()) {
+    delay(1);
+    d += 1;
+    if (d > 3000) {
+      return false;
+    }
+  }
+  return true;
 }
