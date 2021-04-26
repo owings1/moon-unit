@@ -64,6 +64,8 @@ See [raspberry pi GPIO pinout image][gpio]. Pin 1 is on the SD card side.
 
 See [CD40106BE datasheet][schmitt]
 
+> NB: encoder is a WIP, trying this hardware debounce https://hackaday.io/project/162207-hardware-debounced-rotary-encoder
+
 | Pin | Name  | Description          | Color  | Notes
 |-----|-------|----------------------|--------|--------------------
 |   1 | A in  | m1 cw in             | white  |

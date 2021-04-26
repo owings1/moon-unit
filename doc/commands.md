@@ -71,26 +71,6 @@ Commands
 
     This is for testing the app command response timeout.
 
-- **15** - Get motor positions in degrees, followed by limits enabled
-
-    ```
-    :15 ;
-    ```
-
-    example reponses:
-    ```
-    =00;?|120.43|F|T
-    =00;12.02|120.43|T|T
-    =00;?|?|F|F
-    ```
-
-    Indexes
-
-    * `0`: m1 position
-    * `1`: m2 position
-    * `2`: m1 limits enabled
-    * `3`: m2 limits enabled
-
 - **17** - Set limit switch enablement for a motor
 
     ```

@@ -48,7 +48,7 @@ class App {
             mock           : !!env.MOCK,
             port           : env.HTTP_PORT || 8080,
             quiet          : !!env.QUIET,
-            openDelay      : +env.OPEN_DELAY || 2000,
+            openDelay      : +env.OPEN_DELAY || 4000,
             workerDelay    : +env.WORKER_DELAY || 100,
 
             gpioEnabled        : !!env.GPIO_ENABLED,
