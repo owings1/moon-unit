@@ -8,12 +8,11 @@
 #define pinRight 3
 #define pinButton 4
 
-byte mode = 0;
+volatile byte mode = 0;
 
 int num = 0;    // track absolute position
-int change = 0; // change is reset when 0x0 is sent through I2C
-boolean isPressed = false;
-boolean wasPressed = false;
+volatile int change = 0; // change is reset when 0x0 is sent through I2C
+volatile boolean isPressed = false;
 
 // rotary reading from: https://www.pinteric.com/rotary.html
 
@@ -43,15 +42,10 @@ void loop() {
   int8_t res = rotary();
   
   isPressed = digitalRead(pinButton) == LOW;
-  if (isPressed) {
-    wasPressed = true;
-  }
+
   if (res != 0) {
     num += res;
     change += res;
-    //if (mode == 3) {
-      writeStatus(Serial);
-    //}
   }
 }
 
@@ -60,10 +54,6 @@ void requestEvent() {
     byte changeByte = getChangeByte();
     Wire.write(changeByte);
     change = 0;
-    wasPressed = false;
-  } else if (mode == 1) {
-    // legacy
-    writeStatus(Wire);
   }
 }
 
@@ -74,7 +64,7 @@ void receiveEvent(int howMany) {
 byte getChangeByte() {
   // first bit MSB is button pressed flag
   // TODO: figure out why this is not getting sent
-  byte value = (isPressed || wasPressed) ? 128 : 0;
+  byte value = isPressed ? 128 : 0;
   // second bit is sign, positive=1 negative=0
   if (change >= 0) {
     value += 64;
@@ -94,14 +84,6 @@ byte getChangeByte() {
     }
   }
   return value;
-}
-
-void writeStatus(Stream &output) {
-  output.write('^');
-  output.print(num);
-  output.write('|');
-  output.print(isPressed);
-  output.write("\n");
 }
 
 // from: https://www.pinteric.com/rotary.html
