@@ -55,7 +55,8 @@ See [raspberry pi GPIO pinout image][gpio]. Pin 1 is on the SD card side.
 |  13  | GPIO 27 | Controller reset    | blue   | to uno Rst
 |  16  | GPIO 20 | Controller ready    | green  | to uno A0 and nano 5
 |  18  | GPIO 24 | Controller stop     | yellow | to uno 13
-|  29  | GPIO 5  | Shutdown button     | white  | shutdown pi when `LOW` for 2s
+|  29  | GPIO  5 | Shutdown button     | white  | shutdown pi when `LOW` for 2s
+|  31  | GPIO  6 | Encoder reset       | green  | to encoder module Rst
 |  33  | GPIO 13 | Encoder button      | blue   | to encoder SW via pull-up resistor
 
 ### Schmitt Inverter
@@ -80,6 +81,9 @@ See [CD40106BE datasheet][schmitt]
 
 Wip
 
+| Pin | Description                 | Color  | Notes
+|-----|-----------------------------|--------|------------------
+| Rst | Reset pin                   | green  | to pi 31
 
 #### Other Links
 

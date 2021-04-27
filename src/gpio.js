@@ -48,6 +48,7 @@ class GpioHelper {
             const lcdRequiredKeys = [
                 'encoderAddress',
                 'pinEncoderButton',
+                'pinEncoderReset',
                 'lcdAddress'
             ]
             for (var k of lcdRequiredKeys) {
@@ -87,15 +88,13 @@ class GpioHelper {
         }
 
         await gpio.setup(this.app.opts.pinEncoderButton, gpio.DIR_IN, gpio.EDGE_RISING)
+        await gpio.setup(this.app.opts.pinEncoderReset, gpio.DIR_HIGH)
 
         await this.openLcd()
         await this.openEncoder()
 
         // NB: handlers should catch all errors
-        // what to do on a forward move
-        this.forwardHandler = null
-        // what to do on a backward move
-        this.backwardHandler = null
+        this.onEncoderChange = null
         // what to do on the next button press
         this.buttonResolve = null
 
@@ -149,13 +148,16 @@ class GpioHelper {
         } catch (err) {
             this.error('Error closing encoder', err)
         }
+        await this.resetEncoder()
+        await new Promise(resolve => setTimeout(resolve, 2000))
         // NB: set the interval first so we can try to reconnect
-        // TODO: setup reset pin to encoder module and send reset
-        this.encoderInterval = setInterval(() => this.checkEncoder(), 50)
+        setTimeout(() => this.encoderInterval = setInterval(() => this.checkEncoder(), 80))
+        
         this.log('Opening encoder on address', '0x' + this.app.opts.encoderAddress.toString(16))
         this.i2cConn = await i2c.openPromisified(1)
         // clear change counter
         await this._readEncoder()
+        this.log('Encoder opened')
     }
 
     async closeEncoder() {
@@ -195,7 +197,7 @@ class GpioHelper {
         )
     }
 
-    async sendControllerReset() {
+    async resetController() {
         if (!this.enabled) {
             return
         }
@@ -207,7 +209,7 @@ class GpioHelper {
         )
     }
 
-    async sendGaugerReset() {
+    async resetGauger() {
         if (!this.enabled) {
             return
         }
@@ -217,8 +219,20 @@ class GpioHelper {
                 gpio.write(this.app.opts.pinGaugerReset, true).then(resolve).catch(reject)
             }, 100)
         )
+        await new Promise(resolve => setTimeout(resolve, this.app.opts.resetDelay))
     }
 
+    async resetEncoder() {
+        if (!this.enabled) {
+            return
+        }
+        await gpio.write(this.app.opts.pinEncoderReset, false)
+        await new Promise((resolve, reject) => {
+            setTimeout(() => {
+                gpio.write(this.app.opts.pinEncoderReset, true).then(resolve).catch(reject)
+            }, 100)
+        })
+    }
     async mainMenu() {
 
         if (this.isMenuActive) {
@@ -242,7 +256,7 @@ class GpioHelper {
                             increment     : 0.01,
                             maxValue      : 200,
                             minValue      : 50,
-                            moveType      : 'square'
+                            moveType      : 'natural'
                         })
                         this.log({value})
                         break
@@ -288,66 +302,60 @@ class GpioHelper {
 
         await this.writeMenu(currentSlice, relativeSelectedIndex)
 
-        this.forwardHandler = howMuch => {
+        this.onEncoderChange = change => {
             try {
-                if (absoluteSelectedIndex >= choices.length - 1) {
-                    // we can't go forward anymore
-                    return
-                }
-                absoluteSelectedIndex += 1
-                if (relativeSelectedIndex < 3) {
-                    // we can keep the current slice, and just increment the relative index
-                    relativeSelectedIndex += 1
-                    this.updateSelectedMenuIndex(currentSlice, relativeSelectedIndex)
+                if (change > 0) {
+                    if (absoluteSelectedIndex >= choices.length - 1) {
+                        // we can't go forward anymore
+                        return
+                    }
+                    absoluteSelectedIndex += 1
+                    if (relativeSelectedIndex < 3) {
+                        // we can keep the current slice, and just increment the relative index
+                        relativeSelectedIndex += 1
+                        this.updateSelectedMenuIndex(currentSlice, relativeSelectedIndex)
+                        return
+                    } else {
+                        // we must update the slice
+                        currentSliceStart += 1
+                        currentSlice = choices.slice(currentSliceStart, currentSliceStart + 4)
+                        // keep relative index the same since we will be at the end
+                        // redraw the whole menu
+                    }
                 } else {
-                    // we must update the slice
-                    currentSliceStart += 1
-                    currentSlice = choices.slice(currentSliceStart, currentSliceStart + 4)
-                    // keep relative index the same since we will be at the end
-                    // redraw the whole menu
-                    this.writeMenu(currentSlice, relativeSelectedIndex)
+                    if (absoluteSelectedIndex < 1) {
+                        // we can't go backward anymore
+                        return
+                    }
+                    absoluteSelectedIndex -= 1
+                    if (relativeSelectedIndex > 0) {
+                        // we can keep the current slice, and just decrement the relative index
+                        relativeSelectedIndex -= 1
+                        this.updateSelectedMenuIndex(currentSlice, relativeSelectedIndex)
+                        return
+                    } else {
+                        // we must update the slice
+                        currentSliceStart -= 1
+                        currentSlice = choices.slice(currentSliceStart, currentSliceStart + 4)
+                        // keep relative index the same since we will be at the beginning
+                        // redraw the whole menu
+                    }
                 }
+                this.writeMenu(currentSlice, relativeSelectedIndex)
                 //this.log({currentSlice, relativeSelectedIndex, absoluteSelectedIndex})
             } catch (err) {
                 // must handle error
                 this.error(err)
             }
-        
-        }
-
-        this.backwardHandler = howMuch => {
-            try {
-                if (absoluteSelectedIndex < 1) {
-                    // we can't go backward anymore
-                    return
-                }
-                absoluteSelectedIndex -= 1
-                if (relativeSelectedIndex > 0) {
-                    // we can keep the current slice, and just decrement the relative index
-                    relativeSelectedIndex -= 1
-                    this.updateSelectedMenuIndex(currentSlice, relativeSelectedIndex)
-                } else {
-                    // we must update the slice
-                    currentSliceStart -= 1
-                    currentSlice = choices.slice(currentSliceStart, currentSliceStart + 4)
-                    // keep relative index the same since we will be at the beginning
-                    // redraw the whole menu
-                    this.writeMenu(currentSlice, relativeSelectedIndex)
-                }
-                //this.log({currentSlice, relativeSelectedIndex, absoluteSelectedIndex})
-            } catch (err) {
-                // must handle error
-                this.error(err)
-            }
+            
         }
 
         try {
             // will throw TimeoutError
             await this.waitForInput()
         } finally {
-            // remove forward/backward handlers
-            this.forwardHandler = null
-            this.backwardHandler = null
+            // remove change handler
+            this.onEncoderChange = null
         }
 
         return {
@@ -387,35 +395,36 @@ class GpioHelper {
         this.lcd.setCursorSync(0, 0)
         this.lcd.printSync(spec.label)
         
-        const writeValue = () => {
+        const writeValue = async () => {
             this.lcd.setCursorSync(0, 1)
             this.lcd.printSync(value.toFixed(spec.decimalPlaces).padStart(20))
         }
 
-        this.forwardHandler = async (howMuch) => {
-            if (value >= spec.maxValue) {
-                return
+        this.onEncoderChange = change => {
+            if (change > 0) {
+                if (value >= spec.maxValue) {
+                    return
+                }
+                value += spec.increment * this.getIncrement(change, spec.moveType)
+                value = +Math.min(value, spec.maxValue).toFixed(spec.decimalPlaces)
+            } else {
+                if (value <= spec.minValue) {
+                    return
+                }
+                value -= spec.increment * this.getIncrement(Math.abs(change), spec.moveType)
+                value = +Math.max(value, spec.minValue).toFixed(spec.decimalPlaces)
             }
-            value += spec.increment * this.getIncrement(howMuch, spec.moveType)
-            writeValue()
+            return writeValue()
         }
-        this.backwardHandler = async (howMuch) => {
-            if (value <= spec.minValue) {
-                return
-            }
-            value -= spec.increment * this.getIncrement(howMuch, spec.moveType)
-            writeValue()
-        }
-
-        writeValue()
 
         try {
+            writeValue()
             // will throw TimeoutError
             await this.waitForInput()
         } finally {
-            this.forwardHandler = null
-            this.backwardHandler = null
+            this.onEncoderChange = null
         }
+
         return value
     }
 
@@ -456,26 +465,22 @@ class GpioHelper {
                 return
             }
             this.registerDisplayAction()
-            if (change > 0) {
-                if (this.forwardHandler) {
-                    this.forwardHandler(change)
-                }
-            } else if (change < 0) {
-                if (this.backwardHandler) {
-                    this.backwardHandler(-1 * change)
-                }
+            if (this.onEncoderChange) {
+                this.onEncoderChange(change)
             }
             //this.log({change})
         } catch (err) {
             if (err.code == 'EREMOTEIO') {
                 this.error('Failed to read from encoder', err.message)
                 // this will clear/reset the interval, so it should keep trying to reconnect
-                //try {
+                try {
                     await this.openEncoder()
-                //} catch (err) {
-                    //this.error('Failed to reopen encoder', err.message)
-                //}
-                
+                    this.log('Encoder reopened')
+                } catch (err) {
+                    if (err.code != 'EREMOTEIO') {
+                        throw err
+                    }
+                }
             } else {
                 throw err
             }
@@ -501,8 +506,9 @@ class GpioHelper {
         // last six bits are the amount
         var qty = byte & ~192
         // ignore noise, TODO figure out why this is happening occasionally
+        // update: haven't seen it in a while....
         if (qty > 12) {
-            this.log('dropped', {qty, byte})
+            this.log('WARN', 'dropped', {qty, byte})
             qty = 0
         }
         //console.log({byte, isPressed, sign, qty, buf: data.buffer.toJSON()})
@@ -514,9 +520,22 @@ class GpioHelper {
     }
 
     getIncrement(change, type) {
+        const abs = Math.abs(change)
+        const mult = change < 0 ? -1 : 1
         switch (type) {
             case 'square':
-                return change * Math.abs(change)
+                return change * abs
+            case 'cube':
+                return Math.pow(change, 3)
+            case 'natural':
+                // this is ambitiously called 'natural', but it's just experimental
+                if (abs < 4) {
+                    return change ** 2 * mult
+                }
+                if (abs == 4) {
+                    return change ** 3
+                }
+                return change ** 4
             case 'linear':
             default:
                 return change

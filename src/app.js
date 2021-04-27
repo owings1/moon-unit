@@ -59,9 +59,8 @@ class App {
 
             lcdEnabled         : !!env.LCD_ENABLED,
             encoderAddress     : +env.ENCODER_ADDRESS || 0x08,
-            //pinEncoderClk      : +env.PIN_ENCODER_CLK || 12,
-            //pinEncoderDt       : +env.PIN_ENCODER_DT || 35,
             pinEncoderButton   : +env.PIN_ENCODER_BUTTON || 33,
+            pinEncoderReset    : +env.PIN_ENCODER_RESET || 31,
             lcdAddress         : +env.LCD_ADDRESS || 0x3f,
             displayTimeout     : +env.DISPLAY_TIMEOUT || 20 * 1000,
 
@@ -428,7 +427,7 @@ class App {
                 return
             }
             this.log('Sending reset to controller')
-            this.gpio.sendControllerReset().then(() => {
+            this.gpio.resetController().then(() => {
                 res.status(200).json({message: 'controller reset sent'})
                 this.log('Controller reset sent')
             }).catch(error => {
@@ -457,12 +456,10 @@ class App {
             }
             this.closeGauger()
             this.log('Sending reset to gauger')
-            this.gpio.sendGaugerReset().then(() => {
-                res.status(200).json({message: 'reset sent'})
+            this.gpio.resetGauger().then(() => {
+                res.status(200).json({message: 'gauger reset'})
                 this.log('Gauger reset sent, delaying', this.opts.resetDelay, 'to reopen')
-                setTimeout(() => {
-                    this.openGauger().catch(err => this.error(err))
-                }, this.opts.resetDelay)
+                this.openGauger().catch(err => this.error(err))
             }).catch(error => {
                 this.error(error)
                 res.status(500).json({error})

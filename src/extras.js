@@ -482,6 +482,9 @@ async function main() {
 main()
 
 
+
+//pinEncoderClk      : +env.PIN_ENCODER_CLK || 12,
+//pinEncoderDt       : +env.PIN_ENCODER_DT || 35,
 */
 
 //await gpio.setup(this.app.opts.pinEncoderClk, gpio.DIR_IN, gpio.EDGE_BOTH)
