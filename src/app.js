@@ -101,8 +101,11 @@ class App {
         this.orientation   = [null, null, null]
         this.orientationCalibration = [null, null, null, null]
         this.isOrientationCalibrated = null
-        this.isOrientationInit = null
         this.maxSpeeds = [null, null]
+        this.isOrientationInit = null
+        this.isMcInit = null
+        this.isMagInit = null
+        this.isGpsInit = null
     }
 
     async status() {
@@ -115,14 +118,17 @@ class App {
             limitsEnabled             : this.limitsEnabled,
             isGaugerConnected         : this.isGaugerConnected,
             isOrientationCalibrated   : this.isOrientationCalibrated,
-            isOrientationInit         : this.isOrientationInit,
             orientationCalibration    : this.orientationCalibration,
             gaugerConnectedStatus     : this.isGaugerConnected ? 'Connected' : 'Disconnected',
             gpsCoords                 : this.gpsCoords,
             magHeading                : this.magHeading,
             declinationAngle          : this.declinationAngle,
             declinationSource         : this.declinationSource,
-            maxSpeeds                 : this.maxSpeeds
+            maxSpeeds                 : this.maxSpeeds,
+            isOrientationInit         : this.isOrientationInit,
+            isMagInit                 : this.isMagInit,
+            isMcInit                  : this.isMcInit,
+            isGpsInit                 : this.isGpsInit
         }
     }
 
@@ -229,7 +235,6 @@ class App {
                 this.orientation = floats.slice(0, 3).map(v => v == DEG_NULL ? null : v)
                 this.orientationCalibration = floats.slice(3, 7)
                 this.isOrientationCalibrated = values[7] == 'T'
-                this.isOrientationInit = values[8] == 'T'
                 break
             case 'MCC':
                 // motor controller status
@@ -245,6 +250,10 @@ class App {
                 break
             case 'MOD':
                 // names the modules available
+                this.isOrientationInit = values.indexOf('ORI') > -1
+                this.isMcInit = values.indexOf('MCC') > -1
+                this.isGpsInit = values.indexOf('GPS') > -1
+                this.isMagInit = values.indexOf('MAG') > -1
                 break
             default:
                 this.log('Unknown module', module)

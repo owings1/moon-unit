@@ -236,6 +236,10 @@ $(document).ready(function() {
         $('#declination_angle').text('' + ed(status.declinationAngle))
         $('#maxSpeed_m1').text('' + ed(status.maxSpeeds[0]))
         $('#maxSpeed_m2').text('' + ed(status.maxSpeeds[1]))
+        $('#is_gps_init').text('' + ed(status.isGpsInit))
+        $('#is_orientation_init').text('' + ed(status.isOrientationInit))
+        $('#is_mag_init').text('' + ed(status.isMagInit))
+        $('#is_mc_init').text('' + ed(status.isMcInit))
     }
 
     // :04 <motorId> <direction> <degrees>;

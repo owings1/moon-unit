@@ -99,6 +99,10 @@
                     </thead>
                     <tbody>
                         <tr>
+                            <td>isInit</td>
+                            <td><span id="is_gps_init"><%= '' + status.isGpsInit %></span></td>
+                        </tr>
+                        <tr>
                             <td>Lat</td>
                             <td><span class="gps-coord" id="gps_lat"><%= '' + status.gpsCoords[0] %></span></td>
                         </tr>
@@ -129,6 +133,10 @@
                     </thead>
                     <tbody>
                         <tr>
+                            <td>isInit</td>
+                            <td><span id="is_mag_init"><%= '' + status.isMagInit %></span></td>
+                        </tr>
+                        <tr>
                             <td>Heading</td>
                             <td><span class="mag-heading" id="mag_heading"><%= '' + status.magHeading %></span></td>
                         </tr>
@@ -139,6 +147,10 @@
                         </tr>
                     </thead>
                     <tbody>
+                        <tr>
+                            <td>isInit</td>
+                            <td><span id="is_orientation_init"><%= '' + status.isOrientationInit %></span></td>
+                        </tr>
                         <tr>
                             <td>x</td>
                             <td><span id="orientation_x"><%= '' + status.orientation[0] %></span></td>
@@ -158,10 +170,6 @@
                         <tr>
                             <td>Calibration</td>
                             <td><span id="orienation_calibration"><%= status.orientationCalibration.map(v => '' + v).join('|') %></span></td>
-                        </tr>
-                        <tr>
-                            <td>isInit</td>
-                            <td><span id="is_orientation_init"><%= '' + status.isOrientationInit %></span></td>
                         </tr>
                     </tbody>
                 </table>
