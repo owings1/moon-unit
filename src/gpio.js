@@ -69,15 +69,21 @@ class GpioHelper {
             gpio = require('rpi-gpio').promise
         }
 
+        const {opts} = this.app
+        // Avoid EACCES errors
         const gpioRetries = 10
         for (var i = 0; i < gpioRetries; i++) {
             try {
-                await gpio.setup(this.app.opts.pinControllerReset, gpio.DIR_HIGH)
-                await gpio.setup(this.app.opts.pinControllerStop, gpio.DIR_LOW)
-                await gpio.setup(this.app.opts.pinControllerReady, gpio.DIR_IN)
-                await gpio.setup(this.app.opts.pinGaugerReset, gpio.DIR_HIGH)
+                await gpio.setup(opts.pinControllerReset, gpio.DIR_HIGH)
+                await gpio.setup(opts.pinControllerStop, gpio.DIR_LOW)
+                await gpio.setup(opts.pinControllerReady, gpio.DIR_IN)
+                await gpio.setup(opts.pinGaugerReset, gpio.DIR_HIGH)
+                if (this.app.opts.lcdEnabled) {
+                    await gpio.setup(opts.pinEncoderButton, gpio.DIR_IN, gpio.EDGE_RISING)
+                    await gpio.setup(opts.pinEncoderReset, gpio.DIR_HIGH)
+                }
             } catch (err) {
-                if (i == (gpioRetries - 1)) {
+                if (i >= (gpioRetries - 1)) {
                     throw err
                 }
                 if (err.code == 'EACCES') {
@@ -90,7 +96,7 @@ class GpioHelper {
 
         gpio.on('change', (pin, value) => this.handlePinChange(pin, value))
 
-        if (!this.app.opts.lcdEnabled) {
+        if (!opts.lcdEnabled) {
             return
         }
 
@@ -99,22 +105,6 @@ class GpioHelper {
         }
         if (!LCD) {
             LCD = require('raspberrypi-liquid-crystal')
-        }
-
-        for (var i = 0; i < gpioRetries; i++) {
-            try {
-                await gpio.setup(this.app.opts.pinEncoderButton, gpio.DIR_IN, gpio.EDGE_RISING)
-                await gpio.setup(this.app.opts.pinEncoderReset, gpio.DIR_HIGH)
-            } catch (err) {
-                if (i == (gpioRetries - 1)) {
-                    throw err
-                }
-                if (err.code == 'EACCES') {
-                    this.error('Failed to open GPIO', err.message)
-                    await new Promise(resolve => setTimeout(resolve, 3000))
-                    this.log('Retrying to open GPIO')
-                }
-            }
         }
 
         await this.openLcd()
@@ -156,7 +146,7 @@ class GpioHelper {
         try {
             await this.closeLcd()
         } catch (err) {
-            this.error('Error closing lcd', err)
+            this.error('Error closing LCD', err)
         }
         this.log('Opening LCD on address', '0x' + this.app.opts.lcdAddress.toString(16))
         // NB: set the interval first so we can try to reconnect
@@ -601,7 +591,15 @@ class GpioHelper {
             this.buttonReject = null
             // sleep display
             if (this.isLcdConnected) {
-                this.lcd.noDisplaySync()
+                try {
+                    this.lcd.noDisplaySync()
+                } catch (err) {
+                    if (isLcdWriteError(err)) {
+                        this.isLcdConnected = false
+                        this.error('LCD Write error', err.message)
+                    }
+                }
+                
             }
             this.isDisplayActive = false
         }
