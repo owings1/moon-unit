@@ -69,10 +69,24 @@ class GpioHelper {
             gpio = require('rpi-gpio').promise
         }
 
-        await gpio.setup(this.app.opts.pinControllerReset, gpio.DIR_HIGH)
-        await gpio.setup(this.app.opts.pinControllerStop, gpio.DIR_LOW)
-        await gpio.setup(this.app.opts.pinControllerReady, gpio.DIR_IN)
-        await gpio.setup(this.app.opts.pinGaugerReset, gpio.DIR_HIGH)
+        const gpioRetries = 10
+        for (var i = 0; i < gpioRetries; i++) {
+            try {
+                await gpio.setup(this.app.opts.pinControllerReset, gpio.DIR_HIGH)
+                await gpio.setup(this.app.opts.pinControllerStop, gpio.DIR_LOW)
+                await gpio.setup(this.app.opts.pinControllerReady, gpio.DIR_IN)
+                await gpio.setup(this.app.opts.pinGaugerReset, gpio.DIR_HIGH)
+            } catch (err) {
+                if (i == (gpioRetries - 1)) {
+                    throw err
+                }
+                if (err.code == 'EACCES') {
+                    this.error('Failed to open GPIO', err.message)
+                    await new Promise(resolve => setTimeout(resolve, 3000))
+                    this.log('Retrying to open GPIO')
+                }
+            }
+        }
 
         gpio.on('change', (pin, value) => this.handlePinChange(pin, value))
 
@@ -87,8 +101,21 @@ class GpioHelper {
             LCD = require('raspberrypi-liquid-crystal')
         }
 
-        await gpio.setup(this.app.opts.pinEncoderButton, gpio.DIR_IN, gpio.EDGE_RISING)
-        await gpio.setup(this.app.opts.pinEncoderReset, gpio.DIR_HIGH)
+        for (var i = 0; i < gpioRetries; i++) {
+            try {
+                await gpio.setup(this.app.opts.pinEncoderButton, gpio.DIR_IN, gpio.EDGE_RISING)
+                await gpio.setup(this.app.opts.pinEncoderReset, gpio.DIR_HIGH)
+            } catch (err) {
+                if (i == (gpioRetries - 1)) {
+                    throw err
+                }
+                if (err.code == 'EACCES') {
+                    this.error('Failed to open GPIO', err.message)
+                    await new Promise(resolve => setTimeout(resolve, 3000))
+                    this.log('Retrying to open GPIO')
+                }
+            }
+        }
 
         await this.openLcd()
         await this.openEncoder()
