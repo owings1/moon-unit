@@ -16,7 +16,10 @@ https://elinux.org/images/5/5c/Pi-GPIO-header.png
 
 // dynamically load modules, else will fail on non-pi system
 var gpio
+var ic2
 var LCD
+
+const EncWriteBuf = Buffer.from([0x0])
 
 class GpioHelper {
 
@@ -34,15 +37,23 @@ class GpioHelper {
             'pinControllerReset',
             'pinControllerStop',
             'pinControllerReady',
-            'pinGaugerReset',
-            'pinEncoderClk',
-            'pinEncoderDt',
-            'pinEncoderButton',
-            'lcdAddress'
+            'pinGaugerReset'
         ]
         for (var k of requiredKeys) {
             if (!this.app.opts[k]) {
                 throw new Error('Missing opt: ' + k)
+            }
+        }
+        if (this.app.opts.lcdEnabled) {
+            const lcdRequiredKeys = [
+                'encoderAddress',
+                'pinEncoderButton',
+                'lcdAddress'
+            ]
+            for (var k of lcdRequiredKeys) {
+                if (!this.app.opts[k]) {
+                    throw new Error('Missing opt: ' + k)
+                }
             }
         }
     }
@@ -56,18 +67,28 @@ class GpioHelper {
         if (!gpio) {
             gpio = require('rpi-gpio').promise
         }
-        if (!LCD) {
-            LCD = require('raspberrypi-liquid-crystal')
-        }
 
         await gpio.setup(this.app.opts.pinControllerReset, gpio.DIR_HIGH)
         await gpio.setup(this.app.opts.pinControllerStop, gpio.DIR_LOW)
         await gpio.setup(this.app.opts.pinControllerReady, gpio.DIR_IN)
         await gpio.setup(this.app.opts.pinGaugerReset, gpio.DIR_HIGH)
 
-        await gpio.setup(this.app.opts.pinEncoderClk, gpio.DIR_IN, gpio.EDGE_BOTH)
+        gpio.on('change', (pin, value) => this.handlePinChange(pin, value))
+
+        if (!this.app.opts.lcdEnabled) {
+            return
+        }
+
+        if (!i2c) {
+            i2c = require('i2c-bus')
+        }
+        if (!LCD) {
+            LCD = require('raspberrypi-liquid-crystal')
+        }
+
+        //await gpio.setup(this.app.opts.pinEncoderClk, gpio.DIR_IN, gpio.EDGE_BOTH)
         //await gpio.setup(this.app.opts.pinEncoderDt, gpio.DIR_IN, gpio.EDGE_BOTH)
-        await gpio.setup(this.app.opts.pinEncoderDt, gpio.DIR_IN)
+        //await gpio.setup(this.app.opts.pinEncoderDt, gpio.DIR_IN)
         await gpio.setup(this.app.opts.pinEncoderButton, gpio.DIR_IN, gpio.EDGE_RISING)
 
         this.lcd = new LCD(1, this.app.opts.lcdAddress, 20, 4)
@@ -87,9 +108,11 @@ class GpioHelper {
         // what to do on the next button press
         this.buttonResolve = null
 
+        /*
         // Encoder state
         this.counter = 0
         this.clkLastState = await gpio.read(this.app.opts.pinEncoderClk)
+        */
 
         /*
         // https://www.best-microcontroller-projects.com/rotary-encoder.html
@@ -111,7 +134,7 @@ class GpioHelper {
 
         this.isMenuActive = false
 
-        gpio.on('change', (pin, value) => this.handlePinChange(pin, value))
+        
 
         this.mainMenu()
     }
@@ -246,7 +269,7 @@ class GpioHelper {
 
         await this.writeMenu(currentSlice, relativeSelectedIndex)
 
-        this.forwardHandler = () => {
+        this.forwardHandler = howMuch => {
             try {
                 if (absoluteSelectedIndex >= choices.length - 1) {
                     // we can't go forward anymore
@@ -273,7 +296,7 @@ class GpioHelper {
         
         }
 
-        this.backwardHandler = () => {
+        this.backwardHandler = howMuch => {
             try {
                 if (absoluteSelectedIndex < 1) {
                     // we can't go backward anymore
@@ -301,7 +324,7 @@ class GpioHelper {
 
         try {
             // will throw TimeoutError
-            await this.waitForButtonPress()
+            await this.waitForInput()
         } finally {
             // remove forward/backward handlers
             this.forwardHandler = null
@@ -349,14 +372,14 @@ class GpioHelper {
             this.lcd.printSync(value.toFixed(spec.decimalPlaces).padStart(20))
         }
 
-        this.forwardHandler = async () => {
+        this.forwardHandler = async (howMuch) => {
             if (value >= spec.maxValue) {
                 return
             }
             value += spec.increment
             writeValue()
         }
-        this.backwardHandler = async () => {
+        this.backwardHandler = async (howMuch) => {
             if (value <= spec.minValue) {
                 return
             }
@@ -368,7 +391,7 @@ class GpioHelper {
 
         try {
             // will throw TimeoutError
-            await this.waitForButtonPress()
+            await this.waitForInput()
         } finally {
             this.forwardHandler = null
             this.backwardHandler = null
@@ -377,20 +400,100 @@ class GpioHelper {
     }
 
     // will throw TimeoutError
-    async waitForButtonPress() {
+    async waitForInput() {
+
+        var isFinished = false
+        ;(async () => {
+            const conn = await i2c.openPromisified(1)
+            try {
+                // TODO: handle EREMOTEIO error
+                // clear change counter
+                await this.readEncoder(conn)
+                const startPos = 0
+                this.log({startPos})
+                var pos = startPos
+                while (true) {
+                    if (isFinished) {
+                        break
+                    }
+                    var {change} = await this.readEncoder(conn)
+                    if (change) {
+                        if (Math.abs(change) > 12) {
+                            this.log('dropped', {change})
+                            continue
+                        }
+                        if (change > 0) {
+                            if (this.forwardHandler) {
+                                this.forwardHandler(change)
+                            }
+                        } else if (change < 0) {
+                            if (this.backwardHandler) {
+                                this.backwardHandler(-1 * change)
+                            }
+                        }
+                        //var inc = getIncrement(values.change, 'square')
+                        //pos += inc
+                        this.log({change})
+                    }
+                    await new Promise(resolve => setTimeout(resolve, 50))
+                }
+            } finally {
+                conn.close()
+            }
+        })()
 
         return new Promise((resolve, reject) => {
             this.buttonResolve = () => {
                 this.buttonResolve = null
                 this.buttonReject = null
+                isFinished = true
                 resolve()
             }
             this.buttonReject = err => {
                 this.buttonResolve = null
                 this.buttonReject = null
+                isFinished = true
                 reject(err)
             }
         })
+    }
+
+    // TODO: handle EREMOTEIO error
+    async readEncoder(conn) {
+        await conn.i2cWrite(this.app.opts.encoderAddress, EncWriteBuf.length, EncWriteBuf)
+        const data = await conn.i2cRead(this.app.opts.encoderAddress, 1, Buffer.alloc(1))
+        return this.parseEncoderResponse(data.buffer)
+    }
+
+    parseEncoderResponse(buf) {
+        const byte = buf[0]
+        // first (MSB) bit is push button
+        //const isPressed = (byte & 128) == 128
+        // second bit is positive=1 negative=0
+        const sign = (byte & 64) == 64 ? 1 : -1
+        // last six bits are the amount
+        var qty = byte & ~192
+        // ignore noise, TODO figure out why this is happening occasionally
+        if (qty > 12) {
+            this.log('dropped', {qty, byte})
+            qty = 0
+        }
+        //console.log({byte, isPressed, sign, qty, buf: data.buffer.toJSON()})
+        //console.log({byte})
+        return {
+            //isPressed,
+            change: qty * sign
+        }
+    }
+
+    getIncrement(change, type) {
+        switch (type) {
+            case 'square':
+                return change * Math.abs(change)
+            case 'linear':
+            default:
+                return change
+        }
     }
 
     // this assumes choices has max length 4, or will throw an error
@@ -419,7 +522,7 @@ class GpioHelper {
     }
 
     async handlePinChange(pin, value) {
-        if (pin == this.app.opts.pinEncoderClk) {
+        /*if (pin == this.app.opts.pinEncoderClk) {
             if (!this.isDisplayActive) {
                 this.registerDisplayAction()
                 return
@@ -436,7 +539,7 @@ class GpioHelper {
             this.registerDisplayAction()
             //this.handleRotChange(await gpio.read(this.app.opts.pinEncoderClk), value)
             this.handleClkChange(await gpio.read(this.app.opts.pinEncoderClk), value)
-        } else if (pin == this.app.opts.pinEncoderButton) {
+        } else */if (pin == this.app.opts.pinEncoderButton) {
             this.log('button')
             if (!this.isDisplayActive) {
                 this.registerDisplayAction()
@@ -454,6 +557,7 @@ class GpioHelper {
         }
     }
 
+    /*
     async handleClkChange(clkState, dtState) {
         if (clkState != this.clkLastState) {
             //const dtState = await gpio.read(this.app.opts.pinEncoderDt)
@@ -475,7 +579,6 @@ class GpioHelper {
         this.log({counter: this.counter})
     }
 
-    /*
     handleRotChange(lft, rght) {
         const val = this.readRotary(lft, rght)
         if (val != 0) {

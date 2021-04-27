@@ -57,8 +57,10 @@ class App {
             pinControllerReady : +env.PIN_CONTROLLER_READY || 16,
             pinGaugerReset     : +env.PIN_GAUGER_RESET || 11,
 
-            pinEncoderClk      : +env.PIN_ENCODER_CLK || 12,
-            pinEncoderDt       : +env.PIN_ENCODER_DT || 35,
+            lcdEnabled         : !!env.LCD_ENABLED,
+            encoderAddress     : +env.ENCODER_ADDRESS || 0x08,
+            //pinEncoderClk      : +env.PIN_ENCODER_CLK || 12,
+            //pinEncoderDt       : +env.PIN_ENCODER_DT || 35,
             pinEncoderButton   : +env.PIN_ENCODER_BUTTON || 33,
             lcdAddress         : +env.LCD_ADDRESS || 0x3f,
             displayTimeout     : +env.DISPLAY_TIMEOUT || 20 * 1000,
