@@ -97,5 +97,9 @@ Other software debouncer references (not used):
     - https://www.best-microcontroller-projects.com/rotary-encoder.html
     - https://hackaday.com/2015/12/09/embed-with-elliot-debounce-your-noisy-buttons-part-i/
 
+A post about the BNO055 Euler bias:
+    - https://community.bosch-sensortec.com/t5/MEMS-sensors-forum/BNO055-Operation-Mode-amp-Euler-Bias/td-p/7535
+
+
 [gpio]: https://elinux.org/images/5/5c/Pi-GPIO-header.png
 [schmitt]: https://www.ti.com/lit/ds/symlink/cd40106b.pdf?ts=1619275906436

@@ -110,14 +110,19 @@ class GpioHelper {
         try {
             await this.closeLcd()
         } catch (err) {
-            this.error('Error closing lcd', err)
+            this.error('Error closing LCD', err)
         }
         try {
             await this.closeEncoder()
         } catch (err) {
-            this.error('Error closing encoder', err)
+            this.error('Error closing Encoder', err)
         }
-        gpio.destroy()
+        try {
+            gpio.destroy()
+        } catch (err) {
+            this.error('Error closing GPIO', err)
+        }
+        
     }
 
     async openLcd() {
@@ -127,16 +132,20 @@ class GpioHelper {
             this.error('Error closing lcd', err)
         }
         this.log('Opening LCD on address', '0x' + this.app.opts.lcdAddress.toString(16))
+        // NB: set the interval first so we can try to reconnect
+        setTimeout(() => this.checkLcdInterval = setInterval(() => this.checkLcd(), 1000))
         this.lcd = new LCD(1, this.app.opts.lcdAddress, 20, 4)
         this.lcd.beginSync()
-        this.checkSleepInterval = setInterval(() => this.checkSleep(), 1000)
+        this.isLcdConnected = true
+        this.log('LCD opened')
     }
 
     async closeLcd() {
-        clearInterval(this.checkSleepInterval)
+        clearInterval(this.checkLcdInterval)
+        this.isLcdConnected = false
         this.isDisplayActive = false
         this.lastDisplayActionMillis = null
-        if (this.lcd) {
+        if (this.lcd && this.isLcdConnected) {
             this.lcd.noDisplaySync()
             this.lcd.closeSync()
         }
@@ -149,11 +158,9 @@ class GpioHelper {
             this.error('Error closing encoder', err)
         }
         await this.resetEncoder()
-        await new Promise(resolve => setTimeout(resolve, 2000))
+        this.log('Opening encoder on address', '0x' + this.app.opts.encoderAddress.toString(16))
         // NB: set the interval first so we can try to reconnect
         setTimeout(() => this.encoderInterval = setInterval(() => this.checkEncoder(), 80))
-        
-        this.log('Opening encoder on address', '0x' + this.app.opts.encoderAddress.toString(16))
         this.i2cConn = await i2c.openPromisified(1)
         // clear change counter
         await this._readEncoder()
@@ -201,24 +208,14 @@ class GpioHelper {
         if (!this.enabled) {
             return
         }
-        await gpio.write(this.app.opts.pinControllerReset, false)
-        await new Promise((resolve, reject) =>
-            setTimeout(() => {
-                gpio.write(this.app.opts.pinControllerReset, true).then(resolve).catch(reject)
-            }, 100)
-        )
+        await this._sendReset(this.app.opts.pinControllerReset)
     }
 
     async resetGauger() {
         if (!this.enabled) {
             return
         }
-        await gpio.write(this.app.opts.pinGaugerReset, false)
-        await new Promise((resolve, reject) =>
-            setTimeout(() => {
-                gpio.write(this.app.opts.pinGaugerReset, true).then(resolve).catch(reject)
-            }, 100)
-        )
+        await this._sendReset(this.app.opts.pinGaugerReset)
         await new Promise(resolve => setTimeout(resolve, this.app.opts.resetDelay))
     }
 
@@ -226,10 +223,15 @@ class GpioHelper {
         if (!this.enabled) {
             return
         }
-        await gpio.write(this.app.opts.pinEncoderReset, false)
+        await this._sendReset(this.app.opts.pinEncoderReset)
+        await new Promise(resolve => setTimeout(resolve, 2000))
+    }
+
+    async _sendReset(pin) {
+        await gpio.write(pin, false)
         await new Promise((resolve, reject) => {
             setTimeout(() => {
-                gpio.write(this.app.opts.pinEncoderReset, true).then(resolve).catch(reject)
+                gpio.write(pin, true).then(resolve).catch(reject)
             }, 100)
         })
     }
@@ -302,7 +304,7 @@ class GpioHelper {
 
         await this.writeMenu(currentSlice, relativeSelectedIndex)
 
-        this.onEncoderChange = change => {
+        this.onEncoderChange = async (change) => {
             try {
                 if (change > 0) {
                     if (absoluteSelectedIndex >= choices.length - 1) {
@@ -313,7 +315,7 @@ class GpioHelper {
                     if (relativeSelectedIndex < 3) {
                         // we can keep the current slice, and just increment the relative index
                         relativeSelectedIndex += 1
-                        this.updateSelectedMenuIndex(currentSlice, relativeSelectedIndex)
+                        await this.updateSelectedMenuIndex(currentSlice, relativeSelectedIndex)
                         return
                     } else {
                         // we must update the slice
@@ -331,7 +333,7 @@ class GpioHelper {
                     if (relativeSelectedIndex > 0) {
                         // we can keep the current slice, and just decrement the relative index
                         relativeSelectedIndex -= 1
-                        this.updateSelectedMenuIndex(currentSlice, relativeSelectedIndex)
+                        await this.updateSelectedMenuIndex(currentSlice, relativeSelectedIndex)
                         return
                     } else {
                         // we must update the slice
@@ -341,13 +343,16 @@ class GpioHelper {
                         // redraw the whole menu
                     }
                 }
-                this.writeMenu(currentSlice, relativeSelectedIndex)
+                await this.writeMenu(currentSlice, relativeSelectedIndex)
                 //this.log({currentSlice, relativeSelectedIndex, absoluteSelectedIndex})
             } catch (err) {
-                // must handle error
+                if (isLcdWriteError(err)) {
+                    // handled in checkEncoder()
+                    throw err
+                }
+                // must handle other errors
                 this.error(err)
             }
-            
         }
 
         try {
@@ -370,6 +375,7 @@ class GpioHelper {
             ...spec
         }
         const promise = this.promptMenuChoice(['Yes', 'No'])
+        // TODO: handle error
         // cheat by putting label at bottom until sticky top is supported
         this.lcd.setCursorSync(0, 2)
         this.lcd.printSync(spec.label + '?')
@@ -414,6 +420,7 @@ class GpioHelper {
                 value -= spec.increment * this.getIncrement(Math.abs(change), spec.moveType)
                 value = +Math.max(value, spec.minValue).toFixed(spec.decimalPlaces)
             }
+            // TODO: handle error
             return writeValue()
         }
 
@@ -465,8 +472,9 @@ class GpioHelper {
                 return
             }
             this.registerDisplayAction()
-            if (this.onEncoderChange) {
-                this.onEncoderChange(change)
+            // don't call encoderChange if no menu is active
+            if (this.onEncoderChange && this.isMenuActive) {
+                await this.onEncoderChange(change)
             }
             //this.log({change})
         } catch (err) {
@@ -480,6 +488,25 @@ class GpioHelper {
                     if (err.code != 'EREMOTEIO') {
                         throw err
                     }
+                }
+            } else if (isLcdWriteError(err)) {
+                // LCD write error
+                this.error('Failed to write to LCD', err.message)
+                // trigger reconnect on next interval
+                this.isLcdConnected = false
+                //try {
+                //    await this.closeLcd()
+                //} catch (err) {
+                //    if (!isLcdWriteError(err)) {
+                //        throw err
+                //    }
+                //}
+                // TODO: try to reconnect to LCD, and don't throw
+                if (this.buttonReject) {
+                    this.buttonReject(err)
+                    this.buttonReject = null
+                } else {
+                    throw err
                 }
             } else {
                 throw err
@@ -519,6 +546,40 @@ class GpioHelper {
         }
     }
 
+    async checkLcd() {
+        //console.log('checkLcd')
+        if (!this.isLcdConnected) {
+            try {
+                await this.openLcd()
+                this.log('Reopened LCD')
+                // so the display timeout will trigger
+                this.registerDisplayAction()
+            } catch (err) {
+                this.error('Failed to reopen LCD', err.message)
+                this.isMenuActive = false
+                if (this.buttonReject) {
+                    this.buttonReject(err)
+                }
+            }
+            
+        }
+        const {displayTimeout} = this.app.opts
+        if (displayTimeout > 0 && this.lastDisplayActionMillis + displayTimeout < +new Date) {
+            // clear handlers
+            this.buttonResolve = null
+            if (this.buttonReject) {
+                this.log('Input timeout')
+                this.buttonReject(new TimeoutError)
+            }
+            this.buttonReject = null
+            // sleep display
+            if (this.isLcdConnected) {
+                this.lcd.noDisplaySync()
+            }
+            this.isDisplayActive = false
+        }
+    }
+
     getIncrement(change, type) {
         const abs = Math.abs(change)
         const mult = change < 0 ? -1 : 1
@@ -547,6 +608,9 @@ class GpioHelper {
     async writeMenu(choices, selectedIndex) {
         if (choices.length > 4) {
             throw new Error('too many choices to display')
+        }
+        if (!this.isLcdConnected) {
+            return
         }
         this.lcd.clearSync()
         for (var i = 0; i < choices.length; i++) {
@@ -593,24 +657,8 @@ class GpioHelper {
         }
     }
 
-    checkSleep() {
-        const {displayTimeout} = this.app.opts
-        if (displayTimeout > 0 && this.lastDisplayActionMillis + displayTimeout < +new Date) {
-            // clear handlers
-            this.buttonResolve = null
-            if (this.buttonReject) {
-                this.log('display sleep timeout')
-                this.buttonReject(new TimeoutError)
-            }
-            this.buttonReject = null
-            // sleep display
-            this.lcd.noDisplaySync()
-            this.isDisplayActive = false
-        }
-    }
-
     registerDisplayAction() {
-        if (!this.isDisplayActive) {
+        if (!this.isDisplayActive && this.isLcdConnected) {
             this.lcd.displaySync()
             this.isDisplayActive = true
         }
@@ -634,4 +682,7 @@ class GpioHelper {
 
 class TimeoutError extends Error {}
 
+function isLcdWriteError(err) {
+    return err.errno == 121
+}
 module.exports = GpioHelper
