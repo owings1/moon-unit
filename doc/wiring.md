@@ -3,8 +3,8 @@
 
 | Pin | Description                 | Color  | Notes
 |-----|-----------------------------|--------|------------------
-|   0 | RX                          | yellow | via rocker switch to nano 7
-|   2 | TX                          | blue   | via rocker switch to nano 6
+|   0 | RX                          | yellow | via rocker switch to gauger 7
+|   2 | TX                          | blue   | via rocker switch to gauger 6
 |   3 | m1 limit switch CW          | yellow | inverter 2
 |   4 | m1 limit switch ACW         | yellow | inverter 4
 |   5 | m1 direction                | blue   |
@@ -16,7 +16,7 @@
 |  11 | m2 limit switch CW          | yellow | inverter 6
 |  12 | m2 limit switch ACW         | yellow | inverter 8
 |  13 | stop signal                 | yellow | to pi 18, signal to stop all motors when `HIGH`
-|  A0 | ready signal                | green  | to nano 5 and pi 38, ready when `HIGH`
+|  A0 | ready signal                | green  | to gauger 5 and pi 38, ready when `HIGH`
 |  A1 |                             |        | 
 |  A2 |                             |        |
 |  A3 |                             |        |
@@ -49,14 +49,14 @@ See [raspberry pi GPIO pinout image][gpio]. Pin 1 is on the SD card side.
 |   3  | SDA     | I2C SDA             | white  | to LCD/encoder SDA
 |   5  | SCL     | I2C SCL             | blue   | to LCD/encoder SCL
 |   6  | GND     | Ground              | black  |
-|   8  | GPIO 14 | TX to gauger        | yellow | via rocker switch to nano pin RX0
-|  10  | GPIO 15 | RX from gauger      | blue   | via rocker switch to nano pin TX1
-|  11  | GPIO 17 | Gauger reset        | white  | to nano Rst
+|   8  | GPIO 14 | TX to gauger        | yellow | via rocker switch to gauger pin RX0
+|  10  | GPIO 15 | RX from gauger      | blue   | via rocker switch to gauger pin TX1
+|  11  | GPIO 17 | Gauger reset        | white  | to gauger Rst
 |  13  | GPIO 27 | Controller reset    | blue   | to uno Rst
-|  16  | GPIO 20 | Controller ready    | green  | to uno A0 and nano 5
+|  15  | GPIO 22 | Encoder reset       | green  | to encoder module Rst
+|  16  | GPIO 20 | Controller ready    | green  | to uno A0 and gauger 5
 |  18  | GPIO 24 | Controller stop     | yellow | to uno 13
 |  29  | GPIO  5 | Shutdown button     | white  | shutdown pi when `LOW` for 2s
-|  31  | GPIO  6 | Encoder reset       | green  | to encoder module Rst
 
 ### Schmitt Inverter
 
@@ -73,12 +73,10 @@ See [CD40106BE datasheet][schmitt]
 |   7 | VSS   | Ground               | black  |
 |   8 | D out | m2 acw out           | yellow | controller pin 12
 |   9 | D in  | m2 acw in            | white  |
-|  14 | VDD   | +3.3v                | red    | nano 3.3v
+|  14 | VDD   | +3.3v                | red    | gauger 3.3v
 
 
 ### Rotary module
-
-Wip
 
 | Pin | Description                 | Color  | Notes
 |-----|-----------------------------|--------|------------------
