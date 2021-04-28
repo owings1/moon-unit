@@ -217,20 +217,26 @@ class I2ciHelper {
             if (isQuit) {
                 break
             }
-            this.lcd.clearSync()
-            this.lcd.setCursor(0, 0)
-            this.lcd.printSync(choice.value + ' ...')
-            const res = await this.sendRequest('controller/command/sync', 'POST', {command: cmd})
-            const body = await res.json()
-            this.lcd.clearSync()
-            this.lcd.setCursorSync(0, 0)
-            this.lcd.printSync(['HTTP', res.status].join(' '))
-            this.lcd.setCursorSync(0, 1)
-            this.lcd.printSync(['Code', body.response.status].join(' '))
-            this.lcd.setCursorSync(0, 2)
-            this.lcd.printSync(body.response.message.substring(0, 19))
+            await this.doMoveRequest(cmd, choice.value)
             await new Promise(resolve => setTimeout(resolve, 3000))
         }
+    }
+
+    async doMoveRequest(command, title) {
+        title = title || 'Move'
+        this.lcd.clearSync()
+        this.lcd.setCursor(0, 0)
+        this.lcd.printSync(title + ' ...')
+        const res = await this.sendRequest('controller/command/sync', 'POST', {command})
+        const body = await res.json()
+        this.lcd.clearSync()
+        this.lcd.setCursorSync(0, 0)
+        this.lcd.printSync(['HTTP', res.status].join(' '))
+        this.lcd.setCursorSync(0, 1)
+        this.lcd.printSync(['Code', body.response.status].join(' '))
+        this.lcd.setCursorSync(0, 2)
+        this.lcd.printSync(body.response.message.substring(0, 19))
+        return {res, body}
     }
 
     async sendRequest(uri, method, body) {

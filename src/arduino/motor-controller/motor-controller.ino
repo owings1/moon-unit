@@ -133,6 +133,7 @@
 
 #define absMaxSpeed_m1 1600L
 #define absMaxSpeed_m2 1600L
+// TODO: refactor, since floats are only good to 6 decimal places
 #define degreesPerStep_m1 0.0008125
 #define degreesPerStep_m2 0.001125
 // for homing, will try not to overshoot limit switches
@@ -152,16 +153,16 @@ boolean isLimit_m2_cw = false;
 boolean isLimit_m2_acw = false;
 
 // track the max speed and acceleration values set in stepper objects.
-long acceleration_m1;
-long acceleration_m2;
-long maxSpeed_m1;
-long maxSpeed_m2;
+unsigned long acceleration_m1;
+unsigned long acceleration_m2;
+unsigned long maxSpeed_m1;
+unsigned long maxSpeed_m2;
 // flag to reset acceleration to oldAcceleration after motors are finished
 // running, for smooth stop on limits.
 boolean isStopping_m1 = false;
 boolean isStopping_m2 = false;
-long oldAcceleration_m1;
-long oldAcceleration_m2;
+unsigned long oldAcceleration_m1;
+unsigned long oldAcceleration_m2;
 // flag for when we are backing up for homing purposes, so that immediately
 // after we can re-initiate homing.
 boolean isBacking_m1 = false;
@@ -169,8 +170,8 @@ boolean isBacking_m2 = false;
 
 unsigned long lastMotorActionTime_m1 = millis();
 unsigned long lastMotorActionTime_m2 = millis();
-boolean isMotorEnabled_m1 = false;
-boolean isMotorEnabled_m2 = false;
+boolean isMotorActive_m1 = false;
+boolean isMotorActive_m2 = false;
 
 // the position is only meaningful if homed
 boolean hasHomed_m1 = false;
@@ -182,11 +183,30 @@ boolean shouldStop = false;
 AccelStepper stepper_m1(AccelStepper::FULL2WIRE, stepPin_m1, dirPin_m1);
 AccelStepper stepper_m2(AccelStepper::FULL2WIRE, stepPin_m2, dirPin_m2);
 
+
+struct Motor {
+  AccelStepper stepper;
+  boolean limitsEnabled;
+  boolean isLimit_cw;
+  boolean isLimit_acw;
+  boolean isActive;
+  boolean hasHomed;
+  boolean isStopping;
+  boolean isBacking;
+  unsigned long acceleration;
+  unsigned long oldAcceleration;
+  unsigned long maxSpeed;
+  unsigned long lastActionTime;
+};
+
+Motor motors[2];
+
 void setup() {
   setupStatePin();
   setState(STATE_BUSY);
   Serial.begin(baudRate);
   setupMotors();
+  setupMotorsOld();
   setupStopPin();
   setState(STATE_READY);
 }
@@ -743,7 +763,7 @@ void homeMotor(int motorId) {
   float mposDegrees = getMotorPositionDegrees(motorId);
   // if we know position, don't way overshoot
   if (mposDegrees != DEG_NULL && mposDegrees > 0) {
-    degreesToMove = degreesToMove - mposDegrees + 10;
+    degreesToMove = mposDegrees + 10;
   }
 
   jumpOneByDegrees(motorId, -1 * degreesToMove);
@@ -897,15 +917,15 @@ void setAcceleration(int motorId, long value) {
 
 void enableMotor(int motorId) {
   if (motorId == 1) {
-    if (!isMotorEnabled_m1) {
+    if (!isMotorActive_m1) {
       digitalWrite(enablePin_m1, LOW);
-      isMotorEnabled_m1 = true;
+      isMotorActive_m1 = true;
       delay(2);
     }
   } else if (motorId == 2) {
-    if (!isMotorEnabled_m2) {
+    if (!isMotorActive_m2) {
       digitalWrite(enablePin_m2, LOW);
-      isMotorEnabled_m2 = true;
+      isMotorActive_m2 = true;
       delay(2);
     }
   }
@@ -914,14 +934,14 @@ void enableMotor(int motorId) {
 
 void disableMotor(int motorId) {
   if (motorId == 1) {
-    if (isMotorEnabled_m1) {
+    if (isMotorActive_m1) {
       digitalWrite(enablePin_m1, HIGH);
-      isMotorEnabled_m1 = false;
+      isMotorActive_m1 = false;
     }
   } else if (motorId == 2) {
-    if (isMotorEnabled_m2) {
+    if (isMotorActive_m2) {
       digitalWrite(enablePin_m2, HIGH);
-      isMotorEnabled_m2 = false;
+      isMotorActive_m2 = false;
     }
   }
 }
@@ -971,6 +991,32 @@ void setState(byte state) {
 // ----------------------------------------------
 
 void setupMotors() {
+  /*
+   *
+  AccelStepper stepper;
+  boolean limitsEnabled;
+  boolean isLimit_cw;
+  boolean isLimit_acw;
+  boolean isActive;
+  boolean hasHomed;
+  boolean isStopping;
+  boolean isBacking;
+  unsigned long acceleration;
+  unsigned long oldAcceleration;
+  unsigned long maxSpeed;
+  unsigned long lastActionTime;
+   */
+  motors[0] = Motor {
+    stepper_m1,
+    true
+  };
+  motors[1] = Motor {
+    stepper_m2,
+    true
+  };
+}
+
+void setupMotorsOld() {
 
   // Declare pins as output:
   pinMode(stepPin_m1, OUTPUT);
@@ -991,8 +1037,8 @@ void setupMotors() {
   // set initial state of motor to disabled
   digitalWrite(enablePin_m1, HIGH);
   digitalWrite(enablePin_m2, HIGH);
-  isMotorEnabled_m1 = false;
-  isMotorEnabled_m2 = false;
+  isMotorActive_m1 = false;
+  isMotorActive_m2 = false;
 
   // AccelStepper
   setMaxSpeed(1, absMaxSpeed_m1);

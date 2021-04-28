@@ -113,21 +113,6 @@
                     </tbody>
                     <thead>
                         <tr>
-                            <th>Calculations</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <tr>
-                            <td>Declination (rad)</td>
-                            <td><span class="" id="declination_angle"><%= '' + status.declinationAngle %></span></td>
-                        </tr>
-                        <tr>
-                            <td>Declination source</td>
-                            <td><span class="" id="declination_source"><%= '' + status.declinationSource %></span></td>
-                        </tr>
-                    </tbody>
-                    <thead>
-                        <tr>
                             <th colspan="2">Base Mag</th>
                         </tr>
                     </thead>
@@ -170,6 +155,24 @@
                         <tr>
                             <td>Calibration</td>
                             <td><span id="orienation_calibration"><%= status.orientationCalibration.map(v => '' + v).join('|') %></span></td>
+                        </tr>
+                    </tbody>
+                </table>
+                <h3>Calculations</h3>
+                <table class="status-table">
+                    <thead>
+                        <tr>
+                            <th colspan="2">Declination Angle</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td>Declination (rad)</td>
+                            <td><span class="" id="declination_angle"><%= '' + status.declinationAngle %></span></td>
+                        </tr>
+                        <tr>
+                            <td>Declination source</td>
+                            <td><span class="" id="declination_source"><%= '' + status.declinationSource %></span></td>
                         </tr>
                     </tbody>
                 </table>
