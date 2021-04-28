@@ -46,8 +46,8 @@ See [raspberry pi GPIO pinout image][gpio]. Pin 1 is on the SD card side.
 | Pin  | Name    | Description         | Color  | Notes
 |------|---------|---------------------|--------|--------
 |   2  | 5V      | Power in            | red    | from voltage regulator pre-diode
-|   3  | SDA     | I2C SDA             | white  | to LCD, encoder SDA
-|   5  | SCL     | I2C SCL             | blue   | to LCD, encoder SCL
+|   3  | SDA     | I2C SDA             | white  | to LCD/encoder SDA
+|   5  | SCL     | I2C SCL             | blue   | to LCD/encoder SCL
 |   6  | GND     | Ground              | black  |
 |   8  | GPIO 14 | TX to gauger        | yellow | via rocker switch to nano pin RX0
 |  10  | GPIO 15 | RX from gauger      | blue   | via rocker switch to nano pin TX1
@@ -57,7 +57,6 @@ See [raspberry pi GPIO pinout image][gpio]. Pin 1 is on the SD card side.
 |  18  | GPIO 24 | Controller stop     | yellow | to uno 13
 |  29  | GPIO  5 | Shutdown button     | white  | shutdown pi when `LOW` for 2s
 |  31  | GPIO  6 | Encoder reset       | green  | to encoder module Rst
-|  33  | GPIO 13 | Encoder button      | blue   | to encoder SW via pull-up resistor
 
 ### Schmitt Inverter
 
@@ -83,6 +82,11 @@ Wip
 
 | Pin | Description                 | Color  | Notes
 |-----|-----------------------------|--------|------------------
+|   2 | encoder CLK                 | white  |
+|   3 | encoder DT                  | yellow |
+|   4 | encoder SW                  | blue   |
+|  A4 | I2C SDA                     | white  | to pi 3
+|  A5 | I2C SCL                     | blue   | to pi 5
 | Rst | Reset pin                   | green  | to pi 31
 
 #### Other Links

@@ -482,7 +482,46 @@ async function main() {
 main()
 
 
+/*********************************
 
+    OLD BUTTON STUFF
+
+**********************************/
+/*
+            const lcdRequiredKeys = [
+                ....
+                'pinEncoderButton',
+            ]
+*/
+//await gpio.setup(opts.pinEncoderButton, gpio.DIR_IN, gpio.EDGE_RISING)
+//gpio.on('change', (pin, value) => this.handlePinChange(pin, value))
+/*
+    async handlePinChange(pin, value) {
+        if (pin == this.app.opts.pinEncoderButton) {
+            this.log('button')
+            if (!this.isDisplayActive) {
+                this.registerDisplayAction()
+                return
+            }
+            if (this.isPressingButton) {
+                return
+            }
+            this.isPressingButton = true
+            // debounce
+            setTimeout(() => this.isPressingButton = false, 200)
+            if (value) {
+                this.handleButtonResolve()
+            }
+        }
+    }
+*/
+
+/*******************************************
+
+    OLD ENCODER STUFF
+
+********************************************/
+/*
 //pinEncoderClk      : +env.PIN_ENCODER_CLK || 12,
 //pinEncoderDt       : +env.PIN_ENCODER_DT || 35,
 */

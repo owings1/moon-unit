@@ -37,6 +37,7 @@ const DeviceCodes = {
 }
 
 const GpioHelper = require('./gpio')
+const I2ciHelper = require('./i2ci')
 
 class App {
 
@@ -57,12 +58,11 @@ class App {
             pinControllerReady : +env.PIN_CONTROLLER_READY || 16,
             pinGaugerReset     : +env.PIN_GAUGER_RESET || 11,
 
-            lcdEnabled         : !!env.LCD_ENABLED,
-            encoderAddress     : +env.ENCODER_ADDRESS || 0x08,
-            pinEncoderButton   : +env.PIN_ENCODER_BUTTON || 33,
-            pinEncoderReset    : +env.PIN_ENCODER_RESET || 31,
-            lcdAddress         : +env.LCD_ADDRESS || 0x3f,
-            displayTimeout     : +env.DISPLAY_TIMEOUT || 20 * 1000,
+            i2ciEnabled     : !!env.IC2I_ENABLED,
+            encoderAddress  : +env.ENCODER_ADDRESS || 0x08,
+            pinEncoderReset : +env.PIN_ENCODER_RESET || 31,
+            lcdAddress      : +env.LCD_ADDRESS || 0x3f,
+            displayTimeout  : +env.DISPLAY_TIMEOUT || 20 * 1000,
 
             // how long to wait after reset to reopen device
             resetDelay     : +env.RESET_DELAY || 5000,
@@ -138,7 +138,9 @@ class App {
                 this.initGpio().then(() => {
                     this.httpServer = this.app.listen(this.opts.port, () => {
                         this.log('Listening on', this.httpServer.address())
-                        this.openGauger().then(resolve).catch(reject)
+                        this.openGauger().then(() => {
+                            this.initI2ci().then(resolve).catch(reject)
+                        }).catch(reject)
                     })
                 }).catch(reject)
             } catch (err) {
@@ -517,9 +519,15 @@ class App {
     }
 
     async initGpio() {
-        this.log('Gpio is', this.opts.gpioEnabled ? 'enabled' : 'disabled')
+        this.log('GPIO is', this.opts.gpioEnabled ? 'enabled' : 'disabled')
         this.gpio = new GpioHelper(this)
         await this.gpio.open()
+    }
+
+    async initI2ci() {
+        this.log('I2C interface is', this.opts.i2ciEnabled ? 'enabled' : 'disabled')
+        this.i2ci = new I2ciHelper(this)
+        await this.i2ci.open()
     }
 
     log(...args) {
