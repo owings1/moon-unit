@@ -91,6 +91,7 @@ class App {
     clearStatus() {
         this.position      = [null, null]
         this.limitsEnabled = [null, null]
+        this.limitStates   = [null, null, null, null]
     }
 
     clearGauges() {
@@ -116,6 +117,7 @@ class App {
             position                  : this.position,
             orientation               : this.orientation,
             limitsEnabled             : this.limitsEnabled,
+            limitStates               : this.limitStates,
             isGaugerConnected         : this.isGaugerConnected,
             isOrientationCalibrated   : this.isOrientationCalibrated,
             orientationCalibration    : this.orientationCalibration,
@@ -249,6 +251,7 @@ class App {
                     values[2] == 'T',
                     values[3] == 'T'
                 ]
+                this.limitStates = values[0].split('').map(it => it == 'T')
                 this.maxSpeeds = floats.slice(6, 8)
                 break
             case 'MOD':

@@ -28,7 +28,7 @@
             </form>
             <div class="clear"></div>
         </div>
-        <div class="panel">
+        <div class="panel status-panel">
             <div>
                 <h3>Motors</h3>
                 <div id="controller_state"><%= '' + status.controllerState %></div>
@@ -72,6 +72,29 @@
                         <tr>
                             <td>Base</td>
                             <td><span id="limitsEnabled_m2"><%= '' + status.limitsEnabled[1] %></span></td>
+                        </tr>
+                    </tbody>
+                    <thead>
+                        <tr>
+                            <th colspan="2">Limit Switch States</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td>Scope CW</td>
+                            <td><span id="limitState_m1_cw"><%= '' + status.limitStates[0] %></td>
+                        </tr>
+                        <tr>
+                            <td>Scope ACW</td>
+                            <td><span id="limitState_m1_acw"><%= '' + status.limitStates[1] %></td>
+                        </tr>
+                        <tr>
+                            <td>Base CW</td>
+                            <td><span id="limitState_m2_cw"><%= '' + status.limitStates[2] %></td>
+                        </tr>
+                        <tr>
+                            <td>Base ACW</td>
+                            <td><span id="limitState_m2_acw"><%= '' + status.limitStates[3] %></td>
                         </tr>
                     </tbody>
                     <thead>

@@ -210,6 +210,7 @@ $(document).ready(function() {
             orientation            : [],
             orientationCalibration : [],
             limitsEnabled          : [],
+            limitStates            : [],
             gpsCoords              : [],
             maxSpeeds              : []
         }
@@ -230,6 +231,10 @@ $(document).ready(function() {
         $('#is_orientation_calibrated').text('' + ed(status.isOrientationCalibrated))
         $('#limitsEnabled_m1').text('' + ed(status.limitsEnabled[0]))
         $('#limitsEnabled_m2').text('' + ed(status.limitsEnabled[1]))
+        $('#limitState_m1_cw').text('' + ed(status.limitStates[0]))
+        $('#limitState_m1_acw').text('' + ed(status.limitStates[1]))
+        $('#limitState_m2_cw').text('' + ed(status.limitStates[2]))
+        $('#limitState_m2_acw').text('' + ed(status.limitStates[3]))
         $('#gps_lat').text('' + ed(status.gpsCoords[0]))
         $('#gps_long').text('' + ed(status.gpsCoords[1]))
         $('#mag_heading').text('' + ed(status.magHeading))

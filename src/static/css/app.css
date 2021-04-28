@@ -103,6 +103,9 @@ input.howmuch {
 .clear {
     clear: both;
 }
+.status-panel {
+    text-align: left;
+}
 .status-table {
     display: block;
 }
@@ -110,6 +113,9 @@ input.howmuch {
     text-align: left;
     padding: 5px;
     border: 1px solid black;
+}
+.status-table td:last-child {
+    text-align: right;
 }
 .status-table td {
     padding-left: 10px;
