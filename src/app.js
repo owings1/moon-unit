@@ -58,7 +58,7 @@ class App {
             pinControllerReady : +env.PIN_CONTROLLER_READY || 16,
             pinGaugerReset     : +env.PIN_GAUGER_RESET || 11,
 
-            i2ciEnabled     : !!env.IC2I_ENABLED,
+            i2ciEnabled     : !!env.I2CI_ENABLED,
             encoderAddress  : +env.ENCODER_ADDRESS || 0x08,
             pinEncoderReset : +env.PIN_ENCODER_RESET || 15,
             lcdAddress      : +env.LCD_ADDRESS || 0x3f,
