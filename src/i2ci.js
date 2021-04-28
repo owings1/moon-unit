@@ -1,3 +1,4 @@
+const fetch = require('node-fetch')
 // dynamically load modules, else will fail on non-i2c system
 var i2c
 var LCD
@@ -129,10 +130,16 @@ class I2ciHelper {
 
         try {
             while (true) {
-                var choices = ['testNumber', 'testBoolean', 'testBoolean2', 'testNumberDefault', 'fourth', 'fifth']
+                var choices = [
+                    'Home Motors',
+                    'testNumber', 'testBoolean', 'testBoolean2', 'testNumberDefault', 'fourth', 'fifth'
+                ]
                 var choice = await this.promptMenuChoice(choices)
 
                 switch (choice.value) {
+                    case 'Home Motors':
+                        await this.homingMenu()
+                        break
                     case 'testNumber':
                         var value = await this.promptNumber({
                             label         : 'Position',
@@ -179,6 +186,63 @@ class I2ciHelper {
         } finally {
             this.isMenuActive = false
         }
+    }
+
+    async homingMenu() {
+        const choices = [
+            '<back>',
+            'Home All',
+            'Home Scope',
+            'Home Base'
+        ]
+        while (true) {
+            var choice = await this.promptMenuChoice(choices)
+            var isQuit = false
+            var cmd = null
+            switch (choice.value) {
+                case 'Home All':
+                    cmd = ':07 ;\n'
+                    break
+                case 'Home Scope':
+                    cmd = ':06 1;\n'
+                    break
+                case 'Home Base':
+                    cmd = ':06 2;\n'
+                    break
+                case '<back>':
+                default:
+                    isQuit = true
+                    break
+            }
+            if (isQuit) {
+                break
+            }
+            this.lcd.clearSync()
+            this.lcd.setCursor(0, 0)
+            this.lcd.printSync(choice.value + ' ...')
+            const res = await fetch.sendRequest('controller/command/sync', 'POST', {command: cmd})
+            const body = await res.json()
+            this.lcd.clearSync()
+            this.lcd.setCursor(0, 0)
+            this.lcd.printSync(['HTTP', res.status].join(' '))
+            this.lcd.setCursor(0, 1)
+            this.lcd.printSync(['Code', body.response.status].join(' '))
+            this.lcd.setCursor(0, 2)
+            this.lcd.printSync(body.response.message.substring(0, 19))
+            await new Promsise(resolve => setTimeout(resolve, 3000))
+        }
+    }
+
+    async sendRequest(uri, method, body) {
+        const url = [this.app.localUrl, uri].join('/')
+        const opts = {method}
+        if (body) {
+            opts.headers = {
+                'Content-Type' : 'application/json'
+            }
+            opts.body = JSON.stringify(body)
+        }
+        return fetch(url, opts)
     }
 
     // display four line menu with > prefix, move up/down with encoder,

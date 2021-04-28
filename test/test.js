@@ -28,7 +28,7 @@ describe('App', () => {
                 quiet: true,
                 mock: true
             })
-            await app.listen()
+            await app.open()
             appUrl = 'http://localhost:' + app.httpServer.address().port
         })
 

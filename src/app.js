@@ -132,12 +132,13 @@ class App {
         }
     }
 
-    listen() {
+    async open() {
         return new Promise((resolve, reject) => {
             try {
                 this.initGpio().then(() => {
                     this.httpServer = this.app.listen(this.opts.port, () => {
                         this.log('Listening on', this.httpServer.address())
+                        this.localUrl = 'http://localhost:' + this.httpServer.address().port
                         this.openGauger().then(() => {
                             this.initI2ci().then(resolve).catch(reject)
                         }).catch(reject)
