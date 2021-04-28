@@ -193,7 +193,10 @@ class I2ciHelper {
             '<back>',
             'Home All',
             'Home Scope',
-            'Home Base'
+            'Home Base',
+            'End All',
+            'End Scope',
+            'End Base'
         ]
         while (true) {
             var choice = await this.promptMenuChoice(choices)
@@ -208,6 +211,15 @@ class I2ciHelper {
                     break
                 case 'Home Base':
                     cmd = ':06 2;\n'
+                    break
+                case 'End All':
+                    cmd = ':09 ;\n'
+                    break
+                case 'End Scope':
+                    cmd = ':08 1;\n'
+                    break
+                case 'End Base':
+                    cmd = ':08 2\n'
                     break
                 case '<back>':
                 default:
@@ -480,7 +492,6 @@ class I2ciHelper {
                 // this will clear/reset the interval, so it should keep trying to reconnect
                 try {
                     await this.openEncoder()
-                    this.log('Encoder reopened')
                 } catch (err) {
                     if (err.code != 'EREMOTEIO') {
                         throw err
@@ -505,7 +516,6 @@ class I2ciHelper {
         if (!this.isLcdConnected) {
             try {
                 await this.openLcd()
-                this.log('Reopened LCD')
                 // so the display timeout will trigger
                 this.registerDisplayAction()
             } catch (err) {

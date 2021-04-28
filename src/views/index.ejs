@@ -31,11 +31,18 @@
         <div class="panel status-panel">
             <div>
                 <h3>Motors</h3>
-                <div id="controller_state"><%= '' + status.controllerState %></div>
-                <div>
-                    <a href="javascript:" class="gpio button gpio_controller_stop <%= status.gpioEnabled ? 'red' : 'disabled' %>">■</a>
-                </div>
                 <table class="status-table">
+                    <thead>
+                        <tr>
+                            <th colspan="2">Controller State</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td>State</td>
+                            <td><span id="controller_state"><%= '' + status.controllerState %></span></td>
+                        </tr>
+                    </tbody>
                     <thead>
                         <tr>
                             <th colspan="2">Relative Position</th>

@@ -251,7 +251,11 @@ class App {
                     values[2] == 'T',
                     values[3] == 'T'
                 ]
-                this.limitStates = values[10].split('').map(it => it == 'T')
+                if (values[10]) {
+                    // possible to get TypeError for 
+                    this.limitStates = values[10].split('').map(it => it == 'T')
+                }
+                
                 this.maxSpeeds = floats.slice(6, 8)
                 break
             case 'MOD':
