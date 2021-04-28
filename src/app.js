@@ -62,7 +62,7 @@ class App {
             encoderAddress  : +env.ENCODER_ADDRESS || 0x08,
             pinEncoderReset : +env.PIN_ENCODER_RESET || 15,
             lcdAddress      : +env.LCD_ADDRESS || 0x3f,
-            displayTimeout  : +env.DISPLAY_TIMEOUT || 20 * 1000,
+            displayTimeout  : +env.DISPLAY_TIMEOUT || 60 * 1000,
 
             // how long to wait after reset to reopen device
             resetDelay     : +env.RESET_DELAY || 5000,

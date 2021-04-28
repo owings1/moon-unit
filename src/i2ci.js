@@ -372,6 +372,7 @@ class I2ciHelper {
         try {
             const {change, isPressed} = await this._readEncoder()
             if (!change && !isPressed) {
+                this.isPressingButton = false
                 return
             }
             if (Math.abs(change) > 12) {
@@ -551,6 +552,8 @@ class I2ciHelper {
         if (this.buttonResolve) {
             this.buttonResolve()
             this.buttonResolve = null
+        } else {
+            this.log('no buttonResolve')
         }
     }
 
