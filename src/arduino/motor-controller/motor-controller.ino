@@ -63,9 +63,9 @@
  *    - <degreesPerStep_m1>
  *    - <degreesPerStep_m2>
  *    - <maxSpeed_m1>
- *    - <motors[1].maxSpeed>
- *    - <motors[0].acceleration>
- *    - <motors[1].acceleration>
+ *    - <maxSpeed_m2>
+ *    - <acceleration_m1>
+ *    - <acceleration_m2>
  *    - limit states: <m1_cw><m1_acw><m2_cw><m2_acw>
  *    - <shouldStop>
  *
@@ -100,38 +100,45 @@
 #include "dwf/digitalWriteFast.h"
 
 /******************************************/
-/* Features/Hardware Enable               */
+/* Stop Signal                            */
 /* ****************************************/
-
-// Stop Signal pin
 #define stopPinEnabled true
-/******************************************/
+#define stopPin 13
+boolean shouldStop = false;
 
-#define baudRate 9600L
-#define DEG_NULL 1000.00
-#define STEPS_NULL -1L
+/******************************************/
+/* State (ready/busy)                     */
+/* ****************************************/
+#define statePin A0
 #define STATE_READY HIGH
 #define STATE_BUSY LOW
 
-/////////////////////
-// Pins            //
-/////////////////////
+/******************************************/
+/* Constants                              */
+/* ****************************************/
+#define BAUD_RATE 9600L
+#define DEG_NULL 1000.00
+#define STEPS_NULL -1L
 
-#define statePin A0
-#define stopPin 13
+/******************************************/
+/* Motor Pins                             */
+/* ****************************************/
+struct MotorPins {
+  byte dir;
+  byte step;
+  byte enable;
+  byte limit_cw;
+  byte limit_acw;
+};
 
-#define dirPin_m1 5
-#define stepPin_m1 6
-#define enablePin_m1 7
-#define limitPin_m1_cw 3
-#define limitPin_m1_acw 4
+MotorPins motorPins[] = {
+  {5, 6, 7, 3, 4},    // m1
+  {8, 9, 10, 11, 12}  // m2
+};
 
-#define dirPin_m2 8
-#define stepPin_m2 9
-#define enablePin_m2 10
-#define limitPin_m2_cw 11
-#define limitPin_m2_acw 12
-
+/******************************************/
+/* Motor Settings                         */
+/* ****************************************/
 
 #define absMaxSpeed_m1 1600L
 #define absMaxSpeed_m2 1600L
@@ -146,9 +153,9 @@
 #define motorSleepTimeout 2000L
 
 
-// Stop signal
-boolean shouldStop = false;
-
+/******************************************/
+/* Motor Definition                       */
+/* ****************************************/
 struct Motor {
 
   AccelStepper stepper;
@@ -156,11 +163,7 @@ struct Motor {
   byte id;
 
   // pins
-  byte enablePin;
-  byte dirPin;
-  byte stepPin;
-  byte limitPin_cw;
-  byte limitPin_acw;
+  MotorPins pins;
 
   // limit switches can be disabled via command.
   boolean limitsEnabled;
@@ -200,10 +203,14 @@ struct Motor {
 
 Motor motors[2];
 
+/******************************************/
+/* Entrypoint Functions                   */
+/* ****************************************/
+
 void setup() {
   setupStatePin();
   setState(STATE_BUSY);
-  Serial.begin(baudRate);
+  Serial.begin(BAUD_RATE);
   setupMotors();
   setupStopPin();
   setState(STATE_READY);
@@ -223,9 +230,9 @@ void loop() {
   }
 }
 
-// ----------------------------------------------
-// Command input functions
-// ----------------------------------------------
+/******************************************/
+/* Command Input Functions                */
+/* ****************************************/
 
 void takeCommand(Stream &input, Stream &output) {
 
@@ -277,7 +284,7 @@ void takeCommand(Stream &input, Stream &output) {
     }
 
     // perform action
-    jumpOne(motorId, howMuch);
+    moveMotor(motorId, howMuch);
 
     output.write("=00\n");
 
@@ -358,7 +365,7 @@ void takeCommand(Stream &input, Stream &output) {
 
     // perform action
 
-    jumpOneByDegrees(motorId, howMuch);
+    moveMotorByDegrees(motorId, howMuch);
 
     output.write("=00\n");
 
@@ -489,8 +496,8 @@ void takeCommand(Stream &input, Stream &output) {
     }
 
     // perform action
-    jumpOne(1, howMuch1);
-    jumpOne(2, howMuch2);
+    moveMotor(1, howMuch1);
+    moveMotor(2, howMuch2);
 
     output.write("=00\n");
 
@@ -531,8 +538,8 @@ void takeCommand(Stream &input, Stream &output) {
     }
 
     // perform action
-    jumpOneByDegrees(1, howMuch1);
-    jumpOneByDegrees(2, howMuch2);
+    moveMotorByDegrees(1, howMuch1);
+    moveMotorByDegrees(2, howMuch2);
 
     output.write("=00\n");
 
@@ -654,75 +661,9 @@ int getDirMultiplier(byte dirInput) {
   return 0;
 }
 
-// ----------------------------------------------
-// Motor functions
-// ----------------------------------------------
-
-// the howMuch is just a positive/negative direction reference.
-boolean motorCanMove(byte motorId, long howMuch) {
-  byte i = motorId - 1;
-  if (!motors[i].limitsEnabled) {
-    return true;
-  }
-  if (howMuch > 0) {
-    return !motors[i].isLimit_cw;
-  } else {
-    return !motors[i].isLimit_acw;
-  }
-}
-
-// returns DEG_NULL if motor has not homed.
-float getMotorPositionDegrees(byte motorId) {
-  byte i = motorId - 1;
-  if (motors[i].hasHomed) {
-    return motors[i].stepper.currentPosition() * motors[i].degreesPerStep;
-  }
-  return DEG_NULL;
-}
-
-boolean motorCanHome(byte motorId) {
-  return motors[motorId - 1].limitsEnabled;
-}
-
-boolean isMotorHome(byte motorId) {
-  if (!motorCanHome(motorId)) {
-    return false;
-  }
-  return motors[motorId - 1].isLimit_acw;
-}
-
-float getMaxDegreesForMotor(byte motorId) {
-  return motors[motorId - 1].maxDegrees;
-}
-
-void homeMotor(byte motorId) {
-  if (!motorCanHome(motorId)) {
-    return;
-  }
-  if (isMotorHome(motorId)) {
-    // move forward just a little
-    motors[motorId - 1].isBacking = true;
-    jumpOneByDegrees(motorId, 1.5);
-    // homing will recommence after backing is complete
-    return;
-  }
-
-  float degreesToMove = getMaxDegreesForMotor(motorId);
-  float mposDegrees = getMotorPositionDegrees(motorId);
-  // if we know position, don't way overshoot
-  if (mposDegrees != DEG_NULL && mposDegrees > 0) {
-    degreesToMove = mposDegrees + 10;
-  }
-
-  jumpOneByDegrees(motorId, -1 * degreesToMove);
-}
-
-void endMotor(byte motorId) {
-  if (!motorCanHome(motorId)) {
-    return;
-  }
-  jumpOneByDegrees(motorId, getMaxDegreesForMotor(motorId));
-}
+/******************************************/
+/* Move Functions                         */
+/* ****************************************/
 
 boolean runMotorsIfNeeded() {
   
@@ -742,12 +683,10 @@ boolean runMotorsIfNeeded() {
       // we have finished stopping
       motors[i].isStopping = false;
       setAcceleration(motors[i].id, motors[i].oldAcceleration);
-      if (!shouldStop) {
+      if (!shouldStop && isMotorHome(motors[i].id)) {
         // we have reached a limit switch, see if we are home
-        if (isMotorHome(motors[i].id)) {
-          motors[i].hasHomed = true;
-          motors[i].stepper.setCurrentPosition(0);
-        }
+        motors[i].hasHomed = true;
+        motors[i].stepper.setCurrentPosition(0);
       }
     } else if (motors[i].isBacking) {
       // we have finished backing for home
@@ -771,17 +710,7 @@ void stopMotor(byte motorId) {
   motors[i].stepper.stop();
 }
 
-void jumpBoth(long howMuch) {
-  jumpOne(1, howMuch);
-  jumpOne(2, howMuch);
-}
-
-void jumpBothByDegrees(float howMuch) {
-  jumpOneByDegrees(1, howMuch);
-  jumpOneByDegrees(2, howMuch);
-}
-
-void jumpOne(byte motorId, long howMuch) {
+void moveMotor(byte motorId, long howMuch) {
   setState(STATE_BUSY);
   if (motorCanMove(motorId, howMuch)) {
     motors[motorId - 1].stepper.move(howMuch);
@@ -789,7 +718,7 @@ void jumpOne(byte motorId, long howMuch) {
   }
 }
 
-void jumpOneByDegrees(byte motorId, float howMuch) {
+void moveMotorByDegrees(byte motorId, float howMuch) {
   setState(STATE_BUSY);
   byte i = motorId - 1;
   long steps = howMuch / motors[i].degreesPerStep;
@@ -798,6 +727,70 @@ void jumpOneByDegrees(byte motorId, float howMuch) {
     enableMotor(motorId);
   }
 }
+
+// the howMuch is just a positive/negative direction reference.
+boolean motorCanMove(byte motorId, long howMuch) {
+  byte i = motorId - 1;
+  return !motors[i].limitsEnabled || (howMuch > 0 ? !motors[i].isLimit_cw : !motors[i].isLimit_acw);
+}
+
+/******************************************/
+/* Home/End Functions                     */
+/* ****************************************/
+
+boolean motorCanHome(byte motorId) {
+  return motors[motorId - 1].limitsEnabled;
+}
+
+boolean isMotorHome(byte motorId) {
+  return motorCanHome(motorId) && motors[motorId - 1].isLimit_acw;
+}
+
+void homeMotor(byte motorId) {
+  if (!motorCanHome(motorId)) {
+    return;
+  }
+  if (isMotorHome(motorId)) {
+    // move forward just a little
+    motors[motorId - 1].isBacking = true;
+    moveMotorByDegrees(motorId, 1.5);
+    // homing will recommence after backing is complete
+    return;
+  }
+
+  float degreesToMove = getMaxDegreesForMotor(motorId);
+  float mposDegrees = getMotorPositionDegrees(motorId);
+  // if we know position, don't way overshoot
+  if (mposDegrees != DEG_NULL && mposDegrees > 0) {
+    degreesToMove = mposDegrees + 10;
+  }
+
+  moveMotorByDegrees(motorId, -1 * degreesToMove);
+}
+
+void endMotor(byte motorId) {
+  if (!motorCanHome(motorId)) {
+    return;
+  }
+  moveMotorByDegrees(motorId, getMaxDegreesForMotor(motorId));
+}
+
+// returns DEG_NULL if motor has not homed.
+float getMotorPositionDegrees(byte motorId) {
+  byte i = motorId - 1;
+  if (motors[i].hasHomed) {
+    return motors[i].stepper.currentPosition() * motors[i].degreesPerStep;
+  }
+  return DEG_NULL;
+}
+
+float getMaxDegreesForMotor(byte motorId) {
+  return motors[motorId - 1].maxDegrees;
+}
+
+/******************************************/
+/* Other Functions                        */
+/* ****************************************/
 
 void setMaxSpeed(byte motorId, unsigned long value) {
   byte i = motorId - 1;
@@ -814,7 +807,7 @@ void setAcceleration(byte motorId, unsigned long value) {
 void enableMotor(byte motorId) {
   byte i = motorId - 1;
   if (!motors[i].isActive) {
-    digitalWrite(motors[i].enablePin, LOW);
+    digitalWrite(motors[i].pins.enable, LOW);
     motors[i].isActive = true;
     delay(2);
   }
@@ -824,7 +817,7 @@ void enableMotor(byte motorId) {
 void disableMotor(byte motorId) {
   byte i = motorId - 1;
   if (motors[i].isActive) {
-    digitalWrite(motors[i].enablePin, HIGH);
+    digitalWrite(motors[i].pins.enable, HIGH);
     motors[i].isActive = false;
   }
 }
@@ -849,66 +842,63 @@ void checkMotorsSleep() {
 
 void readLimitSwitches() {
   for (byte i = 0; i < 2; i++) {
-    motors[i].isLimit_cw = digitalReadFast(motors[i].limitPin_cw) == LOW;
-    motors[i].isLimit_acw = digitalReadFast(motors[i].limitPin_acw) == LOW;
+    motors[i].isLimit_cw = digitalReadFast(motors[i].pins.limit_cw) == LOW;
+    motors[i].isLimit_acw = digitalReadFast(motors[i].pins.limit_acw) == LOW;
   }
 }
 
-// ----------------------------------------------
-// Stop pin functions
-// ----------------------------------------------
+/******************************************/
+/* Stop Signal Functions                  */
+/* ****************************************/
+
 void readStopPin() {
   shouldStop = stopPinEnabled && (digitalReadFast(stopPin) == HIGH);
 }
 
-// ----------------------------------------------
-// State pin functions
-// ----------------------------------------------
+/******************************************/
+/* State (ready/busy) Functions           */
+/* ****************************************/
+
 void setState(byte state) {
   digitalWrite(statePin, state);
 }
 
-// ----------------------------------------------
-// Setup routines
-// ----------------------------------------------
+/******************************************/
+/* Setup Functions                        */
+/* ****************************************/
 
 void setupMotors() {
- 
-  motors[0].enablePin = enablePin_m1;
-  motors[0].stepPin = stepPin_m1;
-  motors[0].dirPin = dirPin_m1;
-  motors[0].limitPin_cw = limitPin_m1_cw;
-  motors[0].limitPin_acw = limitPin_m1_acw;
+
   motors[0].degreesPerStep = degreesPerStep_m1;
   motors[0].maxDegrees = maxDegrees_m1;
   motors[0].absMaxSpeed = absMaxSpeed_m1;
 
-  motors[1].enablePin = enablePin_m2;
-  motors[1].stepPin = stepPin_m2;
-  motors[1].dirPin = dirPin_m1;
-  motors[1].limitPin_cw = limitPin_m2_cw;
-  motors[1].limitPin_acw = limitPin_m2_acw;
   motors[1].degreesPerStep = degreesPerStep_m2;
   motors[1].maxDegrees = maxDegrees_m2;
   motors[1].absMaxSpeed = absMaxSpeed_m2;
 
   for (byte i = 0; i < 2; i++) {
 
-    // Declare pins as output:
-    pinMode(motors[i].stepPin, OUTPUT);
-    pinMode(motors[i].dirPin, OUTPUT);
-    pinMode(motors[i].enablePin, OUTPUT);
-    // Declare limit switch pins as input
-    pinMode(motors[i].limitPin_cw, INPUT);
-    pinMode(motors[i].limitPin_acw, INPUT);
-
-    motors[i].stepper = AccelStepper(AccelStepper::FULL2WIRE, motors[i].stepPin, motors[i].dirPin);
     motors[i].id = i + 1;
+    motors[i].pins = motorPins[i];
+
+    // Declare pins as output:
+    pinMode(motors[i].pins.step, OUTPUT);
+    pinMode(motors[i].pins.dir, OUTPUT);
+    pinMode(motors[i].pins.enable, OUTPUT);
+    // Declare limit switch pins as input
+    pinMode(motors[i].pins.limit_cw, INPUT);
+    pinMode(motors[i].pins.limit_acw, INPUT);
+
+    motors[i].stepper = AccelStepper(
+      AccelStepper::FULL2WIRE, motors[i].pins.step, motors[i].pins.dir
+    );
+
     motors[i].limitsEnabled = true;
     motors[i].lastActionTime = millis();
 
     // set initial state of motor to disabled
-    digitalWrite(motors[i].enablePin, HIGH);
+    digitalWrite(motors[i].pins.enable, HIGH);
     motors[i].isActive = false;
 
     // step max speed & acceleration
