@@ -4,7 +4,9 @@
 
 #define WIRE_ADDRESS 0x8
 
+// encoder CLK
 #define pinLeft 2
+// encoder DT
 #define pinRight 3
 #define pinButton 4
 
@@ -47,6 +49,15 @@ void loop() {
     num += res;
     change += res;
   }
+  
+  /*
+  // debug
+  if (isPressed || change) {
+    delay(200);
+    Serial.println(getChangeByte(), BIN);
+    change = 0;
+  }
+  */
 }
 
 void requestEvent() {
@@ -63,11 +74,10 @@ void receiveEvent(int howMany) {
 
 byte getChangeByte() {
   // first bit MSB is button pressed flag
-  // TODO: figure out why this is not getting sent
-  byte value = isPressed ? 128 : 0;
+  byte value = isPressed << 7;
   // second bit is sign, positive=1 negative=0
   if (change >= 0) {
-    value += 64;
+    value |= 1 << 6;
     // last six bits is quantity
     if (change < 64) {
       value += change;
