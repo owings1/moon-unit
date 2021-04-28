@@ -157,6 +157,16 @@ class GpioHelper {
             }, 100)
         })
     }
+
+    log(...args) {
+        if (!this.app.opts.quiet) {
+            console.log(new Date, ...args)
+        }
+    }
+
+    error(...args) {
+        console.error(new Date, ...args)
+    }
 }
 
 module.exports = GpioHelper
