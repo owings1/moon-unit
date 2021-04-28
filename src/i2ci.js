@@ -220,16 +220,16 @@ class I2ciHelper {
             this.lcd.clearSync()
             this.lcd.setCursor(0, 0)
             this.lcd.printSync(choice.value + ' ...')
-            const res = await fetch.sendRequest('controller/command/sync', 'POST', {command: cmd})
+            const res = await this.sendRequest('controller/command/sync', 'POST', {command: cmd})
             const body = await res.json()
             this.lcd.clearSync()
-            this.lcd.setCursor(0, 0)
+            this.lcd.setCursorSync(0, 0)
             this.lcd.printSync(['HTTP', res.status].join(' '))
-            this.lcd.setCursor(0, 1)
+            this.lcd.setCursorSync(0, 1)
             this.lcd.printSync(['Code', body.response.status].join(' '))
-            this.lcd.setCursor(0, 2)
+            this.lcd.setCursorSync(0, 2)
             this.lcd.printSync(body.response.message.substring(0, 19))
-            await new Promsise(resolve => setTimeout(resolve, 3000))
+            await new Promise(resolve => setTimeout(resolve, 3000))
         }
     }
 
