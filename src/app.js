@@ -100,6 +100,7 @@ class App {
         this.declinationAngle = null
         this.declinationSource = null
         this.orientation   = [null, null, null]
+        this.temperator = null
         this.orientationCalibration = [null, null, null, null]
         this.isOrientationCalibrated = null
         this.maxSpeeds = [null, null]
@@ -122,6 +123,7 @@ class App {
             isGaugerConnected         : this.isGaugerConnected,
             isOrientationCalibrated   : this.isOrientationCalibrated,
             orientationCalibration    : this.orientationCalibration,
+            temperatur                : this.temperature,
             gaugerConnectedStatus     : this.isGaugerConnected ? 'Connected' : 'Disconnected',
             gpsCoords                 : this.gpsCoords,
             magHeading                : this.magHeading,
@@ -239,9 +241,10 @@ class App {
                 break
             case 'ORI':
                 // x|y|z|cal_system|cal_gyro|cal_accel|cal_mag|isCalibrated|isInit
-                this.orientation = floats.slice(0, 3).map(v => v == DEG_NULL ? null : v)
-                this.orientationCalibration = floats.slice(3, 7)
-                this.isOrientationCalibrated = values[7] == 'T'
+                this.orientation = floats.slice(0, 7).map(v => v == DEG_NULL ? null : v)
+                this.temperature = float[7]
+                this.orientationCalibration = floats.slice(8, 12)
+                this.isOrientationCalibrated = values[12] == 'T'
                 break
             case 'MCC':
                 // motor controller status
@@ -271,6 +274,7 @@ class App {
                 break
             case 'MOD':
                 // names the modules available
+                // TODO: make efficient
                 this.isOrientationInit = values.indexOf('ORI') > -1
                 this.isMcInit = values.indexOf('MCC') > -1
                 this.isGpsInit = values.indexOf('GPS') > -1

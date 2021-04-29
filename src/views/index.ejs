@@ -179,12 +179,32 @@
                             <td><span id="orientation_z"><%= '' + status.orientation[2] %></span></td>
                         </tr>
                         <tr>
-                            <td>isCalibrated</td>
-                            <td><span id="is_orientation_calibrated"><%= '' + status.isOrientationCalibrated %></span></td>
+                            <td>qw</td>
+                            <td><span id="orientation_qw"><%= '' + status.orientation[3] %></span></td>
+                        </tr>
+                        <tr>
+                            <td>qx</td>
+                            <td><span id="orientation_qx"><%= '' + status.orientation[4] %></span></td>
+                        </tr>
+                        <tr>
+                            <td>qy</td>
+                            <td><span id="orientation_qy"><%= '' + status.orientation[5] %></span></td>
+                        </tr>
+                        <tr>
+                            <td>qz</td>
+                            <td><span id="orientation_qz"><%= '' + status.orientation[6] %></span></td>
+                        </tr>
+                        <tr>
+                            <td>Temperature</td>
+                            <td><span id="temperature"><%= '' + status.temperature %></span></td>
                         </tr>
                         <tr>
                             <td>Calibration</td>
                             <td><span id="orienation_calibration"><%= status.orientationCalibration.map(v => '' + v).join('|') %></span></td>
+                        </tr>
+                        <tr>
+                            <td>isCalibrated</td>
+                            <td><span id="is_orientation_calibrated"><%= '' + status.isOrientationCalibrated %></span></td>
                         </tr>
                     </tbody>
                 </table>

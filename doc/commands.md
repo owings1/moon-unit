@@ -1,7 +1,6 @@
 # Command Reference
 
-Commands
----------
+## Commands
 
 - **01** - Move single motor n steps in a given direction
 
@@ -104,7 +103,7 @@ Commands
     :71 <mode>;
     ```
 
-- **72** - Set declination angle
+- **72** - Set declination angle for the magnetometer
 
     ```
     :72 <radians>;
