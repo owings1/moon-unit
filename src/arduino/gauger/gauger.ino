@@ -12,13 +12,19 @@
  * 73 - Set loop delay in milliseconds
  *
  *  :<id>:73 <milliseconds>;
+ *
+ * 74 - Set MCI check interval in milliseconds
+ *
+ *  :<id>:74 <milliseconds>;
  */
 
 #include <Adafruit_BNO055.h>
 #include <Adafruit_Sensor.h>
 #include <Adafruit_HMC5883_U.h>
-#include <SoftwareSerial.h> 
+//#include <NoDelay.h>
+#include <SoftwareSerial.h>
 #include <TinyGPS.h>
+#include <Wire.h>
 
 // hardware enable
 #define gpsEnabled true
@@ -37,7 +43,7 @@ byte mode = 1;
 // Loop delay in milliseconds
 long loopDelay = 250;
 
-// Motor Controller
+// Motor Controller Serial
 #define mc_statePin 5
 #define mcRxPin 6
 #define mcTxPin 7
@@ -63,6 +69,14 @@ boolean mc_limitState_m2_cw;
 boolean mc_limitState_m2_acw;
 boolean mc_shouldStop;
 */
+// Motor controller I2C
+#define MCI_ADDRESS 0x9
+#define MCI_BYTE_LENGTH 18
+unsigned long mciCheckInterval = 2000L;
+unsigned long lastMciCheckTime;
+boolean isMciInit = false;
+String mci_statusStr;
+
 // Orientation sensor
 
 // https://learn.adafruit.com/adafruit-bno055-absolute-orientation-sensor/arduino-code
@@ -104,10 +118,15 @@ float mag_heading = DEG_NULL; // degrees
 void setup() {
   pinMode(mc_statePin, INPUT);
   Serial.begin(9600);
+  Wire.begin();
 
   mcSerial.begin(9600);
+
   if (checkMcConnected()) {
     isMcInit = true;
+  }
+  if (checkMciConnected()) {
+    isMciInit = true;
   }
   gpsSerial.begin(9600);
   if (gpsEnabled && checkGpsConnected()) {
@@ -238,6 +257,15 @@ void takeCommand(Stream &input, Stream &output) {
     }
     loopDelay = newValue;
     output.write("=00\n");
+  } else if (command.equals("74")) {
+    // set mci check interval
+    long newValue = input.readStringUntil(';').toInt();
+    if (newValue < 1) {
+      output.write("=49\n");
+      return;
+    }
+    mciCheckInterval = newValue;
+    output.write("=00\n");
   } else {
     output.write("=44\n");
   }
@@ -281,6 +309,12 @@ void writeAll(Stream &output) {
     writeMcStatus(output);
     output.write("\n");
   }
+
+  if (isMciInit && mci_statusStr.length() > 0) {
+    output.write("MCI:");
+    writeMciStatus(output);
+    output.write("\n");
+  }
 }
 
 void writeModules(Stream &output) {
@@ -318,10 +352,22 @@ void writeModules(Stream &output) {
     output.write("MCC");
     doPrefix = true;
   }
+
+  if (isMciInit) {
+    if (doPrefix) {
+      output.write('|');
+    }
+    output.write("MCI");
+    doPrefix = true;
+  }
 }
 
 void writeMcStatus(Stream &output) {
   output.print(mc_statusStr);
+}
+
+void writeMciStatus(Stream &output) {
+  output.print(mci_statusStr);
 }
 
 void writeOrientation(Stream &output) {
@@ -368,6 +414,9 @@ void readAll() {
   if (isMcInit) {
     readMcStatus();
   }
+  if (isMciInit) {
+    readMciStatus();
+  }
   if (isOrientationInit) {
     readOrientation();
   }
@@ -409,6 +458,37 @@ void readMcStatus() {
   // TODO: map values
 }
 
+// should only do this occasionally, since it will slow
+// motor operations down.
+// read I2C
+void readMciStatus() {
+  if (millis() - lastMciCheckTime < mciCheckInterval) {
+    return;
+  }
+  lastMciCheckTime = millis();
+  Wire.beginTransmission(MCI_ADDRESS);
+  Wire.write(0x0);
+  if (Wire.endTransmission() != 0) {
+    return;
+  }
+  Wire.requestFrom(MCI_ADDRESS, MCI_BYTE_LENGTH);
+  char buf[19];
+  byte i = 0;
+  while (Wire.available()) {
+    char c = Wire.read();
+    
+    if (c == 13) {
+      break;
+    }
+    if (c < 13) {
+      continue;
+    }
+    buf[i] = c;
+    i++;
+  }
+  mci_statusStr = String(buf);
+  mci_statusStr.trim();
+}
 void readOrientation() {
   /* Get a new sensor event */ 
   sensors_event_t event; 
@@ -483,6 +563,11 @@ void readMag() {
 // a response at address 0x3C >> 1
 boolean checkMagConnected() {
   Wire.beginTransmission(0x3C >> 1);
+  return Wire.endTransmission() == 0;
+}
+
+boolean checkMciConnected() {
+  Wire.beginTransmission(MCI_ADDRESS);
   return Wire.endTransmission() == 0;
 }
 
