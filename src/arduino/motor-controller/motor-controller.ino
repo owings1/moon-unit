@@ -95,34 +95,41 @@
  * HIGH - ready
  * LOW  - busy
  */
+// TODO: use precision 1/100th of a degree, and replace floating point math
 #include <AccelStepper.h>
 #include <MultiStepper.h>
+#include <Wire.h>
 #include "dwf/digitalWriteFast.h"
 
 /******************************************/
+/* I2C                                    */
+/******************************************/
+#define WIRE_ADDRESS 0x9
+volatile byte wireReq = 0x0;
+
+/******************************************/
 /* Stop Signal                            */
-/* ****************************************/
+/******************************************/
 #define stopPinEnabled true
 #define stopPin 13
 boolean shouldStop = false;
 
 /******************************************/
 /* State (ready/busy)                     */
-/* ****************************************/
+/******************************************/
 #define statePin A0
 #define STATE_READY HIGH
 #define STATE_BUSY LOW
 
 /******************************************/
 /* Constants                              */
-/* ****************************************/
+/******************************************/
 #define BAUD_RATE 9600L
 #define DEG_NULL 1000.00
-#define STEPS_NULL -1L
 
 /******************************************/
 /* Motor Pins                             */
-/* ****************************************/
+/******************************************/
 struct MotorPins {
   byte dir;
   byte step;
@@ -138,11 +145,11 @@ MotorPins motorPins[] = {
 
 /******************************************/
 /* Motor Settings                         */
-/* ****************************************/
+/******************************************/
 
 #define absMaxSpeed_m1 1600L
 #define absMaxSpeed_m2 1600L
-// TODO: refactor, since floats are only good to 6 decimal places
+// TODO: refactor, since floats are only good to 6 digits total
 #define degreesPerStep_m1 0.0008125
 #define degreesPerStep_m2 0.001125
 
@@ -152,10 +159,9 @@ MotorPins motorPins[] = {
 #define maxAcceleration 10000L
 #define motorSleepTimeout 2000L
 
-
 /******************************************/
 /* Motor Definition                       */
-/* ****************************************/
+/******************************************/
 struct Motor {
 
   AccelStepper stepper;
@@ -205,11 +211,12 @@ Motor motors[2];
 
 /******************************************/
 /* Entrypoint Functions                   */
-/* ****************************************/
+/******************************************/
 
 void setup() {
   setupStatePin();
   setState(STATE_BUSY);
+  setupWire();
   Serial.begin(BAUD_RATE);
   setupMotors();
   setupStopPin();
@@ -231,8 +238,22 @@ void loop() {
 }
 
 /******************************************/
+/* I2C Functions                          */
+/******************************************/
+void requestEvent() {
+  if (wireReq == 0x0) {
+    writePositions(Wire);
+    Wire.write("\n");
+  }
+}
+
+void receiveEvent(int howMany) {
+  wireReq = Wire.read();
+}
+
+/******************************************/
 /* Command Input Functions                */
-/* ****************************************/
+/******************************************/
 
 void takeCommand(Stream &input, Stream &output) {
 
@@ -580,7 +601,7 @@ void takeCommand(Stream &input, Stream &output) {
 
     // <position_m1_degrees>
     // <position_m2_degrees>
-    writePositions(output, 2);
+    writePositions(output);
     output.write('|');
     
     // <limitsEnabled_m1>
@@ -630,14 +651,17 @@ void takeCommand(Stream &input, Stream &output) {
   }
 }
 
-void writePositions(Stream &output, byte format) {
+// write positions in degrees.
+// NB: I2C expects 18 bytes maximum (including \n), so keep precision to 2
+void writePositions(Stream &output) {
   for (byte i = 0; i < 2; i++) {
+    float degrees;
     if (motors[i].hasHomed) {
-      long mpos = motors[i].stepper.currentPosition();
-      output.print(String(format == 1 ? mpos : (mpos * motors[i].degreesPerStep)));
+      degrees = (float) motors[i].stepper.currentPosition() * motors[i].degreesPerStep;
     } else {
-      output.print(format == 1 ? STEPS_NULL : DEG_NULL);
+      degrees = DEG_NULL;
     }
+    output.print(String(degrees, 2));
     if (i == 0) {
       output.write('|');
     }
@@ -663,7 +687,7 @@ int getDirMultiplier(byte dirInput) {
 
 /******************************************/
 /* Move Functions                         */
-/* ****************************************/
+/******************************************/
 
 boolean runMotorsIfNeeded() {
   
@@ -736,7 +760,7 @@ boolean motorCanMove(byte motorId, long howMuch) {
 
 /******************************************/
 /* Home/End Functions                     */
-/* ****************************************/
+/******************************************/
 
 boolean motorCanHome(byte motorId) {
   return motors[motorId - 1].limitsEnabled;
@@ -790,7 +814,7 @@ float getMaxDegreesForMotor(byte motorId) {
 
 /******************************************/
 /* Other Functions                        */
-/* ****************************************/
+/******************************************/
 
 void setMaxSpeed(byte motorId, unsigned long value) {
   byte i = motorId - 1;
@@ -849,7 +873,7 @@ void readLimitSwitches() {
 
 /******************************************/
 /* Stop Signal Functions                  */
-/* ****************************************/
+/******************************************/
 
 void readStopPin() {
   shouldStop = stopPinEnabled && (digitalReadFast(stopPin) == HIGH);
@@ -857,7 +881,7 @@ void readStopPin() {
 
 /******************************************/
 /* State (ready/busy) Functions           */
-/* ****************************************/
+/******************************************/
 
 void setState(byte state) {
   digitalWrite(statePin, state);
@@ -865,7 +889,7 @@ void setState(byte state) {
 
 /******************************************/
 /* Setup Functions                        */
-/* ****************************************/
+/******************************************/
 
 void setupMotors() {
 
@@ -913,4 +937,10 @@ void setupStatePin() {
 
 void setupStopPin() {
   pinMode(stopPin, INPUT);
+}
+
+void setupWire() {
+  Wire.begin(WIRE_ADDRESS);
+  Wire.onRequest(requestEvent);
+  Wire.onReceive(receiveEvent);
 }
