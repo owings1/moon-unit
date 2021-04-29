@@ -107,6 +107,7 @@ class App {
         this.isMcInit = null
         this.isMagInit = null
         this.isGpsInit = null
+        this.isMciInit = null
     }
 
     async status() {
@@ -130,7 +131,8 @@ class App {
             isOrientationInit         : this.isOrientationInit,
             isMagInit                 : this.isMagInit,
             isMcInit                  : this.isMcInit,
-            isGpsInit                 : this.isGpsInit
+            isGpsInit                 : this.isGpsInit,
+            isMciInit                 : this.isMciInit
         }
     }
 
@@ -243,10 +245,13 @@ class App {
                 break
             case 'MCC':
                 // motor controller status
-                this.position = [
-                    floats[0] == DEG_NULL ? null : floats[0],
-                    floats[1] == DEG_NULL ? null : floats[1]
-                ]
+                // only do position from here is we do not have I2C status
+                if (!this.isMciInit) {
+                    this.position = [
+                        floats[0] == DEG_NULL ? null : floats[0],
+                        floats[1] == DEG_NULL ? null : floats[1]
+                    ]
+                }
                 this.limitsEnabled = [
                     values[2] == 'T',
                     values[3] == 'T'
@@ -258,12 +263,19 @@ class App {
                 
                 this.maxSpeeds = floats.slice(6, 8)
                 break
+            case 'MCI':
+                this.position = [
+                    floats[0] == DEG_NULL ? null : floats[0],
+                    floats[1] == DEG_NULL ? null : floats[1]
+                ]
+                break
             case 'MOD':
                 // names the modules available
                 this.isOrientationInit = values.indexOf('ORI') > -1
                 this.isMcInit = values.indexOf('MCC') > -1
                 this.isGpsInit = values.indexOf('GPS') > -1
                 this.isMagInit = values.indexOf('MAG') > -1
+                this.isMciInit = values.indexOf('MCI') > -1
                 break
             default:
                 this.log('Unknown module', module)
