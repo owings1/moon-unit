@@ -5,7 +5,7 @@
  *
  *  :<id>:71 <mode>;
  *
- * 72 - Set declination angle
+ * 72 - Set declination angle for the magnetometer
  *
  *  :<id>:72 <radians>;
  *
@@ -21,124 +21,220 @@
 #include <Adafruit_BNO055.h>
 #include <Adafruit_Sensor.h>
 #include <Adafruit_HMC5883_U.h>
-//#include <NoDelay.h>
 #include <SoftwareSerial.h>
 #include <TinyGPS.h>
+#include <utility/imumaths.h>
 #include <Wire.h>
 
-// hardware enable
+/******************************************/
+/* Hardware Enable                        */
+/******************************************/
 #define gpsEnabled true
 #define orientationEnabled true
 #define magEnabled true
 
+/******************************************/
+/* Constants                              */
+/******************************************/
+
+#define BAUD_RATE 9600L
 #define DEG_NULL 1000.00
 
-// Modes
-// 1: quiet
-// 2: stream all
-// 3: stream gps
+/******************************************/
+/* Behavior                               */
+/******************************************/
+
 #define maxMode 3
+// 1: quiet, 2: stream all, 3: stream gps
 byte mode = 1;
-
 // Loop delay in milliseconds
-long loopDelay = 250;
+unsigned long loopDelay = 250;
 
-// Motor Controller Serial
-#define mc_statePin 5
-#define mcRxPin 6
-#define mcTxPin 7
-boolean isMcInit = false;
-SoftwareSerial mcSerial(mcRxPin, mcTxPin); //rx, tx
-#define mcTimeout 10000
-byte mc_state = LOW;
-String mc_statusStr;
+/******************************************/
+/* Module                                 */
+/******************************************/
 
-// Parse from status as needed
-/*
-float mc_position_m1;
-float mc_position_m2;
-boolean mc_limitsEnabled_m1;
-boolean mc_limitsEnabled_m2;
-float mc_degreesPerStep_m1;
-float mc_degreesPerStep_m2;
-long mc_maxSpeed_m1;
-long mc_maxSpeed_m2;
-boolean mc_limitState_m1_cw;
-boolean mc_limitState_m1_acw;
-boolean mc_limitState_m2_cw;
-boolean mc_limitState_m2_acw;
-boolean mc_shouldStop;
-*/
-// Motor controller I2C
-#define MCI_ADDRESS 0x9
-#define MCI_BYTE_LENGTH 18
-unsigned long mciCheckInterval = 2000L;
-unsigned long lastMciCheckTime;
-boolean isMciInit = false;
-String mci_statusStr;
+struct Module {
+  char label[4];
+  boolean isEnabled;
+  boolean isInit;
+  boolean hasData;
+};
 
-// Orientation sensor
+/******************************************/
+/* Motor Controller Serial                */
+/******************************************/
 
-// https://learn.adafruit.com/adafruit-bno055-absolute-orientation-sensor/arduino-code
-Adafruit_BNO055 bno = Adafruit_BNO055(55);
-// whether it is initialized properly
-boolean isOrientationInit = false;
-boolean isOrientationCalibrated = false;
-// latest read
-float orientation_x = DEG_NULL;
-float orientation_y = DEG_NULL;
-float orientation_z = DEG_NULL;
-// calibration
-uint8_t cal_system = 0;
-uint8_t cal_gyro = 0;
-uint8_t cal_accel = 0;
-uint8_t cal_mag = 0;
+#define mccStatePin 5
+#define mccRxPin 6
+#define mccTxPin 7
+#define mccTimeout 10000L
+#define mccBaudRate 9600L
 
-// GPS
+SoftwareSerial mccSerial(mccRxPin, mccTxPin);
+
+struct MotorControllerSerial {
+
+  Module module;
+
+  unsigned long timeout;
+
+  byte state;
+  String statusStr;
+};
+
+MotorControllerSerial mcc;
+
+/******************************************/
+/* Motor Controller I2C                   */
+/******************************************/
+
+#define mciAddress 0x9
+#define mciMessageLength 18
+
+struct MotorControllerI2C {
+
+  Module module;
+
+  byte address;
+ 
+  unsigned long checkInterval;
+  unsigned long lastCheckTime;
+
+  String statusStr;
+};
+
+MotorControllerI2C mci;
+
+/******************************************/
+/* Orientation Sensor                     */
+/******************************************/
+
+struct Orientation {
+
+  Module module;
+
+  // https://learn.adafruit.com/adafruit-bno055-absolute-orientation-sensor/arduino-code
+  Adafruit_BNO055 sensor;
+
+  boolean isCalibrated;
+  float x;
+  float y;
+  float z;
+  float qw;
+  float qx;
+  float qy;
+  float qz;
+  int8_t temp;
+  byte cal_system;
+  byte cal_gyro;
+  byte cal_accel;
+  byte cal_mag;
+};
+
+Orientation ori;
+
+/******************************************/
+/* GPS                                    */
+/******************************************/
+
+#define gpsBaudRate 9600L
 #define gspRxPin 8
 #define gpsTxPin 9 // not functional
+
 SoftwareSerial gpsSerial(gspRxPin, gpsTxPin); //rx, tx
-TinyGPS gps;
-float gps_lat = DEG_NULL;
-float gps_lon = DEG_NULL;
-boolean isGpsInit = false;
 
-// Mag
+struct Gps {
 
-/* Assign a unique ID to this sensor */
-Adafruit_HMC5883_Unified mag = Adafruit_HMC5883_Unified(49138);
-// https://www.ngdc.noaa.gov/geomag/calculators/magcalc.shtml
-float declinationAngle = 0.23; // radians
-boolean isMagInit = false;
-float mag_x = 0; // micro-Tesla (uT)
-float mag_y = 0;
-float mag_z = 0;
-float mag_heading = DEG_NULL; // degrees
+  Module module;
+
+  TinyGPS helper;
+
+  float lat;
+  float lon;
+};
+
+Gps gps;
+
+/******************************************/
+/* Magnetometer                           */
+/******************************************/
+
+#define defaultDeclinationRad 0.23
+
+struct Mag {
+  Module module;
+  int deviceId;
+  byte checkAddress;
+  Adafruit_HMC5883_Unified sensor;
+  float declinationRad;
+  // micro-Tesla (uT)
+  float x;
+  float y;
+  float z;
+  // degrees
+  float heading;
+};
+
+Mag mag;
+
+
+/******************************************/
+/* Setup                                  */
+/******************************************/
 
 void setup() {
-  pinMode(mc_statePin, INPUT);
-  Serial.begin(9600);
+  pinMode(mccStatePin, INPUT);
+  Serial.begin(BAUD_RATE);
   Wire.begin();
+  setupModules();
+}
 
-  mcSerial.begin(9600);
+void setupModules() {
+  strcpy(ori.module.label, "ORI");
+  ori.module.isEnabled = orientationEnabled;
+  ori.sensor = Adafruit_BNO055(55);
+  ori.x = DEG_NULL;
+  ori.y = DEG_NULL;
+  ori.z = DEG_NULL;
+  if (ori.module.isEnabled && ori.sensor.begin()) {
+    ori.module.isInit = true;
+    ori.sensor.setExtCrystalUse(true);
+  }
+  ori.module.hasData = ori.module.isInit;
 
-  if (checkMcConnected()) {
-    isMcInit = true;
+  strcpy(mcc.module.label, "MCC");
+  mcc.module.isEnabled = true;
+  mccSerial.begin(mccBaudRate);
+  mcc.module.isInit = checkMccConnected();
+
+  strcpy(mci.module.label, "MCI");
+  mci.module.isEnabled = true;
+  mci.address = mciAddress;
+  mci.module.isInit = checkMciConnected(mci);
+
+  strcpy(gps.module.label, "GPS");
+  gps.module.isEnabled = gpsEnabled;
+  gps.lat = DEG_NULL;
+  gps.lon = DEG_NULL;
+  if (gps.module.isEnabled) {
+    gpsSerial.begin(gpsBaudRate);
+    gps.module.isInit = checkGpsConnected();
   }
-  if (checkMciConnected()) {
-    isMciInit = true;
+  gps.module.hasData = gps.module.isInit;
+
+  strcpy(mag.module.label, "MAG");
+  mag.module.isEnabled = magEnabled;
+  mag.deviceId = 49138; // set a unique id
+  // the address is hard-coded in the sensor library, so
+  // this is just for checking whether it is connected.
+  mag.checkAddress = 0x3C >> 1;
+  mag.sensor = Adafruit_HMC5883_Unified(mag.deviceId);
+  mag.heading = DEG_NULL;
+  if (mag.module.isEnabled) {
+    mag.module.isInit = mag.sensor.begin() && checkMagConnected(mag);
   }
-  gpsSerial.begin(9600);
-  if (gpsEnabled && checkGpsConnected()) {
-    isGpsInit = true;
-  }
-  if (magEnabled && mag.begin() && checkMagConnected()) {
-    isMagInit = true;
-  }
-  if (orientationEnabled && bno.begin()) {
-    isOrientationInit = true;
-    bno.setExtCrystalUse(true);
-  }
+  mag.module.hasData = mag.module.isInit;
 }
 
 void loop() {
@@ -184,7 +280,7 @@ void takeCommand(Stream &input, Stream &output) {
 
   if (command.toInt() < 70) {
 
-    if (!isMcInit) {
+    if (!mcc.module.isInit) {
       input.readStringUntil(';');
       writeAck(id, output, true);
       output.write("=01\n");
@@ -192,35 +288,35 @@ void takeCommand(Stream &input, Stream &output) {
     }
     // forward to motorcontroller
 
-    readMcState();
-    if (mc_state != HIGH) {
+    readMccState(mcc);
+    if (mcc.state != HIGH) {
       input.readStringUntil(';');
       writeAck(id, output, true);
       output.write("=04\n");
       return;
     }
 
-    mcSerial.listen();
+    mccSerial.listen();
 
     String mcBody = String(":");
     mcBody.concat(command);
     mcBody.concat(" ");
     mcBody.concat(input.readStringUntil(';'));
     mcBody.concat(";");
-    mcSerial.print(mcBody);
+    mccSerial.print(mcBody);
 
     int d = 0;
-    while (!mcSerial.available()) {
+    while (!mccSerial.available()) {
       delay(1);
       d += 1;
-      if (d > mcTimeout) {
+      if (d > mcc.timeout) {
         writeAck(id, output, true);
         output.write("=02\n");
         return;
       }
     }
 
-    String res = mcSerial.readStringUntil("\n");
+    String res = mccSerial.readStringUntil("\n");
     writeAck(id, output, true);
     output.print(res);
     output.write("\n");
@@ -240,13 +336,13 @@ void takeCommand(Stream &input, Stream &output) {
     mode = newMode;
     output.write("=00\n");
   } else if (command.equals("72")) {
-    // set declination angle
+    // set declination angle for mag
     float newValue = input.readStringUntil(';').toFloat();
     if (newValue > 7 || newValue < -7) {
       output.write("=49\n");
       return;
     }
-    declinationAngle = newValue;
+    mag.declinationRad = newValue;
     output.write("=00\n");
   } else if (command.equals("73")) {
     // set loop delay
@@ -264,7 +360,7 @@ void takeCommand(Stream &input, Stream &output) {
       output.write("=49\n");
       return;
     }
-    mciCheckInterval = newValue;
+    mci.checkInterval = newValue;
     output.write("=00\n");
   } else {
     output.write("=44\n");
@@ -286,33 +382,38 @@ void writeAll(Stream &output) {
   writeModules(output);
   output.write("\n");
 
-  if (isOrientationInit) {
-    output.write("ORI:");
-    writeOrientation(output);
+  if (ori.module.isInit) {
+    output.write(ori.module.label);
+    output.write(':');
+    writeOrientation(ori, output);
     output.write("\n");
   }
   
-  if (isGpsInit) {
-    output.write("GPS:");
-    writeGps(output);
+  if (gps.module.isInit) {
+    output.write(gps.module.label);
+    output.write(':');
+    writeGps(gps, output);
     output.write("\n");
   }
 
-  if (isMagInit) {
-    output.write("MAG:");
-    writeMag(output);
+  if (mag.module.isInit) {
+    output.write(mag.module.label);
+    output.write(':');
+    writeMag(mag, output);
     output.write("\n");
   }
 
-  if (isMcInit && mc_statusStr.length() > 0) {
-    output.write("MCC:");
-    writeMcStatus(output);
+  if (mcc.module.isInit) {
+    output.write(mcc.module.label);
+    output.write(':');
+    writeMccStatus(mcc, output);
     output.write("\n");
   }
 
-  if (isMciInit && mci_statusStr.length() > 0) {
-    output.write("MCI:");
-    writeMciStatus(output);
+  if (mci.module.isInit) {
+    output.write(mci.module.label);
+    output.write(':');
+    writeMciStatus(mci, output);
     output.write("\n");
   }
 }
@@ -321,157 +422,166 @@ void writeModules(Stream &output) {
 
   boolean doPrefix = false;
 
-  if (isOrientationInit) {
+  if (ori.module.hasData) {
     if (doPrefix) {
       output.write('|');
     }
-    output.write("ORI");
+    output.write(ori.module.label);
     doPrefix = true;
   }
 
-  if (isGpsInit) {
+  if (gps.module.hasData) {
     if (doPrefix) {
       output.write('|');
     }
-    output.write("GPS");
+    output.write(gps.module.label);
     doPrefix = true;
   }
 
-  if (isMagInit) {
+  if (mag.module.hasData) {
     if (doPrefix) {
       output.write('|');
     }
-    output.write("MAG");
+    output.write(mag.module.label);
     doPrefix = true;
   }
 
-  if (isMcInit) {
+  if (mcc.module.hasData) {
     if (doPrefix) {
       output.write('|');
     }
-    output.write("MCC");
+    output.write(mcc.module.label);
     doPrefix = true;
   }
 
-  if (isMciInit) {
+  if (mci.module.hasData) {
     if (doPrefix) {
       output.write('|');
     }
-    output.write("MCI");
+    output.write(mci.module.label);
     doPrefix = true;
   }
+  
 }
 
-void writeMcStatus(Stream &output) {
-  output.print(mc_statusStr);
+void writeMccStatus(MotorControllerSerial &m, Stream &output) {
+  output.print(m.statusStr);
 }
 
-void writeMciStatus(Stream &output) {
-  output.print(mci_statusStr);
+void writeMciStatus(MotorControllerI2C &m, Stream &output) {
+  output.print(m.statusStr);
 }
 
-void writeOrientation(Stream &output) {
-  // x|y|z|cal_system|cal_gyro|cal_accel|cal_mag|isCalibrated|isInit
-  output.print(orientation_x, 4);
+void writeOrientation(Orientation &o, Stream &output) {
+  output.print(o.x, 4);
   output.write('|');
-  output.print(orientation_y, 4);
+  output.print(o.y, 4);
   output.write('|');
-  output.print(orientation_z, 4);
+  output.print(o.z, 4);
   output.write('|');
-  output.print(cal_system);
+  output.print(o.qw, 4);
   output.write('|');
-  output.print(cal_gyro);
+  output.print(o.qx, 4);
   output.write('|');
-  output.print(cal_accel);
+  output.print(o.qy, 4);
   output.write('|');
-  output.print(cal_mag);
+  output.print(o.qz, 4);
   output.write('|');
-  output.write(isOrientationCalibrated ? 'T' : 'F');
+  output.print(o.temp);
   output.write('|');
-  output.write(isOrientationInit ? 'T' : 'F');
+  output.print(o.cal_system);
+  output.write('|');
+  output.print(o.cal_gyro);
+  output.write('|');
+  output.print(o.cal_accel);
+  output.write('|');
+  output.print(o.cal_mag);
+  output.write('|');
+  output.write(o.isCalibrated ? 'T' : 'F');
 }
 
-void writeGps(Stream &output) {
-  output.print(gps_lat, 6);
+void writeGps(Gps &g, Stream &output) {
+  output.print(g.lat, 6);
   output.write('|');
-  output.print(gps_lon, 6);
+  output.print(g.lon, 6);
 }
 
-void writeMag(Stream &output) {
-  output.print(mag_heading, 4);
+void writeMag(Mag &m, Stream &output) {
+  output.print(m.heading, 4);
   output.write('|');
-  output.print(mag_x, 4);
+  output.print(m.x, 4);
   output.write('|');
-  output.print(mag_y, 4);
+  output.print(m.y, 4);
   output.write('|');
-  output.print(mag_z, 4);
+  output.print(m.z, 4);
   output.write('|');
-  output.print(declinationAngle, 4);
+  output.print(m.declinationRad, 4);
 }
 
 void readAll() {
-  readMcState();
-  if (isMcInit) {
-    readMcStatus();
+  readMccState(mcc);
+  if (mcc.module.isInit) {
+    readMccStatus(mcc);
   }
-  if (isMciInit) {
-    readMciStatus();
+  if (mci.module.isInit) {
+    readMciStatus(mci);
   }
-  if (isOrientationInit) {
-    readOrientation();
+  if (ori.module.isInit) {
+    readOrientation(ori);
   }
-  if (isGpsInit) {
-    readGps();
+  if (gps.module.isInit) {
+    readGps(gps);
   }
-  if (isMagInit) {
-    readMag();
+  if (mag.module.isInit) {
+    readMag(mag);
   }
 }
 
-void readMcState() {
-  mc_state = digitalRead(mc_statePin);
+void readMccState(MotorControllerSerial &m) {
+  m.state = digitalRead(mccStatePin);
 }
 
 // this causes a significant delay
 // TODO: only do this occasionally
-void readMcStatus() {
-  if (mc_state != HIGH) {
+void readMccStatus(MotorControllerSerial &m) {
+  if (m.state != HIGH) {
     return;
   }
-  mcSerial.listen();
-  mcSerial.write(":18 ;");
+  mccSerial.listen();
+  mccSerial.write(":18 ;");
   // only timeout 250ms
   int d = 0;
-  while (!mcSerial.available()) {
+  while (!mccSerial.available()) {
     delay(1);
     d += 1;
     if (d > 250) {
       return;
     }
   }
-  String codeStr = mcSerial.readStringUntil(';');
+  String codeStr = mccSerial.readStringUntil(';');
   if (!codeStr.equals("=00")) {
     return;
   }
-  mc_statusStr = mcSerial.readStringUntil("\n");
-  mc_statusStr.trim();
-  // TODO: map values
+  // this is what takes so long
+  m.statusStr = mccSerial.readStringUntil("\n");
+  m.statusStr.trim();
+  m.module.hasData = true;
 }
 
 // should only do this occasionally, since it will slow
 // motor operations down.
 // read I2C
-void readMciStatus() {
-  if (millis() - lastMciCheckTime < mciCheckInterval) {
+void readMciStatus(MotorControllerI2C &m) {
+  if (millis() - m.lastCheckTime < m.checkInterval) {
     return;
   }
-  lastMciCheckTime = millis();
-  Wire.beginTransmission(MCI_ADDRESS);
+  m.lastCheckTime = millis();
+  Wire.beginTransmission(m.address);
   Wire.write(0x0);
   if (Wire.endTransmission() != 0) {
     return;
   }
-  Wire.requestFrom(MCI_ADDRESS, MCI_BYTE_LENGTH);
+  Wire.requestFrom((uint8_t) m.address, (uint8_t) mciMessageLength);
   char buf[19];
   byte i = 0;
   while (Wire.available()) {
@@ -486,37 +596,48 @@ void readMciStatus() {
     buf[i] = c;
     i++;
   }
-  mci_statusStr = String(buf);
-  mci_statusStr.trim();
+  m.statusStr = String(buf);
+  m.statusStr.trim();
+  m.module.hasData = m.statusStr.length() > 0;
 }
-void readOrientation() {
+
+void readOrientation(Orientation &o) {
+
+  o.temp = o.sensor.getTemp();
+
   /* Get a new sensor event */ 
   sensors_event_t event; 
-  bno.getEvent(&event);
+  o.sensor.getEvent(&event);
 
-  if (!isOrientationCalibrated) {
-    bno.getCalibration(&cal_system, &cal_gyro, &cal_accel, &cal_mag);
-    if (cal_system == 3 && cal_gyro == 3 && cal_accel == 3 && cal_mag == 3) {
-      isOrientationCalibrated = true;
+  if (!o.isCalibrated) {
+    o.sensor.getCalibration(&o.cal_system, &o.cal_gyro, &o.cal_accel, &o.cal_mag);
+    if (o.cal_system + o.cal_gyro + o.cal_accel + o.cal_mag == 12) {
+      o.isCalibrated = true;
     } else {
       // do not set values if not calibrated
       return;
     }
   }
 
-  orientation_x = event.orientation.x;
-  orientation_y = event.orientation.y;
-  orientation_z = event.orientation.z;
+  o.x = event.orientation.x;
+  o.y = event.orientation.y;
+  o.z = event.orientation.z;
+
+  imu::Quaternion q = o.sensor.getQuat();
+  o.qw = q.w();
+  o.qx = q.x();
+  o.qy = q.y();
+  o.qz = q.z();
 }
 
-void readGps() {
+void readGps(Gps &g) {
   gpsSerial.listen();
   // we have to set a delay here after listen, otherwise we
   // never read values. this value MUST be at least 50ms.
   delay(60);
   while (gpsSerial.available()) {
-    if (gps.encode(gpsSerial.read())) {
-      gps.f_get_position(&gps_lat, &gps_lon);
+    if (g.helper.encode(gpsSerial.read())) {
+      g.helper.f_get_position(&g.lat, &g.lon);
     }
   }
 }
@@ -528,32 +649,32 @@ void streamGps(Stream &output) {
   }
 }
 
-void readMag() {
+void readMag(Mag &m) {
   sensors_event_t event; 
-  mag.getEvent(&event);
+  m.sensor.getEvent(&event);
   // magnetic vector values are in micro-Tesla (uT)
-  mag_x = event.magnetic.x;
-  mag_y = event.magnetic.y;
-  mag_z = event.magnetic.z;
+  m.x = event.magnetic.x;
+  m.y = event.magnetic.y;
+  m.z = event.magnetic.z;
   
   // Hold the module so that Z is pointing 'up' and you can measure the heading with x&y
   // Calculate heading when the magnetometer is level, then correct for signs of axis.
   float heading = atan2(event.magnetic.y, event.magnetic.x);
 
-  heading += declinationAngle;
+  heading += m.declinationRad;
   
   // Correct for when signs are reversed.
-  if(heading < 0) {
+  if (heading < 0) {
     heading += 2*PI;
   }
 
   // Check for wrap due to addition of declination.
-  if(heading > 2*PI) {
+  if (heading > 2*PI) {
     heading -= 2*PI;
   }
    
   // Convert radians to degrees for readability.
-  mag_heading = heading * 180/M_PI; 
+  m.heading = heading * 180/M_PI; 
 }
 
 // Utilities
@@ -561,30 +682,30 @@ void readMag() {
 // the begin method in the Adafruit library just writes to
 // the device address and returns true. We need to check for
 // a response at address 0x3C >> 1
-boolean checkMagConnected() {
-  Wire.beginTransmission(0x3C >> 1);
+boolean checkMagConnected(Mag &m) {
+  Wire.beginTransmission(m.checkAddress);
   return Wire.endTransmission() == 0;
 }
 
-boolean checkMciConnected() {
-  Wire.beginTransmission(MCI_ADDRESS);
+boolean checkMciConnected(MotorControllerI2C m) {
+  Wire.beginTransmission(m.address);
   return Wire.endTransmission() == 0;
 }
 
 // send a status request with a 2 second timeout
-boolean checkMcConnected() {
-  mcSerial.listen();
-  mcSerial.write(":18 ;");
+boolean checkMccConnected() {
+  mccSerial.listen();
+  mccSerial.write(":18 ;");
   // timeout 2 second
   int d = 0;
-  while (!mcSerial.available()) {
+  while (!mccSerial.available()) {
     delay(1);
     d += 1;
     if (d > 2000) {
       return false;
     }
   }
-  mcSerial.readStringUntil("\n");
+  mccSerial.readStringUntil("\n");
   return true;
 }
 
