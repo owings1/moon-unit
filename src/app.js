@@ -123,7 +123,7 @@ class App {
             isGaugerConnected         : this.isGaugerConnected,
             isOrientationCalibrated   : this.isOrientationCalibrated,
             orientationCalibration    : this.orientationCalibration,
-            temperatur                : this.temperature,
+            temperature               : this.temperature,
             gaugerConnectedStatus     : this.isGaugerConnected ? 'Connected' : 'Disconnected',
             gpsCoords                 : this.gpsCoords,
             magHeading                : this.magHeading,
@@ -242,7 +242,7 @@ class App {
             case 'ORI':
                 // x|y|z|cal_system|cal_gyro|cal_accel|cal_mag|isCalibrated|isInit
                 this.orientation = floats.slice(0, 7).map(v => v == DEG_NULL ? null : v)
-                this.temperature = float[7]
+                this.temperature = floats[7]
                 this.orientationCalibration = floats.slice(8, 12)
                 this.isOrientationCalibrated = values[12] == 'T'
                 break
