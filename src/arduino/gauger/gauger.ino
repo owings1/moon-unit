@@ -48,7 +48,7 @@
 // 1: quiet, 2: stream all, 3: stream gps
 byte mode = 1;
 // Loop delay in milliseconds
-unsigned long loopDelay = 250;
+unsigned long loopDelay = 50;
 
 /******************************************/
 /* Module                                 */
@@ -582,8 +582,6 @@ void readMccState(MotorControllerSerial &m) {
   m.state = digitalRead(m.statePin);
 }
 
-// this causes a significant delay
-// TODO: only do this occasionally
 void readMccStatus(MotorControllerSerial &m, SoftwareSerial &ser) {
   if (m.state != HIGH) {
     return;
@@ -603,10 +601,11 @@ void readMccStatus(MotorControllerSerial &m, SoftwareSerial &ser) {
   if (!codeStr.equals("=00")) {
     return;
   }
-  // this is what takes so long
-  m.statusStr = ser.readStringUntil("\n");
+  // this is what used to take so long, until
+  // we replaced "\n" with '\n' !
+  m.statusStr = ser.readStringUntil('\n');
   m.statusStr.trim();
-  m.module.hasData = true;
+  m.module.hasData = m.statusStr.length() > 0;
 }
 
 // should only do this occasionally, since it will slow
