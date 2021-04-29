@@ -77,6 +77,7 @@ struct MotorControllerSerial {
 
   Module module;
 
+  byte statePin;
   unsigned long timeout;
 
   byte state;
@@ -110,12 +111,16 @@ MotorControllerI2C mci;
 /* Orientation Sensor                     */
 /******************************************/
 
+#define oriAddress 0x28
+#define orfAddress 0x29
+
 struct Orientation {
 
   Module module;
 
   // https://learn.adafruit.com/adafruit-bno055-absolute-orientation-sensor/arduino-code
   Adafruit_BNO055 sensor;
+  byte address;
 
   boolean isCalibrated;
   float x;
@@ -133,6 +138,7 @@ struct Orientation {
 };
 
 Orientation ori;
+Orientation orf;
 
 /******************************************/
 /* GPS                                    */
@@ -160,6 +166,8 @@ Gps gps;
 /* Magnetometer                           */
 /******************************************/
 
+#define magCheckAddress (0x3C >> 1)
+#define magDeviceId 49138
 #define defaultDeclinationRad 0.23
 
 struct Mag {
@@ -193,7 +201,8 @@ void setup() {
 void setupModules() {
   strcpy(ori.module.label, "ORI");
   ori.module.isEnabled = orientationEnabled;
-  ori.sensor = Adafruit_BNO055(55);
+  ori.address = oriAddress;
+  ori.sensor = Adafruit_BNO055(55, ori.address);
   ori.x = DEG_NULL;
   ori.y = DEG_NULL;
   ori.z = DEG_NULL;
@@ -203,10 +212,24 @@ void setupModules() {
   }
   ori.module.hasData = ori.module.isInit;
 
+  strcpy(orf.module.label, "ORF");
+  orf.module.isEnabled = orientationEnabled;
+  orf.address = orfAddress;
+  orf.sensor = Adafruit_BNO055(55, orf.address);
+  orf.x = DEG_NULL;
+  orf.y = DEG_NULL;
+  orf.z = DEG_NULL;
+  if (orf.module.isEnabled && orf.sensor.begin()) {
+    orf.module.isInit = true;
+    orf.sensor.setExtCrystalUse(true);
+  }
+  orf.module.hasData = orf.module.isInit;
+
   strcpy(mcc.module.label, "MCC");
   mcc.module.isEnabled = true;
+  mcc.statePin = mccStatePin;
   mccSerial.begin(mccBaudRate);
-  mcc.module.isInit = checkMccConnected();
+  mcc.module.isInit = checkMccConnected(mccSerial);
 
   strcpy(mci.module.label, "MCI");
   mci.module.isEnabled = true;
@@ -219,16 +242,16 @@ void setupModules() {
   gps.lon = DEG_NULL;
   if (gps.module.isEnabled) {
     gpsSerial.begin(gpsBaudRate);
-    gps.module.isInit = checkGpsConnected();
+    gps.module.isInit = checkGpsConnected(gpsSerial);
   }
   gps.module.hasData = gps.module.isInit;
 
   strcpy(mag.module.label, "MAG");
   mag.module.isEnabled = magEnabled;
-  mag.deviceId = 49138; // set a unique id
+  mag.deviceId = magDeviceId; // set a unique id
   // the address is hard-coded in the sensor library, so
   // this is just for checking whether it is connected.
-  mag.checkAddress = 0x3C >> 1;
+  mag.checkAddress = magCheckAddress;
   mag.sensor = Adafruit_HMC5883_Unified(mag.deviceId);
   mag.heading = DEG_NULL;
   if (mag.module.isEnabled) {
@@ -244,7 +267,7 @@ void loop() {
     readAll();
     writeAll(Serial);
   } else if (mode == 3 && gpsEnabled) {
-    streamGps(Serial);
+    streamGps(Serial, gpsSerial);
   }
   // take command twice, since readAll takes time.
   takeCommand(Serial, Serial);
@@ -388,7 +411,14 @@ void writeAll(Stream &output) {
     writeOrientation(ori, output);
     output.write("\n");
   }
-  
+
+  if (orf.module.isInit) {
+    output.write(orf.module.label);
+    output.write(':');
+    writeOrientation(orf, output);
+    output.write("\n");
+  }
+ 
   if (gps.module.isInit) {
     output.write(gps.module.label);
     output.write(':');
@@ -427,6 +457,14 @@ void writeModules(Stream &output) {
       output.write('|');
     }
     output.write(ori.module.label);
+    doPrefix = true;
+  }
+
+  if (orf.module.hasData) {
+    if (doPrefix) {
+      output.write('|');
+    }
+    output.write(orf.module.label);
     doPrefix = true;
   }
 
@@ -521,7 +559,7 @@ void writeMag(Mag &m, Stream &output) {
 void readAll() {
   readMccState(mcc);
   if (mcc.module.isInit) {
-    readMccStatus(mcc);
+    readMccStatus(mcc, mccSerial);
   }
   if (mci.module.isInit) {
     readMciStatus(mci);
@@ -529,8 +567,11 @@ void readAll() {
   if (ori.module.isInit) {
     readOrientation(ori);
   }
+  if (orf.module.isInit) {
+    readOrientation(orf);
+  }
   if (gps.module.isInit) {
-    readGps(gps);
+    readGps(gps, gpsSerial);
   }
   if (mag.module.isInit) {
     readMag(mag);
@@ -538,32 +579,32 @@ void readAll() {
 }
 
 void readMccState(MotorControllerSerial &m) {
-  m.state = digitalRead(mccStatePin);
+  m.state = digitalRead(m.statePin);
 }
 
 // this causes a significant delay
 // TODO: only do this occasionally
-void readMccStatus(MotorControllerSerial &m) {
+void readMccStatus(MotorControllerSerial &m, SoftwareSerial &ser) {
   if (m.state != HIGH) {
     return;
   }
-  mccSerial.listen();
-  mccSerial.write(":18 ;");
+  ser.listen();
+  ser.write(":18 ;");
   // only timeout 250ms
   int d = 0;
-  while (!mccSerial.available()) {
+  while (!ser.available()) {
     delay(1);
     d += 1;
     if (d > 250) {
       return;
     }
   }
-  String codeStr = mccSerial.readStringUntil(';');
+  String codeStr = ser.readStringUntil(';');
   if (!codeStr.equals("=00")) {
     return;
   }
   // this is what takes so long
-  m.statusStr = mccSerial.readStringUntil("\n");
+  m.statusStr = ser.readStringUntil("\n");
   m.statusStr.trim();
   m.module.hasData = true;
 }
@@ -630,22 +671,22 @@ void readOrientation(Orientation &o) {
   o.qz = q.z();
 }
 
-void readGps(Gps &g) {
-  gpsSerial.listen();
+void readGps(Gps &g, SoftwareSerial &ser) {
+  ser.listen();
   // we have to set a delay here after listen, otherwise we
   // never read values. this value MUST be at least 50ms.
   delay(60);
-  while (gpsSerial.available()) {
-    if (g.helper.encode(gpsSerial.read())) {
+  while (ser.available()) {
+    if (g.helper.encode(ser.read())) {
       g.helper.f_get_position(&g.lat, &g.lon);
     }
   }
 }
 
-void streamGps(Stream &output) {
-  gpsSerial.listen();
-  while (gpsSerial.available()) {
-    output.write(gpsSerial.read());
+void streamGps(Stream &output, SoftwareSerial &ser) {
+  ser.listen();
+  while (ser.available()) {
+    output.write(ser.read());
   }
 }
 
@@ -693,27 +734,27 @@ boolean checkMciConnected(MotorControllerI2C m) {
 }
 
 // send a status request with a 2 second timeout
-boolean checkMccConnected() {
-  mccSerial.listen();
-  mccSerial.write(":18 ;");
-  // timeout 2 second
+boolean checkMccConnected(SoftwareSerial &ser) {
+  ser.listen();
+  ser.write(":18 ;");
+  // timeout 2 seconds
   int d = 0;
-  while (!mccSerial.available()) {
+  while (!ser.available()) {
     delay(1);
     d += 1;
     if (d > 2000) {
       return false;
     }
   }
-  mccSerial.readStringUntil("\n");
+  ser.readStringUntil("\n");
   return true;
 }
 
-boolean checkGpsConnected() {
-  gpsSerial.listen();
+boolean checkGpsConnected(SoftwareSerial &ser) {
+  ser.listen();
   // timeout 3 seconds
   int d = 0;
-  while (!gpsSerial.available()) {
+  while (!ser.available()) {
     delay(1);
     d += 1;
     if (d > 3000) {
