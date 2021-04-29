@@ -76,7 +76,7 @@ See [CD40106BE datasheet][schmitt]
 |  14 | VDD   | +3.3v                | red    | gauger 3.3v
 
 
-### Rotary module
+### Rotary module (Nano)
 
 | Pin | Description                 | Color  | Notes
 |-----|-----------------------------|--------|------------------

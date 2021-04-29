@@ -125,9 +125,6 @@ Commands
 - `<direction>`
     - `1` - clockwise
     - `2` - anti-clockwise
-- `<format>`
-    - `1` - steps
-    - `2` - degrees
 
 
 ## Response Codes
