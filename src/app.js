@@ -123,7 +123,7 @@ class App {
             isGaugerConnected         : this.isGaugerConnected,
             isOrientationCalibrated   : this.isOrientationCalibrated,
             orientationCalibration    : this.orientationCalibration,
-            temperatur                : this.temperature,
+            temperature               : this.temperature,
             gaugerConnectedStatus     : this.isGaugerConnected ? 'Connected' : 'Disconnected',
             gpsCoords                 : this.gpsCoords,
             magHeading                : this.magHeading,
