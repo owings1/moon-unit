@@ -99,16 +99,20 @@ class App {
         this.magHeading = null
         this.declinationAngle = null
         this.declinationSource = null
+
+        this.isOrientationInit = null
         this.orientation   = [null, null, null]
         this.temperature = null
         this.orientationCalibration = [null, null, null, null]
         this.isOrientationCalibrated = null
+
+        this.isBaseOrientationInit = null
         this.baseOrientation   = [null, null, null]
         this.baseTemperature = null
         this.baseOrientationCalibration = [null, null, null, null]
         this.isBaseOrientationCalibrated = null
+
         this.maxSpeeds = [null, null]
-        this.isOrientationInit = null
         this.isMcInit = null
         this.isMagInit = null
         this.isGpsInit = null
@@ -295,6 +299,7 @@ class App {
                 // names the modules available
                 // TODO: make efficient
                 this.isOrientationInit = values.indexOf('ORI') > -1
+                this.isBaseOrientationInit = values.indexOf('ORF') > -1
                 this.isMcInit = values.indexOf('MCC') > -1
                 this.isGpsInit = values.indexOf('GPS') > -1
                 this.isMagInit = values.indexOf('MAG') > -1
