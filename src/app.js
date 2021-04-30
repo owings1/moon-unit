@@ -269,6 +269,7 @@ class App {
                 this.baseTemperature = floats[7]
                 this.baseOrientationCalibration = floats.slice(8, 12)
                 this.isBaseOrientationCalibrated = values[12] == 'T'
+                break
             case 'MCC':
                 // motor controller status
                 // only do position from here is we do not have I2C status
