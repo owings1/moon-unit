@@ -158,7 +158,7 @@
                     </tbody>
                     <thead>
                         <tr>
-                            <th colspan="2">Orientation</th>
+                            <th colspan="2">Scope Orientation</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -205,6 +205,57 @@
                         <tr>
                             <td>isCalibrated</td>
                             <td><span id="is_orientation_calibrated"><%= '' + status.isOrientationCalibrated %></span></td>
+                        </tr>
+                    </tbody>
+                    <thead>
+                        <tr>
+                            <th colspan="2">Base Orientation</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td>isInit</td>
+                            <td><span id="is_base_orientation_init"><%= '' + status.isBaseOrientationInit %></span></td>
+                        </tr>
+                        <tr>
+                            <td>x</td>
+                            <td><span id="base_orientation_x"><%= '' + status.baseOrientation[0] %></span></td>
+                        </tr>
+                        <tr>
+                            <td>y</td>
+                            <td><span id="base_orientation_y"><%= '' + status.baseOrientation[1] %></span></td>
+                        </tr>
+                        <tr>
+                            <td>z</td>
+                            <td><span id="base_orientation_z"><%= '' + status.baseOrientation[2] %></span></td>
+                        </tr>
+                        <tr>
+                            <td>qw</td>
+                            <td><span id="base_orientation_qw"><%= '' + status.baseOrientation[3] %></span></td>
+                        </tr>
+                        <tr>
+                            <td>qx</td>
+                            <td><span id="base_orientation_qx"><%= '' + status.baseOrientation[4] %></span></td>
+                        </tr>
+                        <tr>
+                            <td>qy</td>
+                            <td><span id="base_orientation_qy"><%= '' + status.baseOrientation[5] %></span></td>
+                        </tr>
+                        <tr>
+                            <td>qz</td>
+                            <td><span id="base_orientation_qz"><%= '' + status.baseOrientation[6] %></span></td>
+                        </tr>
+                        <tr>
+                            <td>Temperature</td>
+                            <td><span id="base_temperature"><%= '' + status.baseTemperature %></span></td>
+                        </tr>
+                        <tr>
+                            <td>Calibration</td>
+                            <td><span id="base_orienation_calibration"><%= status.baseOrientationCalibration.map(v => '' + v).join('|') %></span></td>
+                        </tr>
+                        <tr>
+                            <td>isCalibrated</td>
+                            <td><span id="is_base_orientation_calibrated"><%= '' + status.isBaseOrientationCalibrated %></span></td>
                         </tr>
                     </tbody>
                 </table>

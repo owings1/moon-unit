@@ -206,13 +206,14 @@ $(document).ready(function() {
     function writeStatus(status) {
         status = status || {
             // just make defaults for arrays
-            position               : [],
-            orientation            : [],
-            orientationCalibration : [],
-            limitsEnabled          : [],
-            limitStates            : [],
-            gpsCoords              : [],
-            maxSpeeds              : []
+            position                   : [],
+            orientation                : [],
+            orientationCalibration     : [],
+            baseOrientationCalibration : [],
+            limitsEnabled              : [],
+            limitStates                : [],
+            gpsCoords                  : [],
+            maxSpeeds                  : []
         }
         $('#position_m1').html(
             ed(status.position[0]) + (!isNaN(parseFloat(status.position[0])) ? '&deg;' : '')
@@ -224,6 +225,8 @@ $(document).ready(function() {
         $('#gauger_connected_status').text(ed(status.gaugerConnectedStatus))
             .removeClass('connected disconnected')
             .addClass(ed(status.gaugerConnectedStatus).toLowerCase())
+
+        $('#is_orientation_init').text('' + ed(status.isOrientationInit))
         $('#orientation_x').text('' + ed(status.orientation[0]))
         $('#orientation_y').text('' + ed(status.orientation[1]))
         $('#orientation_z').text('' + ed(status.orientation[2]))
@@ -234,6 +237,19 @@ $(document).ready(function() {
         $('#temperature').text('' + ed(status.temperature))
         $('#orienation_calibration').text(status.orientationCalibration.map(v => '' + ed(v)).join('|'))
         $('#is_orientation_calibrated').text('' + ed(status.isOrientationCalibrated))
+
+        $('#is_base_orientation_init').text('' + ed(status.isBaseOrientationInit))
+        $('#base_orientation_x').text('' + ed(status.baseOrientation[0]))
+        $('#base_orientation_y').text('' + ed(status.baseOrientation[1]))
+        $('#base_orientation_z').text('' + ed(status.baseOrientation[2]))
+        $('#base_orientation_qw').text('' + ed(status.baseOrientation[3]))
+        $('#base_orientation_qx').text('' + ed(status.baseOrientation[4]))
+        $('#base_orientation_qy').text('' + ed(status.baseOrientation[5]))
+        $('#base_orientation_qz').text('' + ed(status.baseOrientation[6]))
+        $('#base_temperature').text('' + ed(status.baseTemperature))
+        $('#base_orienation_calibration').text(status.baseOrientationCalibration.map(v => '' + ed(v)).join('|'))
+        $('#is_base_orientation_calibrated').text('' + ed(status.isBaseOrientationCalibrated))
+
         $('#limitsEnabled_m1').text('' + ed(status.limitsEnabled[0]))
         $('#limitsEnabled_m2').text('' + ed(status.limitsEnabled[1]))
         $('#limitState_m1_cw').text('' + ed(status.limitStates[0]))
@@ -247,7 +263,6 @@ $(document).ready(function() {
         $('#maxSpeed_m1').text('' + ed(status.maxSpeeds[0]))
         $('#maxSpeed_m2').text('' + ed(status.maxSpeeds[1]))
         $('#is_gps_init').text('' + ed(status.isGpsInit))
-        $('#is_orientation_init').text('' + ed(status.isOrientationInit))
         $('#is_mag_init').text('' + ed(status.isMagInit))
         $('#is_mc_init').text('' + ed(status.isMcInit))
     }

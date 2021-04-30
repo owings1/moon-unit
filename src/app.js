@@ -100,9 +100,13 @@ class App {
         this.declinationAngle = null
         this.declinationSource = null
         this.orientation   = [null, null, null]
-        this.temperator = null
+        this.temperature = null
         this.orientationCalibration = [null, null, null, null]
         this.isOrientationCalibrated = null
+        this.baseOrientation   = [null, null, null]
+        this.baseTemperature = null
+        this.baseOrientationCalibration = [null, null, null, null]
+        this.isBaseOrientationCalibrated = null
         this.maxSpeeds = [null, null]
         this.isOrientationInit = null
         this.isMcInit = null
@@ -240,12 +244,17 @@ class App {
                 this.declinationAngle = floats[4] == DEG_NULL ? null : floats[4]
                 break
             case 'ORI':
-                // x|y|z|cal_system|cal_gyro|cal_accel|cal_mag|isCalibrated|isInit
+                // x|y|z|qw|qx|qy|qz|temp|cal_system|cal_gyro|cal_accel|cal_mag|isCalibrated|isInit
                 this.orientation = floats.slice(0, 7).map(v => v == DEG_NULL ? null : v)
                 this.temperature = floats[7]
                 this.orientationCalibration = floats.slice(8, 12)
                 this.isOrientationCalibrated = values[12] == 'T'
                 break
+            case 'ORF':
+                this.baseOrientation = floats.slice(0, 7).map(v => v == DEG_NULL ? null : v)
+                this.baseTemperature = floats[7]
+                this.baseOrientationCalibration = floats.slice(8, 12)
+                this.isBaseOrientationCalibrated = values[12] == 'T'
             case 'MCC':
                 // motor controller status
                 // only do position from here is we do not have I2C status
