@@ -215,56 +215,51 @@ $(document).ready(function() {
             gpsCoords                  : [],
             maxSpeeds                  : []
         }
-        $('#position_m1').html(
-            ed(status.position[0]) + (!isNaN(parseFloat(status.position[0])) ? '&deg;' : '')
-        )
-        $('#position_m2').html(
-            ed(status.position[1]) + (!isNaN(parseFloat(status.position[1])) ? '&deg;' : '')
-        )
+
+        const oriNames = ['x', 'y', 'z', 'qw', 'qx', 'qy', 'qz']
+
+        $('#position_m1').text(fixedSafe(status.position[0], 2))
+        $('#position_m2').text(fixedSafe(status.position[1], 2))
+
         $('#controller_state').text('' + ed(status.controllerState))
         $('#gauger_connected_status').text(ed(status.gaugerConnectedStatus))
             .removeClass('connected disconnected')
             .addClass(ed(status.gaugerConnectedStatus).toLowerCase())
 
-        $('#is_orientation_init').text('' + ed(status.isOrientationInit))
-        $('#orientation_x').text('' + ed(status.orientation[0]))
-        $('#orientation_y').text('' + ed(status.orientation[1]))
-        $('#orientation_z').text('' + ed(status.orientation[2]))
-        $('#orientation_qw').text('' + ed(status.orientation[3]))
-        $('#orientation_qx').text('' + ed(status.orientation[4]))
-        $('#orientation_qy').text('' + ed(status.orientation[5]))
-        $('#orientation_qz').text('' + ed(status.orientation[6]))
-        $('#temperature').text('' + ed(status.temperature))
-        $('#orienation_calibration').text(status.orientationCalibration.map(v => '' + ed(v)).join('|'))
-        $('#is_orientation_calibrated').text('' + ed(status.isOrientationCalibrated))
-
-        $('#is_base_orientation_init').text('' + ed(status.isBaseOrientationInit))
-        $('#base_orientation_x').text('' + ed(status.baseOrientation[0]))
-        $('#base_orientation_y').text('' + ed(status.baseOrientation[1]))
-        $('#base_orientation_z').text('' + ed(status.baseOrientation[2]))
-        $('#base_orientation_qw').text('' + ed(status.baseOrientation[3]))
-        $('#base_orientation_qx').text('' + ed(status.baseOrientation[4]))
-        $('#base_orientation_qy').text('' + ed(status.baseOrientation[5]))
-        $('#base_orientation_qz').text('' + ed(status.baseOrientation[6]))
-        $('#base_temperature').text('' + ed(status.baseTemperature))
-        $('#base_orienation_calibration').text(status.baseOrientationCalibration.map(v => '' + ed(v)).join('|'))
-        $('#is_base_orientation_calibrated').text('' + ed(status.isBaseOrientationCalibrated))
-
+        $('#is_mc_init').text('' + ed(status.isMcInit))
         $('#limitsEnabled_m1').text('' + ed(status.limitsEnabled[0]))
         $('#limitsEnabled_m2').text('' + ed(status.limitsEnabled[1]))
         $('#limitState_m1_cw').text('' + ed(status.limitStates[0]))
         $('#limitState_m1_acw').text('' + ed(status.limitStates[1]))
         $('#limitState_m2_cw').text('' + ed(status.limitStates[2]))
         $('#limitState_m2_acw').text('' + ed(status.limitStates[3]))
-        $('#gps_lat').text('' + ed(status.gpsCoords[0]))
-        $('#gps_long').text('' + ed(status.gpsCoords[1]))
-        $('#mag_heading').text('' + ed(status.magHeading))
-        $('#declination_angle').text('' + ed(status.declinationAngle))
         $('#maxSpeed_m1').text('' + ed(status.maxSpeeds[0]))
         $('#maxSpeed_m2').text('' + ed(status.maxSpeeds[1]))
+
+        $('#is_orientation_init').text('' + ed(status.isOrientationInit))
+        for (var i in oriNames) {
+            $('#orientation_' + oriNames[i]).text(fixedSafe(ed(status.orientation[i]), 4))
+        }
+        $('#temperature').text('' + ed(status.temperature))
+        $('#orienation_calibration').text(status.orientationCalibration.map(v => '' + ed(v)).join('|'))
+        $('#is_orientation_calibrated').text('' + ed(status.isOrientationCalibrated))
+
+        $('#is_base_orientation_init').text('' + ed(status.isBaseOrientationInit))
+        for (var i in oriNames) {
+            $('#base_orientation_' + oriNames[i]).text(fixedSafe(ed(status.baseOrientation[i]), 4))
+        }
+        $('#base_temperature').text('' + ed(status.baseTemperature))
+        $('#base_orienation_calibration').text(status.baseOrientationCalibration.map(v => '' + ed(v)).join('|'))
+        $('#is_base_orientation_calibrated').text('' + ed(status.isBaseOrientationCalibrated))
+
+        
+        $('#gps_lat').text('' + fixedSafe(ed(status.gpsCoords[0]), 6))
+        $('#gps_long').text('' + fixedSafe(ed(status.gpsCoords[1]), 6))
+        $('#mag_heading').text('' + fixedSafe(ed(status.magHeading), 4))
+        $('#declination_angle').text('' + ed(status.declinationAngle))
         $('#is_gps_init').text('' + ed(status.isGpsInit))
         $('#is_mag_init').text('' + ed(status.isMagInit))
-        $('#is_mc_init').text('' + ed(status.isMcInit))
+        
     }
 
     // :04 <motorId> <direction> <degrees>;
@@ -325,5 +320,12 @@ $(document).ready(function() {
             throw new Error('Empty input')
         }
         return text + '\n'
+    }
+
+    function fixedSafe(val, n) {
+        if (typeof val == 'number' && !isNaN(val)) {
+            return val.toFixed(n)
+        }
+        return '' + val
     }
 })

@@ -85,6 +85,7 @@ class App {
 
         this.clearStatus()
         this.clearGauges()
+        this.templateHelper = new TemplateHelper
         this.initApp(this.app)
     }
 
@@ -101,13 +102,13 @@ class App {
         this.declinationSource = null
 
         this.isOrientationInit = null
-        this.orientation   = [null, null, null]
+        this.orientation   = [null, null, null, null, null, null, null]
         this.temperature = null
         this.orientationCalibration = [null, null, null, null]
         this.isOrientationCalibrated = null
 
         this.isBaseOrientationInit = null
-        this.baseOrientation   = [null, null, null]
+        this.baseOrientation   = [null, null, null, null, null, null, null]
         this.baseTemperature = null
         this.baseOrientationCalibration = [null, null, null, null]
         this.isBaseOrientationCalibrated = null
@@ -406,6 +407,7 @@ class App {
             this.status().then(status => {
                 res.render('index', {
                     title: 'MoonUnit',
+                    helper: this.templateHelper,
                     status
                 })
             })
@@ -590,6 +592,14 @@ class App {
     }
 }
 
+class TemplateHelper {
+    fixedSafe(val, n) {
+        if (typeof val == 'number' && !isNaN(val)) {
+            return val.toFixed(n)
+        }
+        return '' + val
+    }
+}
 class BaseError extends Error {
     constructor(...args) {
         super(...args)

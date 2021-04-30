@@ -29,8 +29,7 @@
             <div class="clear"></div>
         </div>
         <div class="panel status-panel">
-            <div>
-                <h3>Motors</h3>
+            <div class="left">
                 <table class="status-table">
                     <thead>
                         <tr>
@@ -53,7 +52,7 @@
                             <td>Scope</td>
                             <td>
                                 <span class="position-value" id="position_m1">
-                                    <%- status.position[0] + (!isNaN(parseFloat(status.position[0])) ? '&deg;' : '') %>
+                                    <%- helper.fixedSafe(status.position[0], 2) %>
                                 </span>
                             </td>
                         </tr>
@@ -61,7 +60,7 @@
                             <td>Base</td>
                             <td>
                                 <span class="position-value" id="position_m2">
-                                    <%- status.position[1] + (!isNaN(parseFloat(status.position[1])) ? '&deg;' : '') %>
+                                    <%- helper.fixedSafe(status.position[1], 2) %>
                                 </span>
                             </td>
                         </tr>
@@ -120,42 +119,9 @@
                         </tr>
                     </tbody>
                 </table>
-                <h3>Gauges</h3>
+            </div>
+            <div class="left">
                 <table class="status-table">
-                    <thead>
-                        <tr>
-                            <th colspan="2">GPS</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <tr>
-                            <td>isInit</td>
-                            <td><span id="is_gps_init"><%= '' + status.isGpsInit %></span></td>
-                        </tr>
-                        <tr>
-                            <td>Lat</td>
-                            <td><span class="gps-coord" id="gps_lat"><%= '' + status.gpsCoords[0] %></span></td>
-                        </tr>
-                        <tr>
-                            <td>Lon</td>
-                            <td><span class="gps-coord" id="gps_long"><%= '' + status.gpsCoords[1] %></span></td>
-                        </tr>
-                    </tbody>
-                    <thead>
-                        <tr>
-                            <th colspan="2">Base Mag</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <tr>
-                            <td>isInit</td>
-                            <td><span id="is_mag_init"><%= '' + status.isMagInit %></span></td>
-                        </tr>
-                        <tr>
-                            <td>Heading</td>
-                            <td><span class="mag-heading" id="mag_heading"><%= '' + status.magHeading %></span></td>
-                        </tr>
-                    </tbody>
                     <thead>
                         <tr>
                             <th colspan="2">Scope Orientation</th>
@@ -168,31 +134,31 @@
                         </tr>
                         <tr>
                             <td>x</td>
-                            <td><span id="orientation_x"><%= '' + status.orientation[0] %></span></td>
+                            <td><span id="orientation_x"><%= helper.fixedSafe(status.orientation[0], 4) %></span></td>
                         </tr>
                         <tr>
                             <td>y</td>
-                            <td><span id="orientation_y"><%= '' + status.orientation[1] %></span></td>
+                            <td><span id="orientation_y"><%= helper.fixedSafe(status.orientation[1], 4) %></span></td>
                         </tr>
                         <tr>
                             <td>z</td>
-                            <td><span id="orientation_z"><%= '' + status.orientation[2] %></span></td>
+                            <td><span id="orientation_z"><%= helper.fixedSafe(status.orientation[2], 4) %></span></td>
                         </tr>
                         <tr>
                             <td>qw</td>
-                            <td><span id="orientation_qw"><%= '' + status.orientation[3] %></span></td>
+                            <td><span id="orientation_qw"><%= helper.fixedSafe(status.orientation[3], 4) %></span></td>
                         </tr>
                         <tr>
                             <td>qx</td>
-                            <td><span id="orientation_qx"><%= '' + status.orientation[4] %></span></td>
+                            <td><span id="orientation_qx"><%= helper.fixedSafe(status.orientation[4], 4) %></span></td>
                         </tr>
                         <tr>
                             <td>qy</td>
-                            <td><span id="orientation_qy"><%= '' + status.orientation[5] %></span></td>
+                            <td><span id="orientation_qy"><%= helper.fixedSafe(status.orientation[5], 4) %></span></td>
                         </tr>
                         <tr>
                             <td>qz</td>
-                            <td><span id="orientation_qz"><%= '' + status.orientation[6] %></span></td>
+                            <td><span id="orientation_qz"><%= helper.fixedSafe(status.orientation[6], 4) %></span></td>
                         </tr>
                         <tr>
                             <td>Temperature</td>
@@ -207,6 +173,10 @@
                             <td><span id="is_orientation_calibrated"><%= '' + status.isOrientationCalibrated %></span></td>
                         </tr>
                     </tbody>
+                </table>
+            </div>
+            <div class="left">
+                <table class="status-table">
                     <thead>
                         <tr>
                             <th colspan="2">Base Orientation</th>
@@ -219,31 +189,31 @@
                         </tr>
                         <tr>
                             <td>x</td>
-                            <td><span id="base_orientation_x"><%= '' + status.baseOrientation[0] %></span></td>
+                            <td><span id="base_orientation_x"><%= helper.fixedSafe(status.baseOrientation[0], 4) %></span></td>
                         </tr>
                         <tr>
                             <td>y</td>
-                            <td><span id="base_orientation_y"><%= '' + status.baseOrientation[1] %></span></td>
+                            <td><span id="base_orientation_y"><%= helper.fixedSafe(status.baseOrientation[1], 4) %></span></td>
                         </tr>
                         <tr>
                             <td>z</td>
-                            <td><span id="base_orientation_z"><%= '' + status.baseOrientation[2] %></span></td>
+                            <td><span id="base_orientation_z"><%= helper.fixedSafe(status.baseOrientation[2], 4) %></span></td>
                         </tr>
                         <tr>
                             <td>qw</td>
-                            <td><span id="base_orientation_qw"><%= '' + status.baseOrientation[3] %></span></td>
+                            <td><span id="base_orientation_qw"><%= helper.fixedSafe(status.baseOrientation[3], 4) %></span></td>
                         </tr>
                         <tr>
                             <td>qx</td>
-                            <td><span id="base_orientation_qx"><%= '' + status.baseOrientation[4] %></span></td>
+                            <td><span id="base_orientation_qx"><%= helper.fixedSafe(status.baseOrientation[4], 4) %></span></td>
                         </tr>
                         <tr>
                             <td>qy</td>
-                            <td><span id="base_orientation_qy"><%= '' + status.baseOrientation[5] %></span></td>
+                            <td><span id="base_orientation_qy"><%= helper.fixedSafe(status.baseOrientation[5], 4) %></span></td>
                         </tr>
                         <tr>
                             <td>qz</td>
-                            <td><span id="base_orientation_qz"><%= '' + status.baseOrientation[6] %></span></td>
+                            <td><span id="base_orientation_qz"><%= helper.fixedSafe(status.baseOrientation[6], 4) %></span></td>
                         </tr>
                         <tr>
                             <td>Temperature</td>
@@ -259,7 +229,50 @@
                         </tr>
                     </tbody>
                 </table>
-                <h3>Calculations</h3>
+            </div>
+            <div class="left">
+                <table class="status-table">
+                    <thead>
+                        <tr>
+                            <th colspan="2">GPS</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td>isInit</td>
+                            <td><span id="is_gps_init"><%= '' + status.isGpsInit %></span></td>
+                        </tr>
+                        <tr>
+                            <td>Lat</td>
+                            <td><span class="gps-coord" id="gps_lat"><%= helper.fixedSafe(status.gpsCoords[0], 6) %></span></td>
+                        </tr>
+                        <tr>
+                            <td>Lon</td>
+                            <td><span class="gps-coord" id="gps_long"><%= helper.fixedSafe(status.gpsCoords[1], 6) %></span></td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+            <div class="left">
+                <table class="status-table">
+                    <thead>
+                        <tr>
+                            <th colspan="2">Base Mag</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td>isInit</td>
+                            <td><span id="is_mag_init"><%= '' + status.isMagInit %></span></td>
+                        </tr>
+                        <tr>
+                            <td>Heading</td>
+                            <td><span class="mag-heading" id="mag_heading"><%= helper.fixedSafe(status.magHeading, 4) %></span></td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+            <div class="left">
                 <table class="status-table">
                     <thead>
                         <tr>
@@ -278,6 +291,7 @@
                     </tbody>
                 </table>
             </div>
+            <div class="clear"></div>
         </div>
         <div class="panel">
             <form>
