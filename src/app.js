@@ -120,28 +120,35 @@ class App {
         return {
             controllerState,
             gpioEnabled                 : this.opts.gpioEnabled,
+            isGaugerConnected           : this.isGaugerConnected,
+            gaugerConnectedStatus       : this.isGaugerConnected ? 'Connected' : 'Disconnected',
+
+            isMcInit                    : this.isMcInit,
+            isMciInit                   : this.isMciInit,
             position                    : this.position,
             limitsEnabled               : this.limitsEnabled,
             limitStates                 : this.limitStates,
-            isGaugerConnected           : this.isGaugerConnected,
+            maxSpeeds                   : this.maxSpeeds,
+
+            isOrientationInit           : this.isOrientationInit,
             isOrientationCalibrated     : this.isOrientationCalibrated,
             orientation                 : this.orientation,
+            temperature                 : this.temperature,
             orientationCalibration      : this.orientationCalibration,
+
+            isBaseOrientationInit       : this.isBaseOrientationInit,
             isBaseOrientationCalibrated : this.isBaseOrientationCalibrated,
             baseOrientation             : this.baseOrientation,
+            baseTemperature             : this.baseTemperature,
             baseOrientationCalibration  : this.baseOrientationCalibration,
-            temperature                 : this.temperature,
-            gaugerConnectedStatus       : this.isGaugerConnected ? 'Connected' : 'Disconnected',
+
+            isGpsInit                   : this.isGpsInit,
             gpsCoords                   : this.gpsCoords,
+
+            isMagInit                   : this.isMagInit,
             magHeading                  : this.magHeading,
             declinationAngle            : this.declinationAngle,
-            declinationSource           : this.declinationSource,
-            maxSpeeds                   : this.maxSpeeds,
-            isOrientationInit           : this.isOrientationInit,
-            isMagInit                   : this.isMagInit,
-            isMcInit                    : this.isMcInit,
-            isGpsInit                   : this.isGpsInit,
-            isMciInit                   : this.isMciInit
+            declinationSource           : this.declinationSource
         }
     }
 
