@@ -3,7 +3,7 @@ Description=Moon Unit
 
 [Service]
 Type=simple
-User=pi
+User=root
 Environment=GAUGER_PORT=/dev/ttyS0
 Environment=GPIO_ENABLED=1
 Environment=I2CI_ENABLED=1
