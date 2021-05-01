@@ -241,7 +241,7 @@ class I2ciHelper {
     async showNetInfo() {
         this.lcd.clearSync()
         this.lcd.setCursor(0, 0)
-        this.printSync('IP: ' + this.app.netInfo.ip)
+        this.lcd.printSync('IP: ' + this.app.netInfo.ip)
         try {
             await this.waitForInput()
         } catch (err) {
