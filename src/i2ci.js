@@ -132,6 +132,7 @@ class I2ciHelper {
             while (true) {
                 var choices = [
                     'Home Motors',
+                    'Net Info',
                     'testNumber', 'testBoolean', 'testBoolean2', 'testNumberDefault', 'fourth', 'fifth'
                 ]
                 var choice = await this.promptMenuChoice(choices)
