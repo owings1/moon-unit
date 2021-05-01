@@ -227,11 +227,11 @@ $(document).ready(function() {
             .addClass(ed(status.gaugerConnectedStatus).toLowerCase())
 
         $('#is_mc_init').text('' + ed(status.isMcInit))
-        $('#limitsEnabled_m1').text('' + ed(status.limitsEnabled[0]))
-        $('#limitsEnabled_m2').text('' + ed(status.limitsEnabled[1]))
-        $('#limitState_m1_cw').text('' + ed(status.limitStates[0]))
+        $('#limitsEnabled_m1') .text('' + ed(status.limitsEnabled[0]))
+        $('#limitsEnabled_m2') .text('' + ed(status.limitsEnabled[1]))
+        $('#limitState_m1_cw') .text('' + ed(status.limitStates[0]))
         $('#limitState_m1_acw').text('' + ed(status.limitStates[1]))
-        $('#limitState_m2_cw').text('' + ed(status.limitStates[2]))
+        $('#limitState_m2_cw') .text('' + ed(status.limitStates[2]))
         $('#limitState_m2_acw').text('' + ed(status.limitStates[3]))
         $('#maxSpeed_m1').text('' + ed(status.maxSpeeds[0]))
         $('#maxSpeed_m2').text('' + ed(status.maxSpeeds[1]))
@@ -252,14 +252,16 @@ $(document).ready(function() {
         $('#base_orienation_calibration').text(status.baseOrientationCalibration.map(v => '' + ed(v)).join('|'))
         $('#is_base_orientation_calibrated').text('' + ed(status.isBaseOrientationCalibrated))
 
-        
+        $('#is_gps_init').text('' + ed(status.isGpsInit))
         $('#gps_lat').text('' + fixedSafe(ed(status.gpsCoords[0]), 6))
         $('#gps_long').text('' + fixedSafe(ed(status.gpsCoords[1]), 6))
-        $('#mag_heading').text('' + fixedSafe(ed(status.magHeading), 4))
-        $('#declination_angle').text('' + ed(status.declinationAngle))
-        $('#is_gps_init').text('' + ed(status.isGpsInit))
+
         $('#is_mag_init').text('' + ed(status.isMagInit))
-        
+        $('#mag_heading').text('' + fixedSafe(ed(status.magHeading), 4))
+
+        $('#ip_address').text('' + ed(status.ipAddress))
+        $('#declination_angle').text('' + ed(status.declinationAngle))
+
     }
 
     // :04 <motorId> <direction> <degrees>;

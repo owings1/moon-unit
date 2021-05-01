@@ -3,9 +3,10 @@
 // TODO: garbage collect unacked gauger jobs
 
 const fs         = require('fs')
-const merge      = require('merge')
 const bodyParser = require('body-parser')
 const express    = require('express')
+const merge      = require('merge')
+const os         = require('os')
 const path       = require('path')
 const prom       = require('prom-client')
 const showdown   = require('showdown')
@@ -31,9 +32,7 @@ const DeviceCodes = {
     46: 'Invalid direction',
     47: 'Invalid steps/degrees',
     48: 'Invalid speed/acceleration',
-    49: 'Invalid other parameter',
-    50: 'Orientation unavailable',
-    51: 'Limits unavailable'
+    49: 'Invalid other parameter'
 }
 
 const GpioHelper = require('./gpio')
@@ -66,7 +65,9 @@ class App {
 
             // how long to wait after reset to reopen device
             resetDelay     : +env.RESET_DELAY || 5000,
-            commandTimeout : +env.COMMAND_TIMEOUT || 5000
+            commandTimeout : +env.COMMAND_TIMEOUT || 5000,
+
+            netInfoIface   : env.NETINFO_IFACE
         }
     }
 
@@ -83,41 +84,46 @@ class App {
         this.app        = express()
         this.httpServer = null
 
-        this.clearStatus()
         this.clearGauges()
         this.templateHelper = new TemplateHelper
         this.initApp(this.app)
-    }
 
-    clearStatus() {
-        this.position      = [null, null]
-        this.limitsEnabled = [null, null]
-        this.limitStates   = [null, null, null, null]
+        this.netInfo = {ip: null}
+        this.declinationData = {}
+        this.declinationAngle = null
+        this.declinationSource = null
     }
 
     clearGauges() {
+
+        this.isMcInit      = null
+        this.isMciInit     = null
+        this.position      = [null, null]
+        this.limitsEnabled = [null, null]
+        this.limitStates   = [null, null, null, null]
+        this.maxSpeeds     = [null, null]
+
+        this.isGpsInit = null
         this.gpsCoords = [null, null]
+
+        this.isMagInit  = null
         this.magHeading = null
-        this.declinationAngle = null
+
+        this.declinationAngle  = null
         this.declinationSource = null
 
-        this.isOrientationInit = null
-        this.orientation   = [null, null, null, null, null, null, null]
-        this.temperature = null
-        this.orientationCalibration = [null, null, null, null]
+        this.isOrientationInit       = null
+        this.orientation             = [null, null, null, null, null, null, null]
+        this.temperature             = null
+        this.orientationCalibration  = [null, null, null, null]
         this.isOrientationCalibrated = null
 
-        this.isBaseOrientationInit = null
-        this.baseOrientation   = [null, null, null, null, null, null, null]
-        this.baseTemperature = null
-        this.baseOrientationCalibration = [null, null, null, null]
+        this.isBaseOrientationInit       = null
+        this.baseOrientation             = [null, null, null, null, null, null, null]
+        this.baseTemperature             = null
+        this.baseOrientationCalibration  = [null, null, null, null]
         this.isBaseOrientationCalibrated = null
 
-        this.maxSpeeds = [null, null]
-        this.isMcInit = null
-        this.isMagInit = null
-        this.isGpsInit = null
-        this.isMciInit = null
     }
 
     async status() {
@@ -152,6 +158,8 @@ class App {
 
             isMagInit                   : this.isMagInit,
             magHeading                  : this.magHeading,
+
+            ipAddress                   : this.netInfo.ip,
             declinationAngle            : this.declinationAngle,
             declinationSource           : this.declinationSource
         }
@@ -164,6 +172,7 @@ class App {
                     this.httpServer = this.app.listen(this.opts.port, () => {
                         this.log('Listening on', this.httpServer.address())
                         this.localUrl = 'http://localhost:' + this.httpServer.address().port
+                        this.miscInterval = setInterval(() => this.miscLoop(), 1000)
                         this.openGauger().then(() => {
                             this.initI2ci().then(resolve).catch(reject)
                         }).catch(reject)
@@ -256,7 +265,6 @@ class App {
                 break
             case 'MAG':
                 this.magHeading = floats[0] == DEG_NULL ? null : floats[0]
-                this.declinationAngle = floats[4] == DEG_NULL ? null : floats[4]
                 break
             case 'ORI':
                 // x|y|z|qw|qx|qy|qz|temp|cal_system|cal_gyro|cal_accel|cal_mag|isCalibrated|isInit
@@ -322,7 +330,7 @@ class App {
         this.isGaugerConnected = false
         this.drainGaugerQueue()
         
-        this.clearStatus()
+        this.clearGauges()
         this.stopGaugerWorker()
     }
 
@@ -334,6 +342,7 @@ class App {
     close() {
         return new Promise(resolve => {
             this.log('Shutting down')
+            clearInterval(this.miscInterval)
             this.closeGauger()
             if (this.gpio) {
                 this.gpio.close()
@@ -366,7 +375,28 @@ class App {
                 }
             }
         }
+        // TODO: try catch and reject
         this.gauger.write(Buffer.from(this.opts.mock ? body : body.trim()))
+    }
+
+    async miscLoop() {
+        if (this.miscBusy) {
+            return
+        }
+        this.miscBusy = true
+        try {
+
+            // TODO
+            if (false) {
+                await this.refreshDeclinationAngle()
+            }
+
+            await this.refreshNetInfo()
+        } catch (err) {
+            this.error(err)
+        } finally {
+            this.miscBusy = false
+        }
     }
 
     gaugerCommand(body, params = {}) {
@@ -554,6 +584,38 @@ class App {
         })
 
         app.use((req, res) => res.status(404).json({error: 'not found'}))
+    }
+
+    async refreshDeclinationAngle() {
+        // TODO
+    }
+
+    async refreshNetInfo() {
+        const interfaces = os.networkInterfaces()
+        var ifaceName
+        if (this.opts.netInfoIface) {
+            ifaceName = this.opts.netInfoIface
+        } else {
+            // if no iface specified, find first non-local iface
+            for (var [name, nets] of Object.entries(interfaces)) {
+                for (var net of nets) {
+                    if (!net.internal) {
+                        ifaceName = name
+                        break
+                    }
+                }
+                
+            }
+        }
+        if (!interfaces[ifaceName]) {
+            return
+        }
+        for (var net of interfaces[ifaceName]) {
+            if (net.family == 'IPv4') {
+                this.netInfo.ip = net.address
+                return
+            }
+        }
     }
 
     createDevice(devicePath, baudRate) {

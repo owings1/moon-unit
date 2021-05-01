@@ -140,6 +140,9 @@ class I2ciHelper {
                     case 'Home Motors':
                         await this.homingMenu()
                         break
+                    case 'Net Info':
+                        await this.showNetInfo()
+                        break
                     case 'testNumber':
                         var value = await this.promptNumber({
                             label         : 'Position',
@@ -219,7 +222,7 @@ class I2ciHelper {
                     cmd = ':08 1;\n'
                     break
                 case 'End Base':
-                    cmd = ':08 2\n'
+                    cmd = ':08 2;\n'
                     break
                 case '<back>':
                 default:
@@ -231,6 +234,21 @@ class I2ciHelper {
             }
             await this.doMoveRequest(cmd, choice.value)
             await new Promise(resolve => setTimeout(resolve, 3000))
+        }
+    }
+
+    async showNetInfo() {
+        this.lcd.clearSync()
+        this.lcd.setCursor(0, 0)
+        this.printSync('IP: ' + this.app.netInfo.ip)
+        try {
+            await this.waitForInput()
+        } catch (err) {
+            if (err instanceof TimeoutError) {
+                
+            } else {
+                throw err
+            }
         }
     }
 
