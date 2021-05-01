@@ -5,10 +5,6 @@
  *
  *  :<id>:71 <mode>;
  *
- * 72 - Set declination angle for the magnetometer
- *
- *  :<id>:72 <radians>;
- *
  * 73 - Set loop delay in milliseconds
  *
  *  :<id>:73 <milliseconds>;
@@ -68,7 +64,8 @@ struct Module {
 #define mccStatePin 5
 #define mccRxPin 6
 #define mccTxPin 7
-#define mccTimeout 10000L
+#define mccReadTimeout 250L
+#define mccWriteTimeout 10000L
 #define mccBaudRate 9600L
 
 SoftwareSerial mccSerial(mccRxPin, mccTxPin);
@@ -78,9 +75,11 @@ struct MotorControllerSerial {
   Module module;
 
   byte statePin;
-  unsigned long timeout;
-
   byte state;
+
+  unsigned long readTimeout;
+  unsigned long writeTimeout;
+  
   String statusStr;
 };
 
@@ -92,6 +91,7 @@ MotorControllerSerial mcc;
 
 #define mciAddress 0x9
 #define mciMessageLength 18
+#define mciDefaultCheckInterval 2000L
 
 struct MotorControllerI2C {
 
@@ -123,6 +123,7 @@ struct Orientation {
   byte address;
 
   boolean isCalibrated;
+
   float x;
   float y;
   float z;
@@ -130,7 +131,9 @@ struct Orientation {
   float qx;
   float qy;
   float qz;
+
   int8_t temp;
+
   byte cal_system;
   byte cal_gyro;
   byte cal_accel;
@@ -168,18 +171,24 @@ Gps gps;
 
 #define magCheckAddress (0x3C >> 1)
 #define magDeviceId 49138
-#define defaultDeclinationRad 0.23
+//#define defaultDeclinationRad 0.23
 
 struct Mag {
+
   Module module;
+
+  Adafruit_HMC5883_Unified sensor;
+
   int deviceId;
   byte checkAddress;
-  Adafruit_HMC5883_Unified sensor;
-  float declinationRad;
+  
+  //float declinationRad;
+
   // micro-Tesla (uT)
   float x;
   float y;
   float z;
+
   // degrees
   float heading;
 };
@@ -199,6 +208,7 @@ void setup() {
 }
 
 void setupModules() {
+
   strcpy(ori.module.label, "ORI");
   ori.module.isEnabled = orientationEnabled;
   ori.address = oriAddress;
@@ -206,6 +216,10 @@ void setupModules() {
   ori.x = DEG_NULL;
   ori.y = DEG_NULL;
   ori.z = DEG_NULL;
+  ori.qw = DEG_NULL;
+  ori.qx = DEG_NULL;
+  ori.qy = DEG_NULL;
+  ori.qz = DEG_NULL;
   if (ori.module.isEnabled && ori.sensor.begin()) {
     ori.module.isInit = true;
     ori.sensor.setExtCrystalUse(true);
@@ -219,6 +233,10 @@ void setupModules() {
   orf.x = DEG_NULL;
   orf.y = DEG_NULL;
   orf.z = DEG_NULL;
+  orf.qw = DEG_NULL;
+  orf.qx = DEG_NULL;
+  orf.qy = DEG_NULL;
+  orf.qz = DEG_NULL;
   if (orf.module.isEnabled && orf.sensor.begin()) {
     orf.module.isInit = true;
     orf.sensor.setExtCrystalUse(true);
@@ -227,6 +245,8 @@ void setupModules() {
 
   strcpy(mcc.module.label, "MCC");
   mcc.module.isEnabled = true;
+  mcc.readTimeout = mccReadTimeout;
+  mcc.writeTimeout = mccWriteTimeout;
   mcc.statePin = mccStatePin;
   mccSerial.begin(mccBaudRate);
   mcc.module.isInit = checkMccConnected(mccSerial);
@@ -234,6 +254,7 @@ void setupModules() {
   strcpy(mci.module.label, "MCI");
   mci.module.isEnabled = true;
   mci.address = mciAddress;
+  mci.checkInterval = mciDefaultCheckInterval;
   mci.module.isInit = checkMciConnected(mci);
 
   strcpy(gps.module.label, "GPS");
@@ -254,6 +275,7 @@ void setupModules() {
   mag.checkAddress = magCheckAddress;
   mag.sensor = Adafruit_HMC5883_Unified(mag.deviceId);
   mag.heading = DEG_NULL;
+  //mag.declinationRad = defaultDeclinationRad;
   if (mag.module.isEnabled) {
     mag.module.isInit = mag.sensor.begin() && checkMagConnected(mag);
   }
@@ -312,6 +334,7 @@ void takeCommand(Stream &input, Stream &output) {
     // forward to motorcontroller
 
     readMccState(mcc);
+
     if (mcc.state != HIGH) {
       input.readStringUntil(';');
       writeAck(id, output, true);
@@ -357,15 +380,6 @@ void takeCommand(Stream &input, Stream &output) {
       return;
     }
     mode = newMode;
-    output.write("=00\n");
-  } else if (command.equals("72")) {
-    // set declination angle for mag
-    float newValue = input.readStringUntil(';').toFloat();
-    if (newValue > 7 || newValue < -7) {
-      output.write("=49\n");
-      return;
-    }
-    mag.declinationRad = newValue;
     output.write("=00\n");
   } else if (command.equals("73")) {
     // set loop delay
@@ -588,12 +602,11 @@ void readMccStatus(MotorControllerSerial &m, SoftwareSerial &ser) {
   }
   ser.listen();
   ser.write(":18 ;");
-  // only timeout 250ms
   int d = 0;
   while (!ser.available()) {
     delay(1);
     d += 1;
-    if (d > 250) {
+    if (d > m.readTimeout) {
       return;
     }
   }
@@ -649,6 +662,7 @@ void readOrientation(Orientation &o) {
   sensors_event_t event; 
   o.sensor.getEvent(&event);
 
+  // TODO: figure out whether we can ever go out of calibration
   if (!o.isCalibrated) {
     o.sensor.getCalibration(&o.cal_system, &o.cal_gyro, &o.cal_accel, &o.cal_mag);
     if (o.cal_system + o.cal_gyro + o.cal_accel + o.cal_mag == 12) {
@@ -689,6 +703,23 @@ void streamGps(Stream &output, SoftwareSerial &ser) {
   }
 }
 
+/***************************************************************************
+  Written by Kevin Townsend for Adafruit Industries with some heading example from
+  Love Electronics (loveelectronics.co.uk)
+ 
+ This program is free software: you can redistribute it and/or modify
+ it under the terms of the version 3 GNU General Public License as
+ published by the Free Software Foundation.
+ 
+ This program is distributed in the hope that it will be useful,
+ but WITHOUT ANY WARRANTY; without even the implied warranty of
+ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ GNU General Public License for more details.
+
+ You should have received a copy of the GNU General Public License
+ along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+ ***************************************************************************/
 void readMag(Mag &m) {
   sensors_event_t event; 
   m.sensor.getEvent(&event);
@@ -701,20 +732,21 @@ void readMag(Mag &m) {
   // Calculate heading when the magnetometer is level, then correct for signs of axis.
   float heading = atan2(event.magnetic.y, event.magnetic.x);
 
-  heading += m.declinationRad;
+  // move the declination offset calculation to the application layer
+  //heading += m.declinationRad;
   
   // Correct for when signs are reversed.
   if (heading < 0) {
-    heading += 2*PI;
+    heading += 2 * PI;
   }
 
   // Check for wrap due to addition of declination.
-  if (heading > 2*PI) {
-    heading -= 2*PI;
+  if (heading > 2 * PI) {
+    heading -= 2 * PI;
   }
    
   // Convert radians to degrees for readability.
-  m.heading = heading * 180/M_PI; 
+  m.heading = heading * 180 / M_PI; 
 }
 
 // Utilities
