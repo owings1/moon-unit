@@ -119,6 +119,21 @@
                             <td><span id="maxSpeed_m2"><%= '' + status.maxSpeeds[1] %></span></td>
                         </tr>
                     </tbody>
+                    <thead>
+                        <tr>
+                            <th colspan="2">Accelerations</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td>Scope</td>
+                            <td><span id="acceleration_m1"><%= '' + status.accelerations[0] %></span></td>
+                        </tr>
+                        <tr>
+                            <td>Base</td>
+                            <td><span id="acceleration_m2"><%= '' + status.accelerations[1] %></span></td>
+                        </tr>
+                    </tbody>
                 </table>
             </div>
             <div class="left">
@@ -378,6 +393,13 @@
                         <td>
                             <input type="text" class="howmuch" name="howmuch2" id="in_howmuch2" value="1">
                         </td>
+                    </tr>
+                    <tr>
+                        <td></td>
+                        <td colspan="2">
+                            <input type="checkbox" name="isSameTime" id="in_sametime" checked><label for="in_sametime">same time</label>
+                        </td>
+                        <td></td>
                     </tr>
                 </table>
             </form>

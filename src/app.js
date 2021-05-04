@@ -37,6 +37,7 @@ const DeviceCodes = {
 
 const GpioHelper = require('./gpio')
 const I2ciHelper = require('./i2ci')
+const WpaHelper  = require('./wpa')
 
 class App {
 
@@ -67,7 +68,9 @@ class App {
             resetDelay     : +env.RESET_DELAY || 5000,
             commandTimeout : +env.COMMAND_TIMEOUT || 5000,
 
-            netInfoIface   : env.NETINFO_IFACE
+            netInfoIface   : env.NETINFO_IFACE,
+            wpaEnabled     : !!env.WPA_ENABLED,
+            wpaConf        : env.WPA_CONF || '/etc/wpa_supplicant/wpa_supplicant.conf'
         }
     }
 
@@ -89,6 +92,7 @@ class App {
         this.initApp(this.app)
 
         this.netInfo = {ip: null}
+        this.wpa = new WpaHelper(this)
         this.declinationData = {}
         this.declinationAngle = null
         this.declinationSource = null
@@ -102,6 +106,7 @@ class App {
         this.limitsEnabled = [null, null]
         this.limitStates   = [null, null, null, null]
         this.maxSpeeds     = [null, null]
+        this.accelerations = [null, null]
 
         this.isGpsInit = null
         this.gpsCoords = [null, null]
@@ -140,6 +145,7 @@ class App {
             limitsEnabled               : this.limitsEnabled,
             limitStates                 : this.limitStates,
             maxSpeeds                   : this.maxSpeeds,
+            accelerations               : this.accelerations,
 
             isOrientationInit           : this.isOrientationInit,
             isOrientationCalibrated     : this.isOrientationCalibrated,
@@ -292,12 +298,12 @@ class App {
                     values[2] == 'T',
                     values[3] == 'T'
                 ]
+                this.maxSpeeds = floats.slice(6, 8)
+                this.accelerations = floats.slice(8, 10)
                 if (values[10]) {
                     // possible to get TypeError for 
                     this.limitStates = values[10].split('').map(it => it == 'T')
                 }
-                
-                this.maxSpeeds = floats.slice(6, 8)
                 break
             case 'MCI':
                 this.position = [
