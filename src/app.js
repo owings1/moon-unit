@@ -145,6 +145,7 @@ class App {
             limitsEnabled               : this.limitsEnabled,
             limitStates                 : this.limitStates,
             maxSpeeds                   : this.maxSpeeds,
+            accelerations               : this.accelerations,
 
             isOrientationInit           : this.isOrientationInit,
             isOrientationCalibrated     : this.isOrientationCalibrated,

@@ -209,6 +209,7 @@ $(document).ready(function() {
             position                   : [],
             orientation                : [],
             orientationCalibration     : [],
+            baseOrientation            : [],
             baseOrientationCalibration : [],
             limitsEnabled              : [],
             limitStates                : [],
