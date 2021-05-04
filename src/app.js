@@ -37,6 +37,7 @@ const DeviceCodes = {
 
 const GpioHelper = require('./gpio')
 const I2ciHelper = require('./i2ci')
+const WpaHelper  = require('./wpa')
 
 class App {
 
@@ -67,7 +68,9 @@ class App {
             resetDelay     : +env.RESET_DELAY || 5000,
             commandTimeout : +env.COMMAND_TIMEOUT || 5000,
 
-            netInfoIface   : env.NETINFO_IFACE
+            netInfoIface   : env.NETINFO_IFACE,
+            wpaEnabled     : !!env.WPA_ENABLED,
+            wpaConf        : env.WPA_CONF || '/etc/wpa_supplicant/wpa_supplicant.conf'
         }
     }
 
@@ -89,6 +92,7 @@ class App {
         this.initApp(this.app)
 
         this.netInfo = {ip: null}
+        this.wpa = new WpaHelper(this)
         this.declinationData = {}
         this.declinationAngle = null
         this.declinationSource = null
