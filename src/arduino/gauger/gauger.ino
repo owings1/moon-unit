@@ -355,7 +355,7 @@ void takeCommand(Stream &input, Stream &output) {
     while (!mccSerial.available()) {
       delay(1);
       d += 1;
-      if (d > mcc.timeout) {
+      if (d > mcc.writeTimeout) {
         writeAck(id, output, true);
         output.write("=02\n");
         return;
@@ -566,8 +566,6 @@ void writeMag(Mag &m, Stream &output) {
   output.print(m.y, 4);
   output.write('|');
   output.print(m.z, 4);
-  output.write('|');
-  output.print(m.declinationRad, 4);
 }
 
 void readAll() {
