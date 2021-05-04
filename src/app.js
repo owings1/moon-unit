@@ -106,6 +106,7 @@ class App {
         this.limitsEnabled = [null, null]
         this.limitStates   = [null, null, null, null]
         this.maxSpeeds     = [null, null]
+        this.accelerations = [null, null]
 
         this.isGpsInit = null
         this.gpsCoords = [null, null]
@@ -296,12 +297,12 @@ class App {
                     values[2] == 'T',
                     values[3] == 'T'
                 ]
+                this.maxSpeeds = floats.slice(6, 8)
+                this.accelerations = floats.slice(8, 10)
                 if (values[10]) {
                     // possible to get TypeError for 
                     this.limitStates = values[10].split('').map(it => it == 'T')
                 }
-                
-                this.maxSpeeds = floats.slice(6, 8)
                 break
             case 'MCI':
                 this.position = [

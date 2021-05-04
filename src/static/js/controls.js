@@ -213,7 +213,8 @@ $(document).ready(function() {
             limitsEnabled              : [],
             limitStates                : [],
             gpsCoords                  : [],
-            maxSpeeds                  : []
+            maxSpeeds                  : [],
+            accelerations              : []
         }
 
         const oriNames = ['x', 'y', 'z', 'qw', 'qx', 'qy', 'qz']
@@ -235,6 +236,8 @@ $(document).ready(function() {
         $('#limitState_m2_acw').text('' + ed(status.limitStates[3]))
         $('#maxSpeed_m1').text('' + ed(status.maxSpeeds[0]))
         $('#maxSpeed_m2').text('' + ed(status.maxSpeeds[1]))
+        $('#acceleration_m1').text('' + ed(status.accelerations[0]))
+        $('#acceleration_m2').text('' + ed(status.accelerations[1]))
 
         $('#is_orientation_init').text('' + ed(status.isOrientationInit))
         for (var i in oriNames) {
