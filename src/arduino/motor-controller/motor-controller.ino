@@ -738,7 +738,7 @@ boolean runMotorsIfNeeded() {
         }
       }
       if (motors[i].isTiming) {
-        setAcceleration(motors[i].id, motors[i].oldMaxSpeed);
+        setMaxSpeed(motors[i].id, motors[i].oldMaxSpeed);
         motors[i].isTiming = false;
       }
     }
@@ -786,8 +786,8 @@ void moveBothWithTiming(long howMuch1, long howMuch2) {
   // max time in seconds
   float t_est = max(t_pre_m1, t_pre_m2);
   // set max speeds
-  long speed_m1 = abs(howMuch1) / t_est;
-  long speed_m2 = abs(howMuch2) / t_est;
+  unsigned long speed_m1 = abs(howMuch1) / t_est;
+  unsigned long speed_m2 = abs(howMuch2) / t_est;
   setMaxSpeed(1, speed_m1);
   setMaxSpeed(2, speed_m2);
   // move motors
