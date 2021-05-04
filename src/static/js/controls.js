@@ -301,6 +301,7 @@ $(document).ready(function() {
         const dir2 = parseInt($('#in_dir2').val())
         const howMuch1 = parseFloat($('#in_howmuch1').val())
         const howMuch2 = parseFloat($('#in_howmuch2').val())
+        const isSameTime = $('#in_sametime').is(':checked') ? 'T' : 'F'
         if (dir1 != 1 && dir1 != 2) {
             throw new Error('Invalid direction_1 value: ' + dir1)
         }
@@ -313,7 +314,7 @@ $(document).ready(function() {
         if (isNaN(howMuch2)) {
             throw new Error('Invalid howmuch_2 value')
         }
-        return [unit == 'steps' ? ':10' : ':11', dir1, howMuch1, dir2, howMuch2].join(' ') + ';\n'
+        return [unit == 'steps' ? ':10' : ':11', dir1, howMuch1, dir2, howMuch2, isSameTime].join(' ') + ';\n'
     }
 
     function getRawCommand() {

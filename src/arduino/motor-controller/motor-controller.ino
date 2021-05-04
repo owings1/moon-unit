@@ -34,13 +34,13 @@
  *
  *  :09 ;
  *
- * 10 - Move both motors by steps
+ * 10 - Move both motors by steps. Last param is arrive at same time.
  *
- *  :10 <direction_1> <steps_1> <direction_2> <steps_2>;
+ *  :10 <direction_1> <steps_1> <direction_2> <steps_2> <T|F>;
  *
- * 11 - Move both motors by degrees
+ * 11 - Move both motors by degrees. Last param is arrive at same time.
  *
- *  :11 <direction_1> <degrees_1> <direction_2> <degrees_2>;
+ *  :11 <direction_1> <degrees_1> <direction_2> <degrees_2> <T|F>;
  *
  * 13 - No response (debug)
  *
@@ -191,12 +191,16 @@ struct Motor {
   // flag for when we are backing up for homing purposes, so that immediately
   // after we can re-initiate homing.
   boolean isBacking;
+  // flag for timing motors to arrive at same time
+  boolean isTiming;
 
   // track the max speed and acceleration values set in stepper objects.
   unsigned long acceleration;
   unsigned long maxSpeed;
   // for temporarily overriding acceleration during stopping.
   unsigned long oldAcceleration;
+  // for temporarily overriding max speed during timing.
+  unsigned long oldMaxSpeed;
 
   // for motor sleep
   unsigned long lastActionTime;
@@ -510,15 +514,22 @@ void takeCommand(Stream &input, Stream &output) {
     }
 
     // fourth param is steps_2
-    long howMuch2 = input.readStringUntil(';').toInt() * dirMult2;
+    long howMuch2 = input.readStringUntil(' ').toInt() * dirMult2;
     if (howMuch2 == 0) {
       output.write("=47\n");
       return;
     }
 
+    // fifth param is isSameTime
+    boolean isSameTime = input.readStringUntil(';').equals("T");
+    
     // perform action
-    moveMotor(1, howMuch1);
-    moveMotor(2, howMuch2);
+    if (isSameTime) {
+      moveBothWithTiming(howMuch1, howMuch2);
+    } else {
+      moveMotor(1, howMuch1);
+      moveMotor(2, howMuch2);
+    }
 
     output.write("=00\n");
 
@@ -552,15 +563,23 @@ void takeCommand(Stream &input, Stream &output) {
     }
 
     // fourth param is degrees_2
-    float howMuch2 = input.readStringUntil(';').toFloat() * dirMult2;
+    float howMuch2 = input.readStringUntil(' ').toFloat() * dirMult2;
     if (howMuch2 == 0) {
       output.write("=47\n");
       return;
     }
 
+    // fifth param is isSameTime
+    boolean isSameTime = input.readStringUntil(';').equals("T");
+
     // perform action
-    moveMotorByDegrees(1, howMuch1);
-    moveMotorByDegrees(2, howMuch2);
+
+    if (isSameTime) {
+      moveBothByDegreesWithTiming(howMuch1, howMuch2);
+    } else {
+      moveMotorByDegrees(1, howMuch1);
+      moveMotorByDegrees(2, howMuch2);
+    }
 
     output.write("=00\n");
 
@@ -703,19 +722,25 @@ boolean runMotorsIfNeeded() {
       }
       registerMotorAction(motors[i].id);
       isRun = true;
-    } else if (motors[i].isStopping) {
-      // we have finished stopping
-      motors[i].isStopping = false;
-      setAcceleration(motors[i].id, motors[i].oldAcceleration);
-      if (!shouldStop && isMotorHome(motors[i].id)) {
-        // we have reached a limit switch, see if we are home
-        motors[i].hasHomed = true;
-        motors[i].stepper.setCurrentPosition(0);
-      }
     } else if (motors[i].isBacking) {
       // we have finished backing for home
       motors[i].isBacking = false;
       homeMotor(motors[i].id);
+    } else {
+      if (motors[i].isStopping) {
+        // we have finished stopping
+        motors[i].isStopping = false;
+        setAcceleration(motors[i].id, motors[i].oldAcceleration);
+        if (!shouldStop && isMotorHome(motors[i].id)) {
+          // we have reached a limit switch, see if we are home
+          motors[i].hasHomed = true;
+          motors[i].stepper.setCurrentPosition(0);
+        }
+      }
+      if (motors[i].isTiming) {
+        setAcceleration(motors[i].id, motors[i].oldMaxSpeed);
+        motors[i].isTiming = false;
+      }
     }
   }
 
@@ -746,10 +771,35 @@ void moveMotorByDegrees(byte motorId, float howMuch) {
   setState(STATE_BUSY);
   byte i = motorId - 1;
   long steps = howMuch / motors[i].degreesPerStep;
-  if (motorCanMove(motorId, steps)) {
-    motors[i].stepper.move(steps);
-    enableMotor(motorId);
-  }
+  moveMotor(motorId, steps);
+}
+
+void moveBothWithTiming(long howMuch1, long howMuch2) {
+  setState(STATE_BUSY);
+  motors[0].oldMaxSpeed = motors[0].maxSpeed;
+  motors[1].oldMaxSpeed = motors[1].maxSpeed;
+  motors[0].isTiming = true;
+  motors[1].isTiming = true;
+  // how long (sec) will it take m1, given its current max speed (steps/sec), to move howMuch1 steps
+  float t_pre_m1 = abs(howMuch1) / motors[0].maxSpeed;
+  float t_pre_m2 = abs(howMuch2) / motors[1].maxSpeed;
+  // max time in seconds
+  float t_est = max(t_pre_m1, t_pre_m2);
+  // set max speeds
+  long speed_m1 = abs(howMuch1) / t_est;
+  long speed_m2 = abs(howMuch2) / t_est;
+  setMaxSpeed(1, speed_m1);
+  setMaxSpeed(2, speed_m2);
+  // move motors
+  moveMotor(1, howMuch1);
+  moveMotor(2, howMuch2);
+}
+
+void moveBothByDegreesWithTiming(float howMuch1, float howMuch2) {
+  setState(STATE_BUSY);
+  long steps1 = howMuch1 / motors[0].degreesPerStep;
+  long steps2 = howMuch2 / motors[1].degreesPerStep;
+  moveBothWithTiming(steps1, steps2);
 }
 
 // the howMuch is just a positive/negative direction reference.

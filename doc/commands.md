@@ -50,16 +50,16 @@
     :09 ;
     ```
 
-- **10** - Move both motors by steps
+- **10** - Move both motors by steps. Last param is arrive at same time.
 
     ```
-    :10 <direction_1> <steps_1> <direction_2> <steps_2>;
+    :10 <direction_1> <steps_1> <direction_2> <steps_2> <T|F>;
     ```
 
-- **11** - Move both motors by degrees
+- **11** - Move both motors by degrees. Last param is arrive at same time.
 
     ```
-    :11 <direction_1> <degrees_1> <direction_2> <degrees_2>;
+    :11 <direction_1> <degrees_1> <direction_2> <degrees_2> <T|F>;
     ```
 
 - **13** - No response (debug)
