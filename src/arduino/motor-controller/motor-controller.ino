@@ -780,8 +780,8 @@ void moveBothWithTiming(long howMuch1, long howMuch2) {
   motors[0].isTiming = true;
   motors[1].isTiming = true;
   // how long (sec) will it take m1, given its current max speed (steps/sec), to move howMuch1 steps
-  float t_pre_m1 = abs(howMuch1) / motors[0].maxSpeed;
-  float t_pre_m2 = abs(howMuch2) / motors[1].maxSpeed;
+  float t_pre_m1 = (float) abs(howMuch1) / motors[0].maxSpeed;
+  float t_pre_m2 = (float) abs(howMuch2) / motors[1].maxSpeed;
   // max time in seconds
   float t_est = max(t_pre_m1, t_pre_m2);
   // set max speeds
