@@ -671,7 +671,7 @@ void takeCommand(Stream &input, Stream &output) {
 }
 
 // write positions in degrees.
-// NB: I2C expects 18 bytes maximum (including \n), so keep precision to 2
+// NB: I2C consumer expects max 18 bytes (including \n), so keep precision to 2
 void writePositions(Stream &output) {
   for (byte i = 0; i < 2; i++) {
     float degrees;
@@ -713,7 +713,6 @@ boolean runMotorsIfNeeded() {
   boolean isRun = false;
 
   for (byte i = 0; i < 2; i++) {
-    //Motor motor = motors[i];
     if (motors[i].stepper.distanceToGo() != 0) {
       // this will move at most one step
       motors[i].stepper.run();
