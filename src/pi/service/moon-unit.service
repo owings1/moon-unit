@@ -6,7 +6,6 @@ Type=simple
 User=root
 Environment=GAUGER_PORT=/dev/ttyS0
 Environment=GPIO_ENABLED=1
-Environment=I2CI_ENABLED=1
 ExecStart=/usr/local/bin/node /home/pi/git/moon-unit/index.js
 
 [Install]

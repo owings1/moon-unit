@@ -1,17 +1,5 @@
 ### Config
 
-`wpa_supplicant.conf`:
-
-    ctrl_interface=DIR=/var/run/wpa_supplicant GROUP=netdev
-    update_config=1
-    country=US
-
-    network={
-    	ssid="YOUR_SSID"
-    	psk="YOUR_PASS"
-    }
-
-
 `raspi-config`: enable UART serial, I2C
 
 I2C:

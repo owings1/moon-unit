@@ -6,9 +6,7 @@ const fs         = require('fs')
 const bodyParser = require('body-parser')
 const express    = require('express')
 const merge      = require('merge')
-const os         = require('os')
 const path       = require('path')
-const prom       = require('prom-client')
 const showdown   = require('showdown')
 const Util       = require('./util')
 
@@ -19,7 +17,6 @@ const Readline    = require('@serialport/parser-readline')
 
 const DEG_NULL = 1000
 
-prom.collectDefaultMetrics()
 
 const DeviceCodes = {
      0: 'OK',
@@ -36,7 +33,6 @@ const DeviceCodes = {
 }
 
 const GpioHelper = require('./gpio')
-const WpaHelper  = require('./wpa')
 
 class App {
 
@@ -60,10 +56,6 @@ class App {
             // how long to wait after reset to reopen device
             resetDelay     : +env.RESET_DELAY || 5000,
             commandTimeout : +env.COMMAND_TIMEOUT || 5000,
-
-            netInfoIface   : env.NETINFO_IFACE,
-            wpaEnabled     : !!env.WPA_ENABLED,
-            wpaConf        : env.WPA_CONF || '/etc/wpa_supplicant/wpa_supplicant.conf'
         }
     }
 
@@ -84,8 +76,6 @@ class App {
         this.templateHelper = new TemplateHelper
         this.initApp(this.app)
 
-        this.netInfo = {ip: null}
-        this.wpa = new WpaHelper(this)
         this.declinationData = {}
         this.declinationAngle = null
         this.declinationSource = null
@@ -158,7 +148,6 @@ class App {
             isMagInit                   : this.isMagInit,
             magHeading                  : this.magHeading,
 
-            ipAddress                   : this.netInfo.ip,
             declinationAngle            : this.declinationAngle,
             declinationSource           : this.declinationSource
         }
@@ -388,7 +377,6 @@ class App {
                 await this.refreshDeclinationAngle()
             }
 
-            await this.refreshNetInfo()
         } catch (err) {
             this.error(err)
         } finally {
@@ -555,11 +543,6 @@ class App {
             })
         })
 
-        app.get('/metrics', (req, res) => {
-            res.setHeader('Content-Type', prom.register.contentType)
-            prom.register.metrics().then(metrics => res.writeHead(200).end(metrics))
-        })
-
         app.get('/doc/:filename', (req, res) => {
             const file = path.resolve(__dirname, '../doc', path.basename(req.params.filename) + '.md')
             fs.readFile(file, 'utf-8', (error, text) => {
@@ -585,34 +568,6 @@ class App {
 
     async refreshDeclinationAngle() {
         // TODO
-    }
-
-    async refreshNetInfo() {
-        const interfaces = os.networkInterfaces()
-        var ifaceName
-        if (this.opts.netInfoIface) {
-            ifaceName = this.opts.netInfoIface
-        } else {
-            // if no iface specified, find first non-local iface
-            for (var [name, nets] of Object.entries(interfaces)) {
-                for (var net of nets) {
-                    if (!net.internal) {
-                        ifaceName = name
-                        break
-                    }
-                }
-                
-            }
-        }
-        if (!interfaces[ifaceName]) {
-            return
-        }
-        for (var net of interfaces[ifaceName]) {
-            if (net.family == 'IPv4') {
-                this.netInfo.ip = net.address
-                return
-            }
-        }
     }
 
     createDevice(devicePath, baudRate) {
@@ -659,7 +614,5 @@ class BaseError extends Error {
         this.name = this.constructor.name
     }
 }
-
-class ConfigError extends BaseError {}
 
 module.exports = App
