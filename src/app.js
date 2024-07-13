@@ -68,6 +68,7 @@ class App {
         this.gaugerBusy         = false
         this.gaugerWorkerHandle = null
         this.isGaugerConnected  = false
+        this.shouldGaugerAutoconnect = true
         
         this.app        = express()
         this.httpServer = null
@@ -160,8 +161,11 @@ class App {
                     this.httpServer = this.app.listen(this.opts.port, () => {
                         this.log('Listening on', this.httpServer.address())
                         this.localUrl = 'http://localhost:' + this.httpServer.address().port
-                        this.miscInterval = setInterval(() => this.miscLoop(), 1000)
-                        this.openGauger().then(resolve).catch(reject)
+                        this.miscInterval = setInterval(() => this.miscLoop(), 10000)
+                        this.openGauger().then(resolve).catch(err => {
+                            this.error(err)
+                            resolve()
+                        })
                     })
                 }).catch(reject)
             } catch (err) {
@@ -181,6 +185,7 @@ class App {
                     return
                 }
                 this.isGaugerConnected = true
+                this.shouldGaugerAutoconnect = true
                 this.log('Gauger opened, delaying', this.opts.openDelay, 'ms')
                 this.gaugerParser = this.gauger.pipe(new Readline)
                 setTimeout(() => {
@@ -371,7 +376,9 @@ class App {
         }
         this.miscBusy = true
         try {
-
+            if (!this.isGaugerConnected && this.shouldGaugerAutoconnect) {
+                await this.openGauger()
+            }
             // TODO
             if (false) {
                 await this.refreshDeclinationAngle()
@@ -479,6 +486,7 @@ class App {
 
         app.post('/gauger/disconnect', (req, res) => {
             this.closeGauger()
+            this.shouldGaugerAutoconnect = false
             this.status().then(status => {
                 res.status(200).json({message: 'Device disconnected', status})
             })
