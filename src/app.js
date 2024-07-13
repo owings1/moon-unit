@@ -58,12 +58,6 @@ class App {
             pinControllerReady : +env.PIN_CONTROLLER_READY || 16,
             pinGaugerReset     : +env.PIN_GAUGER_RESET || 11,
 
-            i2ciEnabled     : !!env.I2CI_ENABLED,
-            encoderAddress  : +env.ENCODER_ADDRESS || 0x08,
-            pinEncoderReset : +env.PIN_ENCODER_RESET || 15,
-            lcdAddress      : +env.LCD_ADDRESS || 0x3f,
-            displayTimeout  : +env.DISPLAY_TIMEOUT || 60 * 1000,
-
             // how long to wait after reset to reopen device
             resetDelay     : +env.RESET_DELAY || 5000,
             commandTimeout : +env.COMMAND_TIMEOUT || 5000,
@@ -179,9 +173,7 @@ class App {
                         this.log('Listening on', this.httpServer.address())
                         this.localUrl = 'http://localhost:' + this.httpServer.address().port
                         this.miscInterval = setInterval(() => this.miscLoop(), 1000)
-                        this.openGauger().then(() => {
-                            this.initI2ci().then(resolve).catch(reject)
-                        }).catch(reject)
+                        this.openGauger().then(resolve).catch(reject)
                     })
                 }).catch(reject)
             } catch (err) {
@@ -641,12 +633,6 @@ class App {
         this.log('GPIO is', this.opts.gpioEnabled ? 'enabled' : 'disabled')
         this.gpio = new GpioHelper(this)
         await this.gpio.open()
-    }
-
-    async initI2ci() {
-        this.log('I2C interface is', this.opts.i2ciEnabled ? 'enabled' : 'disabled')
-        this.i2ci = new I2ciHelper(this)
-        await this.i2ci.open()
     }
 
     log(...args) {

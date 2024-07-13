@@ -39,14 +39,6 @@ class GpioHelper {
             }
         }
 
-        if (this.app.opts.i2ciEnabled) {
-            const i2ciRequiredKeys = ['pinEncoderReset']
-            for (var k of i2ciRequiredKeys) {
-                if (!this.app.opts[k]) {
-                    throw new Error('Missing opt: ' + k)
-                }
-            }
-        }
     }
 
     async open() {
@@ -70,9 +62,6 @@ class GpioHelper {
                 await gpio.setup(opts.pinControllerStop, gpio.DIR_LOW)
                 await gpio.setup(opts.pinControllerReady, gpio.DIR_IN)
                 await gpio.setup(opts.pinGaugerReset, gpio.DIR_HIGH)
-                if (this.app.opts.i2ciEnabled) {
-                    await gpio.setup(opts.pinEncoderReset, gpio.DIR_HIGH)
-                }
             } catch (err) {
                 if (i >= (gpioRetries - 1)) {
                     throw err
