@@ -1,4 +1,41 @@
 
+
+## Command Module
+
+### Back Panels
+
+
+#### Left
+
+> Note: I2C devices are the mag, and the 2 orientation sensors.
+
+Top:
+
+- I2C common
+- I2C common
+- GPS
+
+Bottom:
+
+- I2C common
+- I2C common
+- I2C common
+
+#### Right
+
+Top:
+
+- Scope motor
+- Scope limit CW/UP (motor side)
+- Scope limit ACW/DOWN
+
+Bottom:
+
+- Base motor
+- Base limit CW/RIGHT (motor side)
+- Base limit ACW/LEFT
+
+
 ### Motor Controller (Uno)
 
 | Pin | Description                 | Color  | Notes
@@ -33,8 +70,8 @@
 |   5 | Controller ready            | green  | uno A0 and pi 16
 |   6 | RX from controller          | blue   | via rocker switch to uno 1
 |   7 | TX to controller            | yellow | via rocker switch to uno 0
-|   8 | RX from gps                 | green  |
-|   9 | TX to gps (NC)              |        |
+|   8 | RX from GPS                 | green  |
+|   9 | TX to GPS (NC)              |        |
 |  A4 | I2C SDA                     | white  |
 |  A5 | I2C SCL                     | blue   |
 | Rst | Reset pin                   | white  | to pi 11
