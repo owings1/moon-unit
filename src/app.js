@@ -36,7 +36,6 @@ const DeviceCodes = {
 }
 
 const GpioHelper = require('./gpio')
-const I2ciHelper = require('./i2ci')
 const WpaHelper  = require('./wpa')
 
 class App {
