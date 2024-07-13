@@ -59,12 +59,6 @@ sudo apt-get install git make g++ gcc python3 udev
     npm install
     ```
 
-- Service
-
-    ```bash
-    cd src/pi/service
-    ./install.sh
-    ```
 
 ### Docker setup
 

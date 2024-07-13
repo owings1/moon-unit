@@ -616,11 +616,5 @@ class TemplateHelper {
         return '' + val
     }
 }
-class BaseError extends Error {
-    constructor(...args) {
-        super(...args)
-        this.name = this.constructor.name
-    }
-}
 
 module.exports = App
