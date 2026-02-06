@@ -55,29 +55,6 @@ $(document).ready(function() {
                 console.error(err)
             }
 
-        } else if ($target.hasClass('gpio')) {
-
-            e.preventDefault()
-
-            if ($target.hasClass('disabled') || $target.prop('disabled')) {
-                return
-            }
-
-            clearOutputs()
-
-            if ($target.is('#gpio_controller_state')) {
-                sendRequest('controller/gpio/state')
-            } else if ($target.is('.gpio_controller_stop')) {
-                sendRequest('controller/gpio/stop', 'POST')
-            } else if ($target.is('#gpio_controller_reset')) {
-                if (confirm('Reset controller, are you sure?')) {
-                    sendRequest('controller/gpio/reset', 'POST')
-                }
-            } else if ($target.is('#gpio_gauger_reset')) {
-                if (confirm('Reset gauger, are you sure?')) {
-                    sendRequest('gauger/gpio/reset', 'POST')
-                }
-            }
         } else if ($target.is('#refresh_status')) {
 
             e.preventDefault()
@@ -223,7 +200,6 @@ $(document).ready(function() {
         $('#position_m1').text(fixedSafe(status.position[0], 2))
         $('#position_m2').text(fixedSafe(status.position[1], 2))
 
-        $('#controller_state').text('' + ed(status.controllerState))
         $('#gauger_connected_status').text(ed(status.gaugerConnectedStatus))
             .removeClass('connected disconnected')
             .addClass(ed(status.gaugerConnectedStatus).toLowerCase())

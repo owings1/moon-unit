@@ -12,8 +12,15 @@
  * 74 - Set MCI check interval in milliseconds
  *
  *  :<id>:74 <milliseconds>;
+ *
+ * 75 - Reinit MCC & MCI module
+ *
+ *  :<id>:75 ;
+ *
+ * 76 - Send motor stop signal
+ *
+ *  :<id>:76 ;
  */
-
 #include <Adafruit_BNO055.h>
 #include <Adafruit_Sensor.h>
 #include <Adafruit_HMC5883_U.h>
@@ -28,28 +35,37 @@
 #define gpsEnabled true
 #define orientationEnabled true
 #define magEnabled true
+#define mStopPin D9
 
 /******************************************/
 /* Constants                              */
 /******************************************/
-
 #define BAUD_RATE 9600L
 #define DEG_NULL 1000.00
+#define STATE_READY HIGH
+#define STATE_BUSY LOW
+ 
+/******************************************/
+/* I2C                                    */
+/******************************************/
+#define mainWire Wire
+#define SDA_MAIN D14
+#define SCL_MAIN D13
 
 /******************************************/
 /* Behavior                               */
 /******************************************/
-
 #define maxMode 3
-// 1: quiet, 2: stream all, 3: stream gps
-byte mode = 1;
+#define MODE_QUIET 1
+#define MODE_STREAM_ALL 2
+#define MODE_STREAM_GPS 3
+byte mode = MODE_QUIET;
 // Loop delay in milliseconds
 unsigned long loopDelay = 50;
 
 /******************************************/
 /* Module                                 */
 /******************************************/
-
 struct Module {
   char label[4];
   boolean isEnabled;
@@ -60,18 +76,14 @@ struct Module {
 /******************************************/
 /* Motor Controller Serial                */
 /******************************************/
-
-#define mccStatePin 5
-#define mccRxPin 6
-#define mccTxPin 7
+#define mccStatePin D10
+#define mccSerial Serial2
 #define mccReadTimeout 250L
 #define mccWriteTimeout 10000L
 #define mccBaudRate 9600L
 
-SoftwareSerial mccSerial(mccRxPin, mccTxPin);
-
 struct MotorControllerSerial {
-
+  Stream &stream;
   Module module;
 
   byte statePin;
@@ -83,18 +95,16 @@ struct MotorControllerSerial {
   String statusStr;
 };
 
-MotorControllerSerial mcc;
+MotorControllerSerial mcc = {mccSerial};
 
 /******************************************/
 /* Motor Controller I2C                   */
 /******************************************/
-
 #define mciAddress 0x9
 #define mciMessageLength 18
 #define mciDefaultCheckInterval 2000L
 
 struct MotorControllerI2C {
-
   Module module;
 
   byte address;
@@ -110,12 +120,10 @@ MotorControllerI2C mci;
 /******************************************/
 /* Orientation Sensor                     */
 /******************************************/
-
 #define oriAddress 0x28
 #define orfAddress 0x29
 
 struct Orientation {
-
   Module module;
 
   // https://learn.adafruit.com/adafruit-bno055-absolute-orientation-sensor/arduino-code
@@ -146,15 +154,13 @@ Orientation orf;
 /******************************************/
 /* GPS                                    */
 /******************************************/
-
 #define gpsBaudRate 9600L
-#define gspRxPin 8
-#define gpsTxPin 9 // not functional
+#define gpsRxPin D6
 
-SoftwareSerial gpsSerial(gspRxPin, gpsTxPin); //rx, tx
+SoftwareSerial gpsSerial(gpsRxPin, -1); //rx, tx
 
 struct Gps {
-
+  Stream &stream;
   Module module;
 
   TinyGPS helper;
@@ -163,18 +169,16 @@ struct Gps {
   float lon;
 };
 
-Gps gps;
+Gps gps = {gpsSerial};
 
 /******************************************/
 /* Magnetometer                           */
 /******************************************/
-
 #define magCheckAddress (0x3C >> 1)
 #define magDeviceId 49138
 //#define defaultDeclinationRad 0.23
 
 struct Mag {
-
   Module module;
 
   Adafruit_HMC5883_Unified sensor;
@@ -195,75 +199,52 @@ struct Mag {
 
 Mag mag;
 
-
 /******************************************/
 /* Setup                                  */
 /******************************************/
-
 void setup() {
-  pinMode(mccStatePin, INPUT);
+  pinMode(mccStatePin, INPUT_PULLUP);
+  pinMode(mStopPin, OUTPUT);
   Serial.begin(BAUD_RATE);
-  Wire.begin();
+  mainWire.setSDA(SDA_MAIN);
+  mainWire.setSCL(SCL_MAIN);
+  mainWire.begin();
+  mccSerial.begin(mccBaudRate);
+  if (gpsEnabled) {
+    gpsSerial.begin(gpsBaudRate);
+  }
   setupModules();
 }
 
 void setupModules() {
-
   strcpy(ori.module.label, "ORI");
-  ori.module.isEnabled = orientationEnabled;
-  ori.address = oriAddress;
-  ori.sensor = Adafruit_BNO055(55, ori.address);
-  ori.x = DEG_NULL;
-  ori.y = DEG_NULL;
-  ori.z = DEG_NULL;
-  ori.qw = DEG_NULL;
-  ori.qx = DEG_NULL;
-  ori.qy = DEG_NULL;
-  ori.qz = DEG_NULL;
-  if (ori.module.isEnabled && ori.sensor.begin()) {
-    ori.module.isInit = true;
-    ori.sensor.setExtCrystalUse(true);
-  }
-  ori.module.hasData = ori.module.isInit;
-
+  setupOrientationModule(ori, oriAddress);
   strcpy(orf.module.label, "ORF");
-  orf.module.isEnabled = orientationEnabled;
-  orf.address = orfAddress;
-  orf.sensor = Adafruit_BNO055(55, orf.address);
-  orf.x = DEG_NULL;
-  orf.y = DEG_NULL;
-  orf.z = DEG_NULL;
-  orf.qw = DEG_NULL;
-  orf.qx = DEG_NULL;
-  orf.qy = DEG_NULL;
-  orf.qz = DEG_NULL;
-  if (orf.module.isEnabled && orf.sensor.begin()) {
-    orf.module.isInit = true;
-    orf.sensor.setExtCrystalUse(true);
-  }
-  orf.module.hasData = orf.module.isInit;
+  setupOrientationModule(orf, orfAddress);
 
   strcpy(mcc.module.label, "MCC");
   mcc.module.isEnabled = true;
   mcc.readTimeout = mccReadTimeout;
   mcc.writeTimeout = mccWriteTimeout;
   mcc.statePin = mccStatePin;
-  mccSerial.begin(mccBaudRate);
-  mcc.module.isInit = checkMccConnected(mccSerial);
+  if (mcc.module.isEnabled) {
+    mcc.module.isInit = checkMccConnected(mcc.stream);
+  }
 
   strcpy(mci.module.label, "MCI");
   mci.module.isEnabled = true;
   mci.address = mciAddress;
   mci.checkInterval = mciDefaultCheckInterval;
-  mci.module.isInit = checkMciConnected(mci);
+  if (mci.module.isEnabled) {
+    mci.module.isInit = checkMciConnected(mci);
+  }
 
   strcpy(gps.module.label, "GPS");
   gps.module.isEnabled = gpsEnabled;
   gps.lat = DEG_NULL;
   gps.lon = DEG_NULL;
   if (gps.module.isEnabled) {
-    gpsSerial.begin(gpsBaudRate);
-    gps.module.isInit = checkGpsConnected(gpsSerial);
+    gps.module.isInit = checkGpsConnected(gps.stream);
   }
   gps.module.hasData = gps.module.isInit;
 
@@ -282,19 +263,39 @@ void setupModules() {
   mag.module.hasData = mag.module.isInit;
 }
 
-void loop() {
+void setupOrientationModule(Orientation &m, byte address) {
+  m.module.isEnabled = orientationEnabled;
+  m.address = address;
+  m.sensor = Adafruit_BNO055(55, m.address);
+  m.x = DEG_NULL;
+  m.y = DEG_NULL;
+  m.z = DEG_NULL;
+  m.qw = DEG_NULL;
+  m.qx = DEG_NULL;
+  m.qy = DEG_NULL;
+  m.qz = DEG_NULL;
+  if (m.module.isEnabled && m.sensor.begin()) {
+    m.module.isInit = true;
+    m.sensor.setExtCrystalUse(true);
+  }
+  m.module.hasData = m.module.isInit;
+}
 
-  takeCommand(Serial, Serial);
-  if (mode == 2) {
+void loop() {
+  takeCommand(Serial);
+  if (mode == MODE_STREAM_ALL) {
     readAll();
     writeAll(Serial);
-  } else if (mode == 3 && gpsEnabled) {
-    streamGps(Serial, gpsSerial);
+  } else if (mode == MODE_STREAM_GPS && gps.module.isEnabled) {
+    pipeStream(Serial, gps.stream);
   }
   // take command twice, since readAll takes time.
-  takeCommand(Serial, Serial);
-
+  takeCommand(Serial);
   delay(loopDelay);
+}
+
+void takeCommand(Stream &ioStream) {
+  takeCommand(ioStream, ioStream);
 }
 
 void takeCommand(Stream &input, Stream &output) {
@@ -322,8 +323,9 @@ void takeCommand(Stream &input, Stream &output) {
   }
 
   String command = input.readStringUntil(' ');
+  long cmdId = command.toInt();
 
-  if (command.toInt() < 70) {
+  if (cmdId < 70) {
 
     if (!mcc.module.isInit) {
       input.readStringUntil(';');
@@ -335,24 +337,25 @@ void takeCommand(Stream &input, Stream &output) {
 
     readMccState(mcc);
 
-    if (mcc.state != HIGH) {
+    if (mcc.state != STATE_READY) {
       input.readStringUntil(';');
       writeAck(id, output, true);
       output.write("=04\n");
       return;
     }
 
-    mccSerial.listen();
-
     String mcBody = String(":");
     mcBody.concat(command);
     mcBody.concat(" ");
     mcBody.concat(input.readStringUntil(';'));
     mcBody.concat(";");
-    mccSerial.print(mcBody);
+    mcc.stream.print(mcBody);
+
+    // output.println(mcBody);
+    // output.write('\n');
 
     int d = 0;
-    while (!mccSerial.available()) {
+    while (!mcc.stream.available()) {
       delay(1);
       d += 1;
       if (d > mcc.writeTimeout) {
@@ -362,17 +365,17 @@ void takeCommand(Stream &input, Stream &output) {
       }
     }
 
-    String res = mccSerial.readStringUntil("\n");
+    String res = mcc.stream.readStringUntil('\n');
     writeAck(id, output, true);
     output.print(res);
-    output.write("\n");
+    output.write('\n');
  
     return;
   }
 
   writeAck(id, output, true);
 
-  if (command.equals("71")) {
+  if (cmdId == 71) {
     // set mode
     byte newMode = input.readStringUntil(';').toInt();
     if (newMode < 1 || newMode > maxMode) {
@@ -381,7 +384,7 @@ void takeCommand(Stream &input, Stream &output) {
     }
     mode = newMode;
     output.write("=00\n");
-  } else if (command.equals("73")) {
+  } else if (cmdId == 73) {
     // set loop delay
     long newValue = input.readStringUntil(';').toInt();
     if (newValue < 1) {
@@ -390,7 +393,7 @@ void takeCommand(Stream &input, Stream &output) {
     }
     loopDelay = newValue;
     output.write("=00\n");
-  } else if (command.equals("74")) {
+  } else if (cmdId == 74) {
     // set mci check interval
     long newValue = input.readStringUntil(';').toInt();
     if (newValue < 1) {
@@ -399,6 +402,23 @@ void takeCommand(Stream &input, Stream &output) {
     }
     mci.checkInterval = newValue;
     output.write("=00\n");
+  } else if (cmdId == 75) {
+    // Reinit MCC & MCI module
+    input.readStringUntil(';');
+    if (mcc.module.isEnabled) {
+      mcc.module.isInit = checkMccConnected(mcc.stream);
+    }
+    if (mci.module.isEnabled) {
+      mci.module.isInit = checkMciConnected(mci);
+    }
+    output.write("=00\n");
+  } else if (cmdId == 76) {
+    // Send motor stop signal
+    input.readStringUntil(';');
+    digitalWrite(mStopPin, HIGH);
+    output.write("=00\n");
+    delay(100);
+    digitalWrite(mStopPin, LOW);
   } else {
     output.write("=44\n");
   }
@@ -414,106 +434,59 @@ void writeAck(long &id, Stream &output, boolean withColon) {
 }
 
 void writeAll(Stream &output) {
-
   output.write("MOD:");
   writeModules(output);
-  output.write("\n");
-
   if (ori.module.isInit) {
-    output.write(ori.module.label);
-    output.write(':');
+    writeModulePrefix(ori.module, output);
     writeOrientation(ori, output);
-    output.write("\n");
   }
-
   if (orf.module.isInit) {
-    output.write(orf.module.label);
-    output.write(':');
+    writeModulePrefix(orf.module, output);
     writeOrientation(orf, output);
-    output.write("\n");
   }
- 
   if (gps.module.isInit) {
-    output.write(gps.module.label);
-    output.write(':');
+    writeModulePrefix(gps.module, output);
     writeGps(gps, output);
-    output.write("\n");
   }
-
   if (mag.module.isInit) {
-    output.write(mag.module.label);
-    output.write(':');
+    writeModulePrefix(mag.module, output);
     writeMag(mag, output);
-    output.write("\n");
   }
-
   if (mcc.module.isInit) {
-    output.write(mcc.module.label);
-    output.write(':');
+    writeModulePrefix(mcc.module, output);
     writeMccStatus(mcc, output);
-    output.write("\n");
   }
-
   if (mci.module.isInit) {
-    output.write(mci.module.label);
-    output.write(':');
+    writeModulePrefix(mci.module, output);
     writeMciStatus(mci, output);
-    output.write("\n");
   }
+  output.write('\n');
+}
+
+void writeModulePrefix(Module &m, Stream &output) {
+  output.write('\n');
+  output.write(m.label);
+  output.write(':');
 }
 
 void writeModules(Stream &output) {
-
   boolean doPrefix = false;
+  writeModuleLabel(ori.module, output, doPrefix);
+  writeModuleLabel(orf.module, output, doPrefix);
+  writeModuleLabel(gps.module, output, doPrefix);
+  writeModuleLabel(mag.module, output, doPrefix);
+  writeModuleLabel(mcc.module, output, doPrefix);
+  writeModuleLabel(mci.module, output, doPrefix);
+}
 
-  if (ori.module.hasData) {
+void writeModuleLabel(Module &m, Stream &output, bool &doPrefix) {
+  if (m.hasData) {
     if (doPrefix) {
       output.write('|');
     }
-    output.write(ori.module.label);
+    output.write(m.label);
     doPrefix = true;
   }
-
-  if (orf.module.hasData) {
-    if (doPrefix) {
-      output.write('|');
-    }
-    output.write(orf.module.label);
-    doPrefix = true;
-  }
-
-  if (gps.module.hasData) {
-    if (doPrefix) {
-      output.write('|');
-    }
-    output.write(gps.module.label);
-    doPrefix = true;
-  }
-
-  if (mag.module.hasData) {
-    if (doPrefix) {
-      output.write('|');
-    }
-    output.write(mag.module.label);
-    doPrefix = true;
-  }
-
-  if (mcc.module.hasData) {
-    if (doPrefix) {
-      output.write('|');
-    }
-    output.write(mcc.module.label);
-    doPrefix = true;
-  }
-
-  if (mci.module.hasData) {
-    if (doPrefix) {
-      output.write('|');
-    }
-    output.write(mci.module.label);
-    doPrefix = true;
-  }
-  
 }
 
 void writeMccStatus(MotorControllerSerial &m, Stream &output) {
@@ -571,7 +544,7 @@ void writeMag(Mag &m, Stream &output) {
 void readAll() {
   readMccState(mcc);
   if (mcc.module.isInit) {
-    readMccStatus(mcc, mccSerial);
+    readMccStatus(mcc);
   }
   if (mci.module.isInit) {
     readMciStatus(mci);
@@ -583,7 +556,7 @@ void readAll() {
     readOrientation(orf);
   }
   if (gps.module.isInit) {
-    readGps(gps, gpsSerial);
+    readGps(gps);
   }
   if (mag.module.isInit) {
     readMag(mag);
@@ -594,27 +567,25 @@ void readMccState(MotorControllerSerial &m) {
   m.state = digitalRead(m.statePin);
 }
 
-void readMccStatus(MotorControllerSerial &m, SoftwareSerial &ser) {
-  if (m.state != HIGH) {
+void readMccStatus(MotorControllerSerial &m) {
+  if (m.state != STATE_READY) {
     return;
   }
-  ser.listen();
-  ser.write(":18 ;");
+  // Send command Get full status
+  m.stream.write(":18 ;");
   int d = 0;
-  while (!ser.available()) {
+  while (!m.stream.available()) {
     delay(1);
     d += 1;
     if (d > m.readTimeout) {
       return;
     }
   }
-  String codeStr = ser.readStringUntil(';');
+  String codeStr = m.stream.readStringUntil(';');
   if (!codeStr.equals("=00")) {
     return;
   }
-  // this is what used to take so long, until
-  // we replaced "\n" with '\n' !
-  m.statusStr = ser.readStringUntil('\n');
+  m.statusStr = m.stream.readStringUntil('\n');
   m.statusStr.trim();
   m.module.hasData = m.statusStr.length() > 0;
 }
@@ -627,25 +598,19 @@ void readMciStatus(MotorControllerI2C &m) {
     return;
   }
   m.lastCheckTime = millis();
-  Wire.beginTransmission(m.address);
-  Wire.write(0x0);
-  if (Wire.endTransmission() != 0) {
+  if (!checkMciConnected(m)) {
     return;
   }
-  Wire.requestFrom((uint8_t) m.address, (uint8_t) mciMessageLength);
+  mainWire.requestFrom(m.address, mciMessageLength);
   char buf[19];
   byte i = 0;
-  while (Wire.available()) {
-    char c = Wire.read();
-    
+  while (mainWire.available()) {
+    char c = mainWire.read();
+    buf[i] = c;
+    i++;
     if (c == 13) {
       break;
     }
-    if (c < 13) {
-      continue;
-    }
-    buf[i] = c;
-    i++;
   }
   m.statusStr = String(buf);
   m.statusStr.trim();
@@ -682,22 +647,20 @@ void readOrientation(Orientation &o) {
   o.qz = q.z();
 }
 
-void readGps(Gps &g, SoftwareSerial &ser) {
-  ser.listen();
+void readGps(Gps &g) {
   // we have to set a delay here after listen, otherwise we
   // never read values. this value MUST be at least 50ms.
   delay(60);
-  while (ser.available()) {
-    if (g.helper.encode(ser.read())) {
+  while (g.stream.available()) {
+    if (g.helper.encode(g.stream.read())) {
       g.helper.f_get_position(&g.lat, &g.lon);
     }
   }
 }
 
-void streamGps(Stream &output, SoftwareSerial &ser) {
-  ser.listen();
-  while (ser.available()) {
-    output.write(ser.read());
+void pipeStream(Stream &output, Stream &source) {
+  while (source.available()) {
+    output.write(source.read());
   }
 }
 
@@ -753,37 +716,35 @@ void readMag(Mag &m) {
 // the device address and returns true. We need to check for
 // a response at address 0x3C >> 1
 boolean checkMagConnected(Mag &m) {
-  Wire.beginTransmission(m.checkAddress);
-  return Wire.endTransmission() == 0;
+  mainWire.beginTransmission(m.checkAddress);
+  return mainWire.endTransmission() == 0;
 }
 
 boolean checkMciConnected(MotorControllerI2C m) {
-  Wire.beginTransmission(m.address);
-  return Wire.endTransmission() == 0;
+  mainWire.beginTransmission(m.address);
+  return mainWire.endTransmission() == 0;
 }
 
 // send a status request with a 2 second timeout
-boolean checkMccConnected(SoftwareSerial &ser) {
-  ser.listen();
-  ser.write(":18 ;");
+boolean checkMccConnected(Stream &stream) {
+  stream.write(":18 ;");
   // timeout 2 seconds
   int d = 0;
-  while (!ser.available()) {
+  while (!stream.available()) {
     delay(1);
     d += 1;
     if (d > 2000) {
       return false;
     }
   }
-  ser.readStringUntil("\n");
+  stream.readStringUntil('\n');
   return true;
 }
 
-boolean checkGpsConnected(SoftwareSerial &ser) {
-  ser.listen();
+boolean checkGpsConnected(Stream &stream) {
   // timeout 3 seconds
   int d = 0;
-  while (!ser.available()) {
+  while (!stream.available()) {
     delay(1);
     d += 1;
     if (d > 3000) {

@@ -8,9 +8,6 @@
 </head>
 <body>
     <div class="content">
-        <% if (!status.gpioEnabled) { %>
-            <div class="warning">GPIO is not enabled. Functions like stop and reset are disabled.</div>
-        <% } %>
         <div class="panel">
             <form>
                 <div class="right">
@@ -418,8 +415,6 @@
                 <a href="javascript:" class="button <%= status.gaugerConnectedStatus.toLowerCase() %>" id="gauger_connected_status">
                     <%= status.gaugerConnectedStatus %>
                 </a>
-                <a href="javascript:" class="gpio button <%= status.gpioEnabled ? 'magenta' : 'disabled' %>" id="gpio_controller_reset">Reset Controller</a>
-                <a href="javascript:" class="gpio button <%= status.gpioEnabled ? 'magenta' : 'disabled' %>" id="gpio_gauger_reset">Reset Gauger</a>
             </form>
         </div>
         <div class="panel">

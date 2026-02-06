@@ -7,3 +7,4 @@ node_modules
 /bitbucket-pipelines.yml
 /.nyc_output
 #/qemu-arm-static
+/src/arduino/*/build

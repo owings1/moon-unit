@@ -3,7 +3,6 @@
 // TODO: garbage collect unacked gauger jobs
 
 const fs         = require('fs')
-const bodyParser = require('body-parser')
 const express    = require('express')
 const merge      = require('merge')
 const path       = require('path')
@@ -32,8 +31,6 @@ const DeviceCodes = {
     49: 'Invalid other parameter'
 }
 
-const GpioHelper = require('./gpio')
-
 class App {
 
     defaults(env) {
@@ -47,11 +44,11 @@ class App {
             openDelay      : +env.OPEN_DELAY || 4000,
             workerDelay    : +env.WORKER_DELAY || 100,
 
-            gpioEnabled        : !!env.GPIO_ENABLED,
-            pinControllerReset : +env.PIN_CONTROLLER_RESET || 13,
-            pinControllerStop  : +env.PIN_CONTROLLER_STOP || 18,
-            pinControllerReady : +env.PIN_CONTROLLER_READY || 16,
-            pinGaugerReset     : +env.PIN_GAUGER_RESET || 11,
+            gpioEnabled        : false, // obsolete
+            pinControllerReset : null, // obsolete
+            pinControllerStop  : null, // obsolete
+            pinControllerReady : null, // obsolete
+            pinGaugerReset     : null, // obsolete
 
             // how long to wait after reset to reopen device
             resetDelay     : +env.RESET_DELAY || 5000,
@@ -116,10 +113,9 @@ class App {
     }
 
     async status() {
-        const controllerState = (this.opts.gpioEnabled && this.gpio) ? (await this.gpio.getControllerState()) : null
         return {
-            controllerState,
-            gpioEnabled                 : this.opts.gpioEnabled,
+            controllerState             : null, // obsolete
+            gpioEnabled                 : false, // obsolete
             isGaugerConnected           : this.isGaugerConnected,
             gaugerConnectedStatus       : this.isGaugerConnected ? 'Connected' : 'Disconnected',
 
@@ -335,9 +331,6 @@ class App {
             this.log('Shutting down')
             clearInterval(this.miscInterval)
             this.closeGauger()
-            if (this.gpio) {
-                this.gpio.close()
-            }
             if (this.httpServer) {
                 this.httpServer.close()
             }
@@ -445,21 +438,12 @@ class App {
                 return
             }
             try {
-                this.gpio.isControllerReady().then(isReady => {
-                    if (!isReady) {
-                        res.status(503).json({error: 'not ready', isReady})
-                        return
-                    }
-                    this.gaugerCommand(req.body.command)
-                        .then(response => res.status(200).json({response}))
-                        .catch(error => {
-                            this.error(error)
-                            res.status(500).json({error})
-                        })
-                }).catch(error => {
-                    this.error(error)
-                    res.status(500).json({error})
-                })
+                this.gaugerCommand(req.body.command)
+                    .then(response => res.status(200).json({response}))
+                    .catch(error => {
+                        this.error(error)
+                        res.status(500).json({error})
+                    })
             } catch (error) {
                 this.error(error)
                 res.status(500).json({error})
@@ -506,51 +490,6 @@ class App {
             })
         })
 
-        app.post('/controller/gpio/reset', (req, res) => {
-            if (!this.opts.gpioEnabled) {
-                res.status(400).json({error: 'gpio not enabled'})
-                return
-            }
-            this.log('Sending reset to controller')
-            this.gpio.resetController().then(() => {
-                res.status(200).json({message: 'controller reset sent'})
-                this.log('Controller reset sent')
-            }).catch(error => {
-                this.error(error)
-                res.status(500).json({error})
-            })
-        })
-
-        app.post('/controller/gpio/stop', (req, res) => {
-            if (!this.opts.gpioEnabled) {
-                res.status(400).json({error: 'gpio not enabled'})
-                return
-            }
-            this.gpio.sendControllerStop().then(() => {
-                res.status(200).json({message: 'stop sent'})
-            }).catch(error => {
-                this.error(error)
-                res.status(500).json({error})
-            })
-        })
-
-        app.post('/gauger/gpio/reset', (req, res) => {
-            if (!this.opts.gpioEnabled) {
-                res.status(400).json({error: 'gpio not enabled'})
-                return
-            }
-            this.closeGauger()
-            this.log('Sending reset to gauger')
-            this.gpio.resetGauger().then(() => {
-                res.status(200).json({message: 'gauger reset'})
-                this.log('Gauger reset sent, delaying', this.opts.resetDelay, 'to reopen')
-                this.openGauger().catch(err => this.error(err))
-            }).catch(error => {
-                this.error(error)
-                res.status(500).json({error})
-            })
-        })
-
         app.get('/doc/:filename', (req, res) => {
             const file = path.resolve(__dirname, '../doc', path.basename(req.params.filename) + '.md')
             fs.readFile(file, 'utf-8', (error, text) => {
@@ -589,12 +528,6 @@ class App {
             MockBinding.createPort(devicePath, {echo: true, readyData: []})
         }
         return new SerialPort(devicePath, {baudRate, autoOpen: false})
-    }
-
-    async initGpio() {
-        this.log('GPIO is', this.opts.gpioEnabled ? 'enabled' : 'disabled')
-        this.gpio = new GpioHelper(this)
-        await this.gpio.open()
     }
 
     log(...args) {

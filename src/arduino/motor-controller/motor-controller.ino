@@ -40,7 +40,7 @@
  *
  * 11 - Move both motors by degrees. Last param is arrive at same time.
  *
- *  :11 <direction_1> <degrees_1> <direction_2> <degrees_2> <T|F>;
+ *  :11 <direction_1> <degrees_1> <direction_2> <degrees_2> <T|F>;                                                                                                                                                                        *
  *
  * 13 - No response (debug)
  *
@@ -98,12 +98,16 @@
 // TODO: use precision 1/100th of a degree, and replace floating point math
 #include <AccelStepper.h>
 #include <MultiStepper.h>
+// #include <SoftwareSerial.h>
 #include <Wire.h>
-#include "dwf/digitalWriteFast.h"
+// #include "dwf/digitalWriteFast.h"
 
 /******************************************/
 /* I2C                                    */
 /******************************************/
+#define mainWire Wire
+#define SDA_MAIN D14
+#define SCL_MAIN D13
 #define WIRE_ADDRESS 0x9
 volatile byte wireReq = 0x0;
 
@@ -111,13 +115,13 @@ volatile byte wireReq = 0x0;
 /* Stop Signal                            */
 /******************************************/
 #define stopPinEnabled true
-#define stopPin 13
+#define stopPin D4
 boolean shouldStop = false;
 
 /******************************************/
 /* State (ready/busy)                     */
 /******************************************/
-#define statePin A0
+#define statePin D3
 #define STATE_READY HIGH
 #define STATE_BUSY LOW
 
@@ -126,6 +130,11 @@ boolean shouldStop = false;
 /******************************************/
 #define BAUD_RATE 9600L
 #define DEG_NULL 1000.00
+
+/******************************************/
+/* Command Serial                         */
+/******************************************/
+#define cmdSerial Serial2
 
 /******************************************/
 /* Motor Pins                             */
@@ -139,16 +148,17 @@ struct MotorPins {
 };
 
 MotorPins motorPins[] = {
-  {5, 6, 7, 3, 4},    // m1
-  {8, 9, 10, 11, 12}  // m2
+  {D1, D2, D0, D16, D15}, // m1
+  {D7, D8, D9, D17, D18}  // m2
 };
+#define LIMIT_TRIPPED HIGH
 
 /******************************************/
 /* Motor Settings                         */
 /******************************************/
 
-#define absMaxSpeed_m1 1600L
-#define absMaxSpeed_m2 1600L
+#define absMaxSpeed_m1 4000L
+#define absMaxSpeed_m2 4000L
 // TODO: refactor, since floats are only good to 6 digits total
 #define degreesPerStep_m1 0.0008125
 #define degreesPerStep_m2 0.001125
@@ -163,7 +173,6 @@ MotorPins motorPins[] = {
 /* Motor Definition                       */
 /******************************************/
 struct Motor {
-
   AccelStepper stepper;
 
   byte id;
@@ -218,26 +227,31 @@ Motor motors[2];
 /******************************************/
 
 void setup() {
-  setupStatePin();
-  setState(STATE_BUSY);
-  setupWire();
+  pinMode(statePin, OUTPUT);
+  setState(STATE_BUSY, true);
+  if (stopPinEnabled) {
+    pinMode(stopPin, INPUT_PULLDOWN);
+  }
+  mainWire.setSDA(SDA_MAIN);
+  mainWire.setSCL(SCL_MAIN);
+  mainWire.begin(WIRE_ADDRESS);
+  mainWire.onRequest(requestEvent);
+  mainWire.onReceive(receiveEvent);
   Serial.begin(BAUD_RATE);
+  cmdSerial.begin(BAUD_RATE);
   setupMotors();
-  setupStopPin();
   setState(STATE_READY);
 }
 
 void loop() {
-
   readLimitSwitches();
   readStopPin();
-
   if (runMotorsIfNeeded()) {
     setState(STATE_BUSY);
   } else {
     checkMotorsSleep();
     setState(STATE_READY);
-    takeCommand(Serial, Serial);
+    takeCommand(cmdSerial);
   }
 }
 
@@ -246,18 +260,26 @@ void loop() {
 /******************************************/
 void requestEvent() {
   if (wireReq == 0x0) {
-    writePositions(Wire);
-    Wire.write("\n");
+    byte c = writePositions(mainWire);
+    while (c < 17) {
+      mainWire.write(' ');
+      c += 1;
+    }
+    mainWire.write('\n');
   }
 }
 
 void receiveEvent(int howMany) {
-  wireReq = Wire.read();
+  wireReq = mainWire.read();
 }
 
 /******************************************/
 /* Command Input Functions                */
 /******************************************/
+
+void takeCommand(Stream &ioStream) {
+  takeCommand(ioStream, ioStream);
+}
 
 void takeCommand(Stream &input, Stream &output) {
 
@@ -399,14 +421,14 @@ void takeCommand(Stream &input, Stream &output) {
     // home a single motor
 
     // param is the motor id
-    byte motorId = readMotorIdFromInput(input);
+    byte motorId = readMotorIdFromInput(input, ';');
 
     if (motorId == 0) {
       output.write("=45\n");
       return;
     }
 
-    input.readStringUntil(';');
+    // input.readStringUntil(';');
 
     if (!motorCanHome(motorId)) {
       output.write("=47\n");
@@ -444,14 +466,14 @@ void takeCommand(Stream &input, Stream &output) {
     // end a single motor
 
     // param is the motor id
-    byte motorId = readMotorIdFromInput(input);
+    byte motorId = readMotorIdFromInput(input, ';');
 
     if (motorId == 0) {
       output.write("=45\n");
       return;
     }
 
-    input.readStringUntil(';');
+    // input.readStringUntil(';');
 
     if (!motorCanHome(motorId)) {
       output.write("=47\n");
@@ -672,7 +694,8 @@ void takeCommand(Stream &input, Stream &output) {
 
 // write positions in degrees.
 // NB: I2C consumer expects max 18 bytes (including \n), so keep precision to 2
-void writePositions(Stream &output) {
+byte writePositions(Stream &output) {
+  byte c = 0;
   for (byte i = 0; i < 2; i++) {
     float degrees;
     if (motors[i].hasHomed) {
@@ -680,15 +703,23 @@ void writePositions(Stream &output) {
     } else {
       degrees = DEG_NULL;
     }
-    output.print(String(degrees, 2));
+    String pstr = String(degrees, 2);
+    output.print(pstr);
+    c += pstr.length();
     if (i == 0) {
       output.write('|');
+      c += 1;
     }
   }
+  return c;
 }
 
 byte readMotorIdFromInput(Stream &input) {
-  byte motorId = input.readStringUntil(' ').toInt();
+  return readMotorIdFromInput(input, ' ');
+}
+
+byte readMotorIdFromInput(Stream &input, char terminator) {
+  byte motorId = input.readStringUntil(terminator).toInt();
   if (motorId == 1 || motorId == 2) {
     return motorId;
   }
@@ -915,8 +946,8 @@ void checkMotorsSleep() {
 
 void readLimitSwitches() {
   for (byte i = 0; i < 2; i++) {
-    motors[i].isLimit_cw = digitalReadFast(motors[i].pins.limit_cw) == LOW;
-    motors[i].isLimit_acw = digitalReadFast(motors[i].pins.limit_acw) == LOW;
+    motors[i].isLimit_cw = digitalRead(motors[i].pins.limit_cw) == LIMIT_TRIPPED;
+    motors[i].isLimit_acw = digitalRead(motors[i].pins.limit_acw) == LIMIT_TRIPPED;
   }
 }
 
@@ -925,15 +956,22 @@ void readLimitSwitches() {
 /******************************************/
 
 void readStopPin() {
-  shouldStop = stopPinEnabled && (digitalReadFast(stopPin) == HIGH);
+  shouldStop = stopPinEnabled && (digitalRead(stopPin) == HIGH);
 }
 
 /******************************************/
 /* State (ready/busy) Functions           */
 /******************************************/
-
 void setState(byte state) {
-  digitalWrite(statePin, state);
+  setState(state, false);
+}
+
+byte _lastStateWrite;
+void setState(byte state, boolean force) {
+  if (force || state != _lastStateWrite) {
+    digitalWrite(statePin, state);
+    _lastStateWrite = state;
+  }
 }
 
 /******************************************/
@@ -941,13 +979,11 @@ void setState(byte state) {
 /******************************************/
 
 void setupMotors() {
-
   motors[0].degreesPerStep = degreesPerStep_m1;
-  motors[0].maxDegrees = maxDegrees_m1;
-  motors[0].absMaxSpeed = absMaxSpeed_m1;
-
   motors[1].degreesPerStep = degreesPerStep_m2;
+  motors[0].maxDegrees = maxDegrees_m1;
   motors[1].maxDegrees = maxDegrees_m2;
+  motors[0].absMaxSpeed = absMaxSpeed_m1;
   motors[1].absMaxSpeed = absMaxSpeed_m2;
 
   for (byte i = 0; i < 2; i++) {
@@ -960,8 +996,8 @@ void setupMotors() {
     pinMode(motors[i].pins.dir, OUTPUT);
     pinMode(motors[i].pins.enable, OUTPUT);
     // Declare limit switch pins as input
-    pinMode(motors[i].pins.limit_cw, INPUT);
-    pinMode(motors[i].pins.limit_acw, INPUT);
+    pinMode(motors[i].pins.limit_cw, INPUT_PULLDOWN);
+    pinMode(motors[i].pins.limit_acw, INPUT_PULLDOWN);
 
     motors[i].stepper = AccelStepper(
       AccelStepper::FULL2WIRE, motors[i].pins.step, motors[i].pins.dir
@@ -978,18 +1014,4 @@ void setupMotors() {
     setMaxSpeed(motors[i].id, motors[i].absMaxSpeed);
     setAcceleration(motors[i].id, maxAcceleration);
   }
-}
-
-void setupStatePin() {
-  pinMode(statePin, OUTPUT);
-}
-
-void setupStopPin() {
-  pinMode(stopPin, INPUT);
-}
-
-void setupWire() {
-  Wire.begin(WIRE_ADDRESS);
-  Wire.onRequest(requestEvent);
-  Wire.onReceive(receiveEvent);
 }
