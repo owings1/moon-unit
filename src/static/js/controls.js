@@ -1,74 +1,66 @@
-$(document).ready(function() {
+$(() => {
 
-    var requestBusy = false
-    var refreshBusy = false
-    var refreshInterval
+    let requestBusy = false
+    let refreshBusy = false
+    let refreshInterval
 
     setRefreshInterval()
 
     $('form').on('click', function(e) {
-
-        const $target = $(e.target)
-
-        if ($target.hasClass('go')) {
-
+        const target = $(e.target)
+        if (target.hasClass('go')) {
             e.preventDefault()
-
             clearOutputs()
-
-            if (requestBusy || $target.hasClass('disabled') || $target.prop('disabled')) {
+            if (requestBusy || target.hasClass('disabled') || target.prop('disabled')) {
                 return
             }
-
-            var cmd
+            let cmd
             try {
 
-                if ($target.is('#home_1')) {
+                if (target.is('#stopsignal')) {
+                    cmd = getStopCommand()
+                } if (target.is('#home_1')) {
                     cmd = getHomeSingleCommand(1)
-                } else if ($target.is('#home_2')) {
+                } else if (target.is('#home_2')) {
                     cmd = getHomeSingleCommand(2)
-                } else if ($target.is('#home_all')) {
+                } else if (target.is('#home_all')) {
                     cmd = getHomeAllCommand()
-                } else if ($target.is('#end_1')) {
+                } else if (target.is('#end_1')) {
                     cmd = getEndSingleCommand(1)
-                } else if ($target.is('#end_2')) {
+                } else if (target.is('#end_2')) {
                     cmd = getEndSingleCommand(2)
-                } else if ($target.is('#end_all')) {
+                } else if (target.is('#end_all')) {
                     cmd = getEndAllCommand()
-                } else if ($target.is('#go_up')) {
+                } else if (target.is('#go_up')) {
                     cmd = getMoveSingleCommand(1, 1)
-                } else if ($target.is('#go_down')) {
+                } else if (target.is('#go_down')) {
                     cmd = getMoveSingleCommand(1, 2)
-                } else if ($target.is('#go_left')) {
+                } else if (target.is('#go_left')) {
                     cmd = getMoveSingleCommand(2, 2)
-                } else if ($target.is('#go_right')) {
+                } else if (target.is('#go_right')) {
                     cmd = getMoveSingleCommand(2, 1)
-                } else if ($target.is('#go_both')) {
+                } else if (target.is('#go_both')) {
                     cmd = getMoveBothCommand()
-                } else if ($target.is('#go_raw')) {
+                } else if (target.is('#reset_motorcontroller')) {
+                    cmd = getResetMotorContollerCommand()
+                } else if (target.is('#go_raw')) {
                     cmd = getRawCommand()
                 }
 
-                sendRequest('controller/command/sync', 'POST', {command: cmd})
+                sendRequest('command', 'POST', {command: cmd})
 
             } catch (err) {
                 console.error(err)
             }
 
-        } else if ($target.is('#refresh_status')) {
-
+        } else if (target.is('#refresh_status')) {
             e.preventDefault()
-
             refreshStatus()
-
-        } else if ($target.is('#gauger_connected_status')) {
-
+        } else if (target.is('#gauger_connected_status')) {
             e.preventDefault()
-
             handleGaugerConnectButton()
         }
     })
-
     $('form').on('change', function(e) {
         const $target = $(e.target)
         if ($target.is('#refresh_interval')) {
@@ -89,7 +81,7 @@ $(document).ready(function() {
             if (confirm('Are you sure you want to ' + action + '?')) {
                 clearRefreshInterval()
                 $target.text(action + 'ing...')
-                const res = await fetch('gauger/' + action, {method: 'POST'})
+                const res = await fetch('/' + action, {method: 'POST'})
                 const {status} = await res.json()
                 writeStatus(status)
             }
@@ -200,11 +192,14 @@ $(document).ready(function() {
         $('#position_m1').text(fixedSafe(status.position[0], 2))
         $('#position_m2').text(fixedSafe(status.position[1], 2))
 
-        $('#gauger_connected_status').text(ed(status.gaugerConnectedStatus))
+        const gaugerConnectedStatus = status.isGaugerConnected
+            ? 'Connected'
+            : 'Disconnected'
+        $('#gauger_connected_status').text(ed(gaugerConnectedStatus))
             .removeClass('connected disconnected')
-            .addClass(ed(status.gaugerConnectedStatus).toLowerCase())
+            .addClass(ed(gaugerConnectedStatus).toLowerCase())
 
-        $('#is_mc_init').text('' + ed(status.isMcInit))
+        $('#is_mc_init').text('' + ed(status.isMccInit))
         $('#limitsEnabled_m1') .text('' + ed(status.limitsEnabled[0]))
         $('#limitsEnabled_m2') .text('' + ed(status.limitsEnabled[1]))
         $('#limitState_m1_cw') .text('' + ed(status.limitStates[0]))
@@ -282,10 +277,10 @@ $(document).ready(function() {
         const howMuch1 = parseFloat($('#in_howmuch1').val())
         const howMuch2 = parseFloat($('#in_howmuch2').val())
         const isSameTime = $('#in_sametime').is(':checked') ? 'T' : 'F'
-        if (dir1 != 1 && dir1 != 2) {
+        if (dir1 !== 1 && dir1 !== 2) {
             throw new Error('Invalid direction_1 value: ' + dir1)
         }
-        if (dir2 != 1 && dir2 != 2) {
+        if (dir2 !== 1 && dir2 !== 2) {
             throw new Error('Invalid direction_2 value: ' + dir2)
         }
         if (isNaN(howMuch1)) {
@@ -295,6 +290,14 @@ $(document).ready(function() {
             throw new Error('Invalid howmuch_2 value')
         }
         return [unit == 'steps' ? ':10' : ':11', dir1, howMuch1, dir2, howMuch2, isSameTime].join(' ') + ';\n'
+    }
+
+    function getStopCommand() {
+        return ':76 ;\n'
+    }
+
+    function getResetMotorContollerCommand() {
+        return ':77 ;\n'
     }
 
     function getRawCommand() {

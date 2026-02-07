@@ -36,8 +36,8 @@ describe('App', () => {
             await app.close()
         })
 
-        it('should serve metrics', async () => {
-            const res = await fetch(appUrl + '/metrics')
+        it('should serve status', async () => {
+            const res = await fetch(appUrl + '/status')
             expect(res.status).to.equal(200)
         })
 

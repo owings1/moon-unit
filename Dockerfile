@@ -1,6 +1,6 @@
-FROM arm32v7/node:alpine
+FROM docker.io/node:alpine
 
-COPY qemu-arm-static /usr/bin
+# COPY qemu-arm-static /usr/bin
 
 WORKDIR /app
 RUN chown node:node /app && \

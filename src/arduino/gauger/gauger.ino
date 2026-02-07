@@ -20,6 +20,10 @@
  * 76 - Send motor stop signal
  *
  *  :<id>:76 ;
+ *
+ * 77 - Reset motorcontroller
+ *
+ *  :<id>:77 ;
  */
 #include <Adafruit_BNO055.h>
 #include <Adafruit_Sensor.h>
@@ -35,15 +39,16 @@
 #define gpsEnabled true
 #define orientationEnabled true
 #define magEnabled true
-#define mStopPin D9
+#define mcBusyPin D8
+#define mcStopPin D9
+#define mcResetPin D10
+#define selfResetPin D18
 
 /******************************************/
 /* Constants                              */
 /******************************************/
-#define BAUD_RATE 9600L
+#define BAUD_RATE 115200L
 #define DEG_NULL 1000.00
-#define STATE_READY HIGH
-#define STATE_BUSY LOW
  
 /******************************************/
 /* I2C                                    */
@@ -76,7 +81,6 @@ struct Module {
 /******************************************/
 /* Motor Controller Serial                */
 /******************************************/
-#define mccStatePin D10
 #define mccSerial Serial2
 #define mccReadTimeout 250L
 #define mccWriteTimeout 10000L
@@ -85,14 +89,8 @@ struct Module {
 struct MotorControllerSerial {
   Stream &stream;
   Module module;
-
-  byte statePin;
-  byte state;
-
   unsigned long readTimeout;
   unsigned long writeTimeout;
-  
-  String statusStr;
 };
 
 MotorControllerSerial mcc = {mccSerial};
@@ -101,17 +99,14 @@ MotorControllerSerial mcc = {mccSerial};
 /* Motor Controller I2C                   */
 /******************************************/
 #define mciAddress 0x9
-#define mciMessageLength 18
+#define mciMessageLength 32
 #define mciDefaultCheckInterval 2000L
 
 struct MotorControllerI2C {
   Module module;
-
   byte address;
- 
   unsigned long checkInterval;
   unsigned long lastCheckTime;
-
   String statusStr;
 };
 
@@ -162,9 +157,7 @@ SoftwareSerial gpsSerial(gpsRxPin, -1); //rx, tx
 struct Gps {
   Stream &stream;
   Module module;
-
   TinyGPS helper;
-
   float lat;
   float lon;
 };
@@ -180,19 +173,14 @@ Gps gps = {gpsSerial};
 
 struct Mag {
   Module module;
-
   Adafruit_HMC5883_Unified sensor;
-
   int deviceId;
   byte checkAddress;
-  
   //float declinationRad;
-
   // micro-Tesla (uT)
   float x;
   float y;
   float z;
-
   // degrees
   float heading;
 };
@@ -203,8 +191,8 @@ Mag mag;
 /* Setup                                  */
 /******************************************/
 void setup() {
-  pinMode(mccStatePin, INPUT_PULLUP);
-  pinMode(mStopPin, OUTPUT);
+  pinMode(mcBusyPin, INPUT_PULLDOWN);
+  pinMode(mcStopPin, OUTPUT);
   Serial.begin(BAUD_RATE);
   mainWire.setSDA(SDA_MAIN);
   mainWire.setSCL(SCL_MAIN);
@@ -226,7 +214,6 @@ void setupModules() {
   mcc.module.isEnabled = true;
   mcc.readTimeout = mccReadTimeout;
   mcc.writeTimeout = mccWriteTimeout;
-  mcc.statePin = mccStatePin;
   if (mcc.module.isEnabled) {
     mcc.module.isInit = checkMccConnected(mcc.stream);
   }
@@ -335,9 +322,7 @@ void takeCommand(Stream &input, Stream &output) {
     }
     // forward to motorcontroller
 
-    readMccState(mcc);
-
-    if (mcc.state != STATE_READY) {
+    if (digitalRead(mcBusyPin)) {
       input.readStringUntil(';');
       writeAck(id, output, true);
       output.write("=04\n");
@@ -350,9 +335,6 @@ void takeCommand(Stream &input, Stream &output) {
     mcBody.concat(input.readStringUntil(';'));
     mcBody.concat(";");
     mcc.stream.print(mcBody);
-
-    // output.println(mcBody);
-    // output.write('\n');
 
     int d = 0;
     while (!mcc.stream.available()) {
@@ -405,23 +387,38 @@ void takeCommand(Stream &input, Stream &output) {
   } else if (cmdId == 75) {
     // Reinit MCC & MCI module
     input.readStringUntil(';');
-    if (mcc.module.isEnabled) {
-      mcc.module.isInit = checkMccConnected(mcc.stream);
-    }
-    if (mci.module.isEnabled) {
-      mci.module.isInit = checkMciConnected(mci);
-    }
+    mccSerial.begin(mccBaudRate);
+    mcc.module.isInit = checkMccConnected(mcc.stream);
+    mci.module.isInit = checkMciConnected(mci);
     output.write("=00\n");
   } else if (cmdId == 76) {
     // Send motor stop signal
     input.readStringUntil(';');
-    digitalWrite(mStopPin, HIGH);
-    output.write("=00\n");
+    digitalWrite(mcStopPin, HIGH);
     delay(100);
-    digitalWrite(mStopPin, LOW);
+    digitalWrite(mcStopPin, LOW);
+    output.write("=00\n");
+  } else if (cmdId == 77) {
+    // Reset motorcontroller
+    input.readStringUntil(';');
+    tripResetPin(mcResetPin);
+    output.write("=00\n");
+  } else if (cmdId == 78) {
+    // Reset self
+    input.readStringUntil(';');
+    tripResetPin(selfResetPin);
+    output.write("=00\n");
   } else {
     output.write("=44\n");
   }
+}
+
+void tripResetPin(byte  pin) {
+    pinMode(pin, OUTPUT);
+    digitalWrite(pin, LOW);
+    delay(100);
+    digitalWrite(pin, HIGH);
+    pinMode(pin, INPUT_PULLUP);
 }
 
 void writeAck(long &id, Stream &output, boolean withColon) {
@@ -452,10 +449,6 @@ void writeAll(Stream &output) {
     writeModulePrefix(mag.module, output);
     writeMag(mag, output);
   }
-  if (mcc.module.isInit) {
-    writeModulePrefix(mcc.module, output);
-    writeMccStatus(mcc, output);
-  }
   if (mci.module.isInit) {
     writeModulePrefix(mci.module, output);
     writeMciStatus(mci, output);
@@ -475,7 +468,6 @@ void writeModules(Stream &output) {
   writeModuleLabel(orf.module, output, doPrefix);
   writeModuleLabel(gps.module, output, doPrefix);
   writeModuleLabel(mag.module, output, doPrefix);
-  writeModuleLabel(mcc.module, output, doPrefix);
   writeModuleLabel(mci.module, output, doPrefix);
 }
 
@@ -487,10 +479,6 @@ void writeModuleLabel(Module &m, Stream &output, bool &doPrefix) {
     output.write(m.label);
     doPrefix = true;
   }
-}
-
-void writeMccStatus(MotorControllerSerial &m, Stream &output) {
-  output.print(m.statusStr);
 }
 
 void writeMciStatus(MotorControllerI2C &m, Stream &output) {
@@ -542,10 +530,6 @@ void writeMag(Mag &m, Stream &output) {
 }
 
 void readAll() {
-  readMccState(mcc);
-  if (mcc.module.isInit) {
-    readMccStatus(mcc);
-  }
   if (mci.module.isInit) {
     readMciStatus(mci);
   }
@@ -563,38 +547,11 @@ void readAll() {
   }
 }
 
-void readMccState(MotorControllerSerial &m) {
-  m.state = digitalRead(m.statePin);
-}
-
-void readMccStatus(MotorControllerSerial &m) {
-  if (m.state != STATE_READY) {
-    return;
-  }
-  // Send command Get full status
-  m.stream.write(":18 ;");
-  int d = 0;
-  while (!m.stream.available()) {
-    delay(1);
-    d += 1;
-    if (d > m.readTimeout) {
-      return;
-    }
-  }
-  String codeStr = m.stream.readStringUntil(';');
-  if (!codeStr.equals("=00")) {
-    return;
-  }
-  m.statusStr = m.stream.readStringUntil('\n');
-  m.statusStr.trim();
-  m.module.hasData = m.statusStr.length() > 0;
-}
-
 // should only do this occasionally, since it will slow
 // motor operations down.
 // read I2C
 void readMciStatus(MotorControllerI2C &m) {
-  if (millis() - m.lastCheckTime < m.checkInterval) {
+  if (digitalRead(mcBusyPin) && millis() - m.lastCheckTime < m.checkInterval) {
     return;
   }
   m.lastCheckTime = millis();
@@ -602,17 +559,7 @@ void readMciStatus(MotorControllerI2C &m) {
     return;
   }
   mainWire.requestFrom(m.address, mciMessageLength);
-  char buf[19];
-  byte i = 0;
-  while (mainWire.available()) {
-    char c = mainWire.read();
-    buf[i] = c;
-    i++;
-    if (c == 13) {
-      break;
-    }
-  }
-  m.statusStr = String(buf);
+  m.statusStr = mainWire.readStringUntil('\n');
   m.statusStr.trim();
   m.module.hasData = m.statusStr.length() > 0;
 }
@@ -727,7 +674,7 @@ boolean checkMciConnected(MotorControllerI2C m) {
 
 // send a status request with a 2 second timeout
 boolean checkMccConnected(Stream &stream) {
-  stream.write(":18 ;");
+  stream.write(":14 ;");
   // timeout 2 seconds
   int d = 0;
   while (!stream.available()) {

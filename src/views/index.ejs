@@ -36,7 +36,7 @@
                     <tbody>
                         <tr>
                             <td>State</td>
-                            <td><span id="controller_state"><%= '' + status.controllerState %></span></td>
+                            <td><span id="controller_state"><%= '' + helper.mcBusyStr(status.mcBusy) %></span></td>
                         </tr>
                     </tbody>
                     <thead>
@@ -308,7 +308,7 @@
         <div class="panel">
             <form>
                 <div>
-                    <a href="javascript:" class="gpio button gpio_controller_stop <%= status.gpioEnabled ? 'red' : 'disabled' %>">Stop</a>
+                    <a href="javascript:" class="button stop" id="stopsignal">Stop</a>
                 </div>
                 <table>
                     <tr>
@@ -412,8 +412,8 @@
         <div class="panel">
             <form>
                 <!-- <a href="javascript:" class="gpio button green" id="gpio_controller_state">State</a> -->
-                <a href="javascript:" class="button <%= status.gaugerConnectedStatus.toLowerCase() %>" id="gauger_connected_status">
-                    <%= status.gaugerConnectedStatus %>
+                <a href="javascript:" class="button <%= helper.connectedStr(status.isGaugerConnected).toLowerCase() %>" id="gauger_connected_status">
+                    <%= helper.connectedStr(status.isGaugerConnected) %>
                 </a>
             </form>
         </div>

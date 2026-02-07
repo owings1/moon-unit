@@ -2,6 +2,12 @@
 
 ## Command Module
 
+
+
+I2C SDA
+I2C SCL
+GPS
+
 ### Back Panels
 
 
@@ -52,45 +58,26 @@ Bottom:
 |  10 | m2 enable                   | white  | to motor driver
 |  11 | m2 limit switch CW          | yellow | inverter 6
 |  12 | m2 limit switch ACW         | yellow | inverter 8
-|  13 | stop signal                 | yellow | to pi 18, signal to stop all motors when `HIGH`
-|  A0 | ready signal                | green  | to gauger 5 and pi 38, ready when `HIGH`
+|  13 | stop signal                 | yellow | NC, signal to stop all motors when `HIGH`
+|  A0 | ready signal                | green  | to gauger 5, ready when `HIGH`
 |  A1 |                             |        | 
 |  A2 |                             |        |
 |  A3 |                             |        |
 | SCL |                             |        |
 | SDA |                             |        |
-| Rst | reset pin                   | blue   | for pi to reset when `LOW`
 
 ###  Gauger (Nano)
 
 | Pin | Description                 | Color  | Notes
 |-----|-----------------------------|--------|------------------
-| RX0 | RX from pi                  | yellow | via rocker switch to pi 8
-| TX1 | TX to pi                    | blue   | via rocker switch to pi 10
-|   5 | Controller ready            | green  | uno A0 and pi 16
+|   5 | Controller ready            | green  | uno A0
 |   6 | RX from controller          | blue   | via rocker switch to uno 1
 |   7 | TX to controller            | yellow | via rocker switch to uno 0
 |   8 | RX from GPS                 | green  |
 |   9 | TX to GPS (NC)              |        |
 |  A4 | I2C SDA                     | white  |
 |  A5 | I2C SCL                     | blue   |
-| Rst | Reset pin                   | white  | to pi 11
-
-### Pi Zero
-
-See [raspberry pi GPIO pinout image][gpio]. Pin 1 is on the SD card side.
-
-| Pin  | Name    | Description         | Color  | Notes
-|------|---------|---------------------|--------|--------
-|   2  | 5V      | Power in            | red    | from voltage regulator pre-diode
-|   6  | GND     | Ground              | black  |
-|   8  | GPIO 14 | TX to gauger        | yellow | via rocker switch to gauger pin RX0
-|  10  | GPIO 15 | RX from gauger      | blue   | via rocker switch to gauger pin TX1
-|  11  | GPIO 17 | Gauger reset        | white  | to gauger Rst
-|  13  | GPIO 27 | Controller reset    | blue   | to uno Rst
-|  16  | GPIO 20 | Controller ready    | green  | to uno A0 and gauger 5
-|  18  | GPIO 24 | Controller stop     | yellow | to uno 13
-|  29  | GPIO  5 | Shutdown button     | white  | shutdown pi when `LOW` for 2s
+| Rst | Reset pin                   | white  |
 
 ### Schmitt Inverter
 
@@ -114,5 +101,4 @@ See [CD40106BE datasheet][schmitt]
 A post about the BNO055 Euler bias:
 - https://community.bosch-sensortec.com/t5/MEMS-sensors-forum/BNO055-Operation-Mode-amp-Euler-Bias/td-p/7535
 
-[gpio]: https://elinux.org/images/5/5c/Pi-GPIO-header.png
 [schmitt]: https://www.ti.com/lit/ds/symlink/cd40106b.pdf?ts=1619275906436

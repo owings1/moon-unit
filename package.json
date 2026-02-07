@@ -9,7 +9,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "git@git.int.dougowings.net:space/moon-unit.git"
+    "url": "https://github.com/owings1/moon-unit"
   },
   "author": "Doug Owings <doug@dougowings.net>",
   "dependencies": {
@@ -26,8 +26,5 @@
     "fs-extra": "^9.1.0",
     "mocha": "^8.4.0",
     "nyc": "^15.1.0"
-  },
-  "peerDependencies": {
-    "rpi-gpio": "^2.1.7"
   }
 }

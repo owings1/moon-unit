@@ -5,12 +5,13 @@ const DeclinationServiceUrl = 'https://www.ngdc.noaa.gov/geomag-web/calculators/
 class Util {
 
     static floats(arr) {
-         // normalize NaN, undefined, etc. to null
-        return JSON.parse(
-            JSON.stringify(
-                arr.map(parseFloat)
-            )
-        )
+        // normalize NaN, undefined, etc. to null
+        return Array.from(
+            JSON.parse(
+                JSON.stringify(
+                    arr.map(parseFloat)
+                )
+            ))
     }
 
     static radians(degrees) {
@@ -31,7 +32,7 @@ class Util {
     // see: https://www.pveducation.org/pvcdrom/properties-of-sunlight/declination-angle
     static calcDefaultDeclinationRad(dateRef) {
         dateRef = dateRef || new Date
-        return Util.radians(-23.45 * Math.cos(360/365 * (Util.dayOfYear(dateRef) + 10)))
+        return Util.radians(-23.45 * Math.cos(360 / 365 * (Util.dayOfYear(dateRef) + 10)))
     }
 
     /*
@@ -43,10 +44,15 @@ class Util {
     static fetchDeclinationRad(lat, lon, dateRef) {
         dateRef = dateRef || new Date
         const q = {
-            magneticComponent : 'd',
+            magneticComponent: 'd',
             lat1: '',
             lat1Hemis
         }
+    }
+
+    static flagBitSet(bit, flag) {
+        const n = 1 << bit
+        return (flag & n) === n
     }
 }
 module.exports = Util
