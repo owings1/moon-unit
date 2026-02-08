@@ -7,7 +7,7 @@ const path      = require('path')
 const {resolve} = path
 
 
-const App = require('../src/app')
+const App = require('../src/app').default
 
 describe('App', () => {
 
@@ -55,7 +55,7 @@ describe('App', () => {
     })
 })
 
-const Util = require('../src/util')
+const Util = require('../src/util').default
 describe('Util', () => {
     describe('calcDefaultDeclinationRad', () => {
         it('should return degrees between +/-23.45', () => {

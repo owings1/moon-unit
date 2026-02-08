@@ -24,6 +24,10 @@
  * 77 - Reset motorcontroller
  *
  *  :<id>:77 ;
+ *
+ * 78 - Reset self
+ *
+ *  :<id>:78 ;
  */
 #include <Adafruit_BNO055.h>
 #include <Adafruit_Sensor.h>

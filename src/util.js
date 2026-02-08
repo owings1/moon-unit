@@ -1,10 +1,8 @@
-const fetch = require('node-fetch')
-
 const DeclinationServiceUrl = 'https://www.ngdc.noaa.gov/geomag-web/calculators/calculateDeclination'
 
 class Util {
 
-    static floats(arr) {
+    static parseFloats(arr) {
         // normalize NaN, undefined, etc. to null
         return Array.from(
             JSON.parse(
@@ -55,4 +53,4 @@ class Util {
         return (flag & n) === n
     }
 }
-module.exports = Util
+export default Util

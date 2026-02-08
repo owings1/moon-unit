@@ -189,6 +189,15 @@ $(() => {
 
         const oriNames = ['x', 'y', 'z', 'qw', 'qx', 'qy', 'qz']
 
+        $('#controller_state').text(
+            status.mcBusy == null
+                ?  'null'
+                : (
+                    status.mcBusy
+                    ? 'Busy'
+                    : 'Ready'
+                )
+        )
         $('#position_m1').text(fixedSafe(status.position[0], 2))
         $('#position_m2').text(fixedSafe(status.position[1], 2))
 

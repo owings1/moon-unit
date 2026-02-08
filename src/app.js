@@ -2,18 +2,12 @@
 
 // TODO: garbage collect unacked gauger jobs
 
-const fs = require('fs')
-const express = require('express')
-const merge = require('merge')
-const path = require('path')
-const showdown = require('showdown')
-const Util = require('./util')
-const bodyParser = require('body-parser')
+import express from 'express'
+import Util from './util.js'
+import bodyParser from 'body-parser'
 
-const MockBinding = require('@serialport/binding-mock')
-const SerPortFull = require('serialport')
-const SerPortMock = require('@serialport/stream')
-const Readline = require('@serialport/parser-readline')
+import SerialPort from 'serialport'
+import Readline from '@serialport/parser-readline'
 
 const DEG_NULL = 1000
 
@@ -39,7 +33,6 @@ class App {
         return {
             gaugerPath: env.GAUGER_PORT,
             gaugerBaudRate: +env.GAUGER_BAUD_RATE || 115200,
-            mock: !!env.MOCK,
             port: env.HTTP_PORT || 8080,
             quiet: !!env.QUIET,
             openDelay: +env.OPEN_DELAY || 1_000,
@@ -50,26 +43,22 @@ class App {
     }
 
     constructor(opts, env) {
-
-        this.opts = merge(this.defaults(env), opts)
-
+        this.opts = Object.assign(this.defaults(env), opts || {})
         this.gaugerJobs = {}
         this.gaugerQueue = []
         this.gaugerBusy = false
         this.gaugerWorkerHandle = null
         this.isGaugerConnected = false
         this.shouldGaugerAutoconnect = true
-
         this.app = express()
         this.httpServer = null
-
         this.clearGauges()
         this.templateHelper = new TemplateHelper
         this.initApp(this.app)
-
         this.declinationData = {}
         this.declinationAngle = null
         this.declinationSource = null
+        this.gauger = new SerialPort(this.opts.gaugerPath, { baudRate: this.opts.gaugerBaudRate, autoOpen: false })
     }
 
     clearGauges() {
@@ -161,8 +150,6 @@ class App {
     async openGauger() {
         this.closeGauger()
         this.log('Opening gauger', this.opts.gaugerPath)
-        this.gauger = this.createDevice(this.opts.gaugerPath, this.opts.gaugerBaudRate)
-        this.debug(`Created device`)
         await new Promise((resolve, reject) => {
             this.gauger.open(err => {
                 if (err) {
@@ -220,7 +207,7 @@ class App {
             } catch (error) {
                 var res = { error }
             }
-            this.gaugerJobs[id].handler(res)
+            this.gaugerJobs[id].done(res)
         } else {
             this.log('Unknown gauger job ACKd', { id, resText })
         }
@@ -229,7 +216,7 @@ class App {
     handleGaugeData(data) {
         const [module, text] = String(data).split(':')
         const values = (text || '').split('|')
-        const floats = Util.floats(values)
+        const floats = Util.parseFloats(values)
         switch (module) {
             case 'GPS':
                 this.gpsCoords = floats.map(v => v === DEG_NULL ? null : v)
@@ -258,8 +245,8 @@ class App {
                 this.limitStates = [2, 4, 3, 5].map(checkBit)
                 this.limitsEnabled = [12, 13].map(checkBit)
                 this.position = [
-                    floats[++i] === DEG_NULL ? null : floats[0],
-                    floats[++i] === DEG_NULL ? null : floats[1]
+                    floats[++i] === DEG_NULL ? null : floats[i],
+                    floats[++i] === DEG_NULL ? null : floats[i]
                 ]
                 this.maxSpeeds = [
                     parseInt(values[++i], 0x10) || null,
@@ -269,6 +256,7 @@ class App {
                     parseInt(values[++i], 0x10) || null,
                     parseInt(values[++i], 0x10) || null,
                 ]
+                this.log({text, statusFlag, mcBusy: this.mcBusy})
                 break
             case 'MOD':
                 // names the modules available
@@ -290,14 +278,13 @@ class App {
             if (this.gauger.isOpen) {
                 this.log('Closing gauger')
                 this.gauger.close()
-                this.gauger = null
+                // this.gauger = null
             } else {
                 this.log('Gauger not open')
             }
         }
         this.isGaugerConnected = false
         this.drainGaugerQueue()
-
         this.clearGauges()
         this.stopGaugerWorker()
     }
@@ -331,17 +318,22 @@ class App {
         this.gaugerBusy = true
 
         const { id, body, handler } = this.gaugerQueue.pop()
-        // TODO: garbage collect unacked jobs
+        const timeoutId = setTimeout(
+            () => this.gaugerJobs[id]?.done({error: 'Command timeout'}),
+            this.opts.commandTimeout,
+        )
         this.gaugerJobs[id] = {
-            handler: res => {
+            done: res => {
+                clearTimeout(timeoutId)
                 this.gaugerBusy = false
+                delete this.gaugerJobs[id]
                 if (handler) {
                     handler(res)
                 }
             }
         }
         // TODO: try catch and reject
-        this.gauger.write(Buffer.from(this.opts.mock ? body : body.trim()))
+        this.gauger.write(Buffer.from(body.trim()))
     }
 
     async miscLoop() {
@@ -397,9 +389,9 @@ class App {
     initApp(app) {
 
         app.set('view engine', 'ejs')
-        app.set('views', __dirname + '/views')
+        app.set('views', import.meta.dirname + '/views')
 
-        app.use('/static', express.static(__dirname + '/static'))
+        app.use('/static', express.static(import.meta.dirname + '/static'))
 
         app.get('/', (req, res) => {
             this.status().then(status => {
@@ -454,27 +446,6 @@ class App {
                 res.status(500).json({ error })
             })
         })
-
-        app.get('/doc/:filename', (req, res) => {
-            const file = path.resolve(__dirname, '../doc', path.basename(req.params.filename) + '.md')
-            fs.readFile(file, 'utf-8', (error, text) => {
-                if (error) {
-                    if (error.code == 'ENOENT') {
-                        res.status(404)
-                    } else {
-                        res.status(400)
-                    }
-                    res.json({ error })
-                    return
-                }
-                const converter = new showdown.Converter({
-                    tables: true
-                })
-                const html = converter.makeHtml(text)
-                res.render('doc', { html })
-            })
-        })
-
         app.use((req, res) => res.status(404).json({ error: 'not found' }))
     }
 
@@ -482,18 +453,9 @@ class App {
         // TODO
     }
 
-    createDevice(devicePath, baudRate) {
-        var SerialPort = SerPortFull
-        if (this.opts.mock) {
-            SerPortMock.Binding = MockBinding
-            var SerialPort = SerPortMock
-            // TODO: mock response
-            //  see: https://serialport.io/docs/api-binding-mock
-            //  see: https://github.com/serialport/node-serialport/blob/master/packages/binding-mock/lib/index.js
-            MockBinding.createPort(devicePath, { echo: true, readyData: [] })
-        }
-        return new SerialPort(devicePath, { baudRate, autoOpen: false })
-    }
+    // createDevice(devicePath, baudRate) {
+    //     return new SerialPort(devicePath, { baudRate, autoOpen: false })
+    // }
 
     log(...args) {
         if (!this.opts.quiet) {
@@ -530,4 +492,4 @@ class TemplateHelper {
     }
 }
 
-module.exports = App
+export default App
