@@ -9,7 +9,19 @@ class Util {
                 JSON.stringify(
                     arr.map(parseFloat)
                 )
-            ))
+            )
+        )
+    }
+
+    static parseHexInts(arr) {
+        // normalize NaN, undefined, etc. to null
+        return Array.from(
+            JSON.parse(
+                JSON.stringify(
+                    arr.map(x => parseInt(x, 0x10))
+                )
+            )
+        )
     }
 
     static radians(degrees) {
@@ -49,6 +61,9 @@ class Util {
     }
 
     static flagBitSet(bit, flag) {
+        if (typeof flag !== 'number' || isNaN(flag)) {
+            return null
+        }
         const n = 1 << bit
         return (flag & n) === n
     }

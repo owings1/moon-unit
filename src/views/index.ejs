@@ -1,9 +1,9 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title><%= title %></title>
-    <script type="text/javascript" src="static/js/jquery-3.6.0.min.js"></script>
-    <script type="text/javascript" src="static/js/controls.js"></script>
+    <title>MoonUnit</title>
+    <script type="text/javascript" src="static/js/jquery-4.0.0.min.js"></script>
+    <script type="text/javascript" src="static/js/controls.js" type="module"></script>
     <link rel="stylesheet" type="text/css" href="static/css/app.css"/>
 </head>
 <body>
@@ -36,7 +36,7 @@
                     <tbody>
                         <tr>
                             <td>State</td>
-                            <td><span id="controller_state"><%= '' + helper.mcBusyStr(status.mcBusy) %></span></td>
+                            <td><span id="controller_state"></span></td>
                         </tr>
                     </tbody>
                     <thead>
@@ -49,7 +49,6 @@
                             <td>Scope</td>
                             <td>
                                 <span class="position-value" id="position_m1">
-                                    <%- helper.fixedSafe(status.position[0], 2) %>
                                 </span>
                             </td>
                         </tr>
@@ -57,7 +56,6 @@
                             <td>Base</td>
                             <td>
                                 <span class="position-value" id="position_m2">
-                                    <%- helper.fixedSafe(status.position[1], 2) %>
                                 </span>
                             </td>
                         </tr>
@@ -70,11 +68,13 @@
                     <tbody>
                         <tr>
                             <td>Scope</td>
-                            <td><span id="limitsEnabled_m1"><%= '' + status.limitsEnabled[0] %></span></td>
+                            <td>
+                                <span id="limitsEnabled_m1"></span>
+                            </td>
                         </tr>
                         <tr>
                             <td>Base</td>
-                            <td><span id="limitsEnabled_m2"><%= '' + status.limitsEnabled[1] %></span></td>
+                            <td><span id="limitsEnabled_m2"></span></td>
                         </tr>
                     </tbody>
                     <thead>
@@ -85,19 +85,19 @@
                     <tbody>
                         <tr>
                             <td>Scope CW</td>
-                            <td><span id="limitState_m1_cw"><%= '' + status.limitStates[0] %></td>
+                            <td><span id="limitState_m1_cw"></td>
                         </tr>
                         <tr>
                             <td>Scope ACW</td>
-                            <td><span id="limitState_m1_acw"><%= '' + status.limitStates[1] %></td>
+                            <td><span id="limitState_m1_acw"></td>
                         </tr>
                         <tr>
                             <td>Base CW</td>
-                            <td><span id="limitState_m2_cw"><%= '' + status.limitStates[2] %></td>
+                            <td><span id="limitState_m2_cw"></td>
                         </tr>
                         <tr>
                             <td>Base ACW</td>
-                            <td><span id="limitState_m2_acw"><%= '' + status.limitStates[3] %></td>
+                            <td><span id="limitState_m2_acw"></td>
                         </tr>
                     </tbody>
                     <thead>
@@ -108,11 +108,11 @@
                     <tbody>
                         <tr>
                             <td>Scope</td>
-                            <td><span id="maxSpeed_m1"><%= '' + status.maxSpeeds[0] %></span></td>
+                            <td><span id="maxSpeed_m1"></span></td>
                         </tr>
                         <tr>
                             <td>Base</td>
-                            <td><span id="maxSpeed_m2"><%= '' + status.maxSpeeds[1] %></span></td>
+                            <td><span id="maxSpeed_m2"></span></td>
                         </tr>
                     </tbody>
                     <thead>
@@ -123,11 +123,11 @@
                     <tbody>
                         <tr>
                             <td>Scope</td>
-                            <td><span id="acceleration_m1"><%= '' + status.accelerations[0] %></span></td>
+                            <td><span id="acceleration_m1"></span></td>
                         </tr>
                         <tr>
                             <td>Base</td>
-                            <td><span id="acceleration_m2"><%= '' + status.accelerations[1] %></span></td>
+                            <td><span id="acceleration_m2"></span></td>
                         </tr>
                     </tbody>
                 </table>
@@ -142,47 +142,47 @@
                     <tbody>
                         <tr>
                             <td>isInit</td>
-                            <td><span id="is_orientation_init"><%= '' + status.isOrientationInit %></span></td>
+                            <td><span id="is_orientation_init"></span></td>
                         </tr>
                         <tr>
                             <td>x</td>
-                            <td><span id="orientation_x"><%= helper.fixedSafe(status.orientation[0], 4) %></span></td>
+                            <td><span id="orientation_x"></span></td>
                         </tr>
                         <tr>
                             <td>y</td>
-                            <td><span id="orientation_y"><%= helper.fixedSafe(status.orientation[1], 4) %></span></td>
+                            <td><span id="orientation_y"></span></td>
                         </tr>
                         <tr>
                             <td>z</td>
-                            <td><span id="orientation_z"><%= helper.fixedSafe(status.orientation[2], 4) %></span></td>
+                            <td><span id="orientation_z"></span></td>
                         </tr>
                         <tr>
                             <td>qw</td>
-                            <td><span id="orientation_qw"><%= helper.fixedSafe(status.orientation[3], 4) %></span></td>
+                            <td><span id="orientation_qw"></span></td>
                         </tr>
                         <tr>
                             <td>qx</td>
-                            <td><span id="orientation_qx"><%= helper.fixedSafe(status.orientation[4], 4) %></span></td>
+                            <td><span id="orientation_qx"></span></td>
                         </tr>
                         <tr>
                             <td>qy</td>
-                            <td><span id="orientation_qy"><%= helper.fixedSafe(status.orientation[5], 4) %></span></td>
+                            <td><span id="orientation_qy"></span></td>
                         </tr>
                         <tr>
                             <td>qz</td>
-                            <td><span id="orientation_qz"><%= helper.fixedSafe(status.orientation[6], 4) %></span></td>
+                            <td><span id="orientation_qz"></span></td>
                         </tr>
                         <tr>
                             <td>Temperature</td>
-                            <td><span id="temperature"><%= '' + status.temperature %></span></td>
+                            <td><span id="temperature"></span></td>
                         </tr>
                         <tr>
                             <td>Calibration</td>
-                            <td><span id="orienation_calibration"><%= status.orientationCalibration.map(v => '' + v).join('|') %></span></td>
+                            <td><span id="orienation_calibration"></span></td>
                         </tr>
                         <tr>
                             <td>isCalibrated</td>
-                            <td><span id="is_orientation_calibrated"><%= '' + status.isOrientationCalibrated %></span></td>
+                            <td><span id="is_orientation_calibrated"></span></td>
                         </tr>
                     </tbody>
                 </table>
@@ -197,47 +197,47 @@
                     <tbody>
                         <tr>
                             <td>isInit</td>
-                            <td><span id="is_base_orientation_init"><%= '' + status.isBaseOrientationInit %></span></td>
+                            <td><span id="is_base_orientation_init"></span></td>
                         </tr>
                         <tr>
                             <td>x</td>
-                            <td><span id="base_orientation_x"><%= helper.fixedSafe(status.baseOrientation[0], 4) %></span></td>
+                            <td><span id="base_orientation_x"></span></td>
                         </tr>
                         <tr>
                             <td>y</td>
-                            <td><span id="base_orientation_y"><%= helper.fixedSafe(status.baseOrientation[1], 4) %></span></td>
+                            <td><span id="base_orientation_y"></span></td>
                         </tr>
                         <tr>
                             <td>z</td>
-                            <td><span id="base_orientation_z"><%= helper.fixedSafe(status.baseOrientation[2], 4) %></span></td>
+                            <td><span id="base_orientation_z"></span></td>
                         </tr>
                         <tr>
                             <td>qw</td>
-                            <td><span id="base_orientation_qw"><%= helper.fixedSafe(status.baseOrientation[3], 4) %></span></td>
+                            <td><span id="base_orientation_qw"></span></td>
                         </tr>
                         <tr>
                             <td>qx</td>
-                            <td><span id="base_orientation_qx"><%= helper.fixedSafe(status.baseOrientation[4], 4) %></span></td>
+                            <td><span id="base_orientation_qx"></span></td>
                         </tr>
                         <tr>
                             <td>qy</td>
-                            <td><span id="base_orientation_qy"><%= helper.fixedSafe(status.baseOrientation[5], 4) %></span></td>
+                            <td><span id="base_orientation_qy"></span></td>
                         </tr>
                         <tr>
                             <td>qz</td>
-                            <td><span id="base_orientation_qz"><%= helper.fixedSafe(status.baseOrientation[6], 4) %></span></td>
+                            <td><span id="base_orientation_qz"></span></td>
                         </tr>
                         <tr>
                             <td>Temperature</td>
-                            <td><span id="base_temperature"><%= '' + status.baseTemperature %></span></td>
+                            <td><span id="base_temperature"></span></td>
                         </tr>
                         <tr>
                             <td>Calibration</td>
-                            <td><span id="base_orienation_calibration"><%= status.baseOrientationCalibration.map(v => '' + v).join('|') %></span></td>
+                            <td><span id="base_orienation_calibration"></span></td>
                         </tr>
                         <tr>
                             <td>isCalibrated</td>
-                            <td><span id="is_base_orientation_calibrated"><%= '' + status.isBaseOrientationCalibrated %></span></td>
+                            <td><span id="is_base_orientation_calibrated"></span></td>
                         </tr>
                     </tbody>
                 </table>
@@ -252,15 +252,15 @@
                     <tbody>
                         <tr>
                             <td>isInit</td>
-                            <td><span id="is_gps_init"><%= '' + status.isGpsInit %></span></td>
+                            <td><span id="is_gps_init"></span></td>
                         </tr>
                         <tr>
                             <td>Lat</td>
-                            <td><span class="gps-coord" id="gps_lat"><%= helper.fixedSafe(status.gpsCoords[0], 6) %></span></td>
+                            <td><span class="gps-coord" id="gps_lat"></span></td>
                         </tr>
                         <tr>
                             <td>Lon</td>
-                            <td><span class="gps-coord" id="gps_long"><%= helper.fixedSafe(status.gpsCoords[1], 6) %></span></td>
+                            <td><span class="gps-coord" id="gps_long"></span></td>
                         </tr>
                     </tbody>
                 </table>
@@ -275,11 +275,11 @@
                     <tbody>
                         <tr>
                             <td>isInit</td>
-                            <td><span id="is_mag_init"><%= '' + status.isMagInit %></span></td>
+                            <td><span id="is_mag_init"></span></td>
                         </tr>
                         <tr>
                             <td>Heading</td>
-                            <td><span class="mag-heading" id="mag_heading"><%= helper.fixedSafe(status.magHeading, 4) %></span></td>
+                            <td><span class="mag-heading" id="mag_heading"></span></td>
                         </tr>
                     </tbody>
                 </table>
@@ -294,11 +294,11 @@
                     <tbody>
                         <tr>
                             <td>Declination (rad)</td>
-                            <td><span class="" id="declination_angle"><%= '' + status.declinationAngle %></span></td>
+                            <td><span class="" id="declination_angle"></span></td>
                         </tr>
                         <tr>
                             <td>Declination source</td>
-                            <td><span class="" id="declination_source"><%= '' + status.declinationSource %></span></td>
+                            <td><span class="" id="declination_source"></span></td>
                         </tr>
                     </tbody>
                 </table>
@@ -308,7 +308,7 @@
         <div class="panel">
             <form>
                 <div>
-                    <a href="javascript:" class="button stop" id="stopsignal">Stop</a>
+                    <a href="javascript:" class="go button red" id="stopsignal">Stop</a>
                 </div>
                 <table>
                     <tr>
@@ -412,8 +412,8 @@
         <div class="panel">
             <form>
                 <!-- <a href="javascript:" class="gpio button green" id="gpio_controller_state">State</a> -->
-                <a href="javascript:" class="button <%= helper.connectedStr(status.isGaugerConnected).toLowerCase() %>" id="gauger_connected_status">
-                    <%= helper.connectedStr(status.isGaugerConnected) %>
+                <a href="javascript:" class="button " id="gauger_connected_status">
+                    
                 </a>
             </form>
         </div>
