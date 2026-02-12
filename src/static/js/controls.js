@@ -1,7 +1,35 @@
 const DEG_NULL = 1000
 const POS_NULL = 10_000_000
 
+class MotorController {
+
+  constructor({motors}) {
+    this.values = []
+    this.isInit = false
+    this.motors = motors.map((m, i) => new Motor({...m, mc: this, id: i + 1}))
+  }
+
+  update(values) {
+    if (typeof values === 'string') {
+      values = values.split('|').map(x => parseInt(x, 16))
+    }
+    Object.assign(this.values, values)
+    this.isInit = true
+  }
+
+  get statusFlag() {
+    return this.values[0]
+  }
+
+  get busy() {
+    return this.statusFlag == null
+      ? null
+      : (this.statusFlag & 1) === 1
+  }
+}
+
 class Motor {
+
   constructor({mc, id, label}) {
     this.mc = mc
     this.id = id
@@ -110,24 +138,141 @@ class Motor {
   }
 }
 
-class MotorController {
-  constructor({motors}) {
+class Gps {
+
+  constructor() {
     this.values = []
-    this.motors = motors.map((m, i) => new Motor({...m, mc: this, id: i + 1}))
+    this.isInit = false
   }
+
   update(values) {
     if (typeof values === 'string') {
-      values = values.split('|').map(x => parseInt(x, 16))
+      values = values.split('|').map(x => parseFloat(x))
     }
     Object.assign(this.values, values)
+    this.isInit = true
   }
-  get statusFlag() {
-    return this.values[0]
+
+  get fix() {
+    return Boolean(this.values[0])
   }
-  get busy() {
-    return this.statusFlag == null
-      ? null
-      : (this.statusFlag & 1) === 1
+
+  get lat() {
+    return this.fix ? this.values[1] : null
+  }
+
+  get lon() {
+    return this.fix ? this.values[2] : null
+  }
+
+  get angle() {
+    return this.fix ? this.values[3] : null
+  }
+}
+
+class Orientation {
+
+  constructor({label}) {
+    this.label = label
+    this.values = []
+    this.isInit = false
+  }
+
+  update(values) {
+    if (typeof values === 'string') {
+      values = values.split('|').map(x => parseFloat(x))
+    }
+    Object.assign(this.values, values)
+    this.isInit = true
+  }
+
+  get x() {
+    return degNullSafe(this.values[0])
+  }
+
+  get y() {
+    return degNullSafe(this.values[1])
+  }
+
+  get z() {
+    return degNullSafe(this.values[2])
+  }
+
+  get qw() {
+    return degNullSafe(this.values[3])
+  }
+
+  get qx() {
+    return degNullSafe(this.values[4])
+  }
+
+  get qy() {
+    return degNullSafe(this.values[5])
+  }
+
+  get qz() {
+    return degNullSafe(this.values[6])
+  }
+
+  get temp() {
+    return this.values[7]
+  }
+
+  get cal_system() {
+    return this.values[8]
+  }
+
+  get cal_gyro() {
+    return this.values[9]
+  }
+
+  get cal_accel() {
+    return this.values[10]
+  }
+
+  get cal_mag() {
+    return this.values[11]
+  }
+
+  get isCalibrated() {
+    return Boolean(this.values[12])
+  }
+
+  get calibration() {
+    return [this.cal_system, this.cal_gyro, this.cal_accel, this.cal_mag]
+  }
+}
+
+class Magnetometer {
+
+  constructor({label}) {
+    this.label = label
+    this.values = []
+    this.isInit = false
+  }
+
+  update(values) {
+    if (typeof values === 'string') {
+      values = values.split('|').map(x => parseFloat(x))
+    }
+    Object.assign(this.values, values)
+    this.isInit = true
+  }
+
+  get heading() {
+    return degNullSafe(this.values[0])
+  }
+
+  get x() {
+    return degNullSafe(this.values[1])
+  }
+
+  get y() {
+    return degNullSafe(this.values[2])
+  }
+
+  get z() {
+    return degNullSafe(this.values[3])
   }
 }
 
@@ -137,34 +282,10 @@ const mc = new MotorController({
     {label: 'base'},
   ]
 })
-
-class Gps {
-  constructor() {
-    this.values = []
-    this.isInit = false
-  }
-  update(values) {
-    if (typeof values === 'string') {
-      values = values.split('|').map(x => parseFloat(x))
-    }
-    Object.assign(this.values, values)
-    this.isInit = true
-  }
-  get fix() {
-    return Boolean(this.values[0])
-  }
-  get lat() {
-    return this.fix ? this.values[1] : null
-  }
-  get lon() {
-    return this.fix ? this.values[2] : null
-  }
-  get angle() {
-    return this.fix ? this.values[3] : null
-  }
-}
-
 const gps = new Gps
+const ori = new Orientation({label: 'Scope'})
+const orf = new Orientation({label: 'Base'})
+const mag = new Magnetometer({label: 'Base'})
 
 // return 'Error' if undefined
 function ed(value) {
@@ -176,6 +297,10 @@ function fixedSafe(val, n) {
     return val.toFixed(n)
   }
   return '' + val
+}
+
+function degNullSafe(value) {
+  return value === DEG_NULL ? null : value
 }
 
 $(() => {
@@ -349,13 +474,6 @@ $(() => {
 
 
   function writeStatus(status) {
-    status = status || {
-      // just make defaults for arrays
-      orientation: [],
-      orientationCalibration: [],
-      baseOrientation: [],
-      baseOrientationCalibration: [],
-    }
     const modmap = new Map(
       (status.mod || []).map(x => [x.label, x])
     )
@@ -364,6 +482,15 @@ $(() => {
     }
     if (modmap.has('GPS')) {
       gps.update(modmap.get('GPS').raw)
+    }
+    if (modmap.has('ORI')) {
+      ori.update(modmap.get('ORI').raw)
+    }
+    if (modmap.has('ORF')) {
+      orf.update(modmap.get('ORF').raw)
+    }
+    if (modmap.has('MAG')) {
+      mag.update(modmap.get('MAG').raw)
     }
 
     const [m1, m2] = mc.motors
@@ -400,31 +527,29 @@ $(() => {
     $('#acceleration_m1').text('' + ed(m1.acceleration))
     $('#acceleration_m2').text('' + ed(m2.acceleration))
 
-    $('#is_orientation_init').text('' + ed(status.isOrientationInit))
-    for (var i in oriNames) {
-      $('#orientation_' + oriNames[i]).text(fixedSafe(ed(status.orientation[i]), 4))
+    $('#is_orientation_init').text('' + ed(ori.isInit))
+    for (const name of oriNames) {
+      $('#orientation_' + name).text(fixedSafe(ed(ori[name]), 4))
     }
-    $('#temperature').text('' + ed(status.temperature))
-    $('#orienation_calibration').text(status.orientationCalibration.map(v => '' + ed(v)).join('|'))
-    $('#is_orientation_calibrated').text('' + ed(status.isOrientationCalibrated))
+    $('#temperature').text('' + ed(ori.temp))
+    $('#orienation_calibration').text(ori.calibration.map(v => '' + ed(v)).join('|'))
+    $('#is_orientation_calibrated').text('' + ed(ori.isCalibrated))
 
-    $('#is_base_orientation_init').text('' + ed(status.isBaseOrientationInit))
-    for (var i in oriNames) {
-      $('#base_orientation_' + oriNames[i]).text(fixedSafe(ed(status.baseOrientation[i]), 4))
+    $('#is_base_orientation_init').text('' + ed(orf.isInit))
+    for (const name of oriNames) {
+      $('#base_orientation_' + name).text(fixedSafe(ed(orf[name]), 4))
     }
-    $('#base_temperature').text('' + ed(status.baseTemperature))
-    $('#base_orienation_calibration').text(status.baseOrientationCalibration.map(v => '' + ed(v)).join('|'))
-    $('#is_base_orientation_calibrated').text('' + ed(status.isBaseOrientationCalibrated))
+    $('#base_temperature').text('' + ed(orf.temp))
+    $('#base_orienation_calibration').text(orf.calibration.map(v => '' + ed(v)).join('|'))
+    $('#is_base_orientation_calibrated').text('' + ed(orf.isCalibrated))
 
     $('#is_gps_init').text('' + ed(gps.isInit))
     $('#gps_lat').text('' + fixedSafe(ed(gps.lat), 6))
     $('#gps_long').text('' + fixedSafe(ed(gps.lon), 6))
+    $('#gps_angle').text('' + fixedSafe(ed(gps.angle), 6))
 
-    $('#is_mag_init').text('' + ed(status.isMagInit))
-    $('#mag_heading').text('' + fixedSafe(ed(status.magHeading), 4))
-
-    $('#ip_address').text('' + ed(status.ipAddress))
-    $('#declination_angle').text('' + ed(status.declinationAngle))
+    $('#is_mag_init').text('' + ed(mag.isInit))
+    $('#mag_heading').text('' + fixedSafe(ed(mag.heading), 4))
 
   }
 

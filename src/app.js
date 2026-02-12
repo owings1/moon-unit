@@ -3,14 +3,11 @@
 // TODO: garbage collect unacked gauger jobs
 
 import express from 'express'
-import Util from './util.js'
 import bodyParser from 'body-parser'
 
 import SerialPort from 'serialport'
 import Readline from '@serialport/parser-readline'
 
-const DEG_NULL = 1000
-const POS_NULL = 10_000_000
 const MOD_KNOWN = new Set(['MCI', 'ORI', 'ORF', 'GPS', 'MAG'])
 
 const DeviceCodes = {
@@ -54,60 +51,19 @@ class App {
         this.app = express()
         this.httpServer = null
         this.clearGauges()
-        // this.templateHelper = new TemplateHelper
         this.initApp(this.app)
-        this.declinationData = {}
-        this.declinationAngle = null
-        this.declinationSource = null
         this.device = new SerialPort(this.opts.devicePath, { baudRate: this.opts.deviceBaudRate, autoOpen: false })
     }
 
     clearGauges() {
         this.modarr = []
         this.modmap = new Map
-
-        this.isMagInit = null
-        this.magHeading = null
-
-        this.declinationAngle = null
-        this.declinationSource = null
-
-        this.isOrientationInit = null
-        this.orientation = [null, null, null, null, null, null, null]
-        this.temperature = null
-        this.orientationCalibration = [null, null, null, null]
-        this.isOrientationCalibrated = null
-
-        this.isBaseOrientationInit = null
-        this.baseOrientation = [null, null, null, null, null, null, null]
-        this.baseTemperature = null
-        this.baseOrientationCalibration = [null, null, null, null]
-        this.isBaseOrientationCalibrated = null
-
     }
 
-    async status() {
+    status() {
         return {
             isDeviceConnected: this.isDeviceConnected,
             mod: this.modarr,
-
-            isOrientationInit: this.isOrientationInit,
-            isOrientationCalibrated: this.isOrientationCalibrated,
-            orientation: this.orientation,
-            temperature: this.temperature,
-            orientationCalibration: this.orientationCalibration,
-
-            isBaseOrientationInit: this.isBaseOrientationInit,
-            isBaseOrientationCalibrated: this.isBaseOrientationCalibrated,
-            baseOrientation: this.baseOrientation,
-            baseTemperature: this.baseTemperature,
-            baseOrientationCalibration: this.baseOrientationCalibration,
-
-            isMagInit: this.isMagInit,
-            magHeading: this.magHeading,
-
-            declinationAngle: this.declinationAngle,
-            declinationSource: this.declinationSource,
         }
     }
 
@@ -205,47 +161,18 @@ class App {
                 mod.updatedAt = now
             }
             mod.receivedAt = now
-        }
-        const values = (text || '').split('|')
-        const floats = Util.parseFloats(values)
-        switch (module) {
-            case 'GPS':
-                break
-            case 'MAG':
-                this.magHeading = floats[0] === DEG_NULL ? null : floats[0]
-                break
-            case 'ORI':
-                // x|y|z|qw|qx|qy|qz|temp|cal_system|cal_gyro|cal_accel|cal_mag|isCalibrated|isInit
-                this.orientation = floats.slice(0, 7).map(v => v === DEG_NULL ? null : v)
-                this.temperature = floats[7]
-                this.orientationCalibration = floats.slice(8, 12)
-                this.isOrientationCalibrated = values[12] === 'T'
-                break
-            case 'ORF':
-                this.baseOrientation = floats.slice(0, 7).map(v => v === DEG_NULL ? null : v)
-                this.baseTemperature = floats[7]
-                this.baseOrientationCalibration = floats.slice(8, 12)
-                this.isBaseOrientationCalibrated = values[12] === 'T'
-                break
-            case 'MCI':
-                break
-            case 'MOD':
-                // names the modules available
-                for (const label of values) {
-                    if (MOD_KNOWN.has(label) && !this.modmap.has(label)) {
-                        const obj = {label}
-                        this.modarr.push(obj)
-                        this.modmap.set(label, obj)
-                    }
+        } else if (module === 'MOD') {
+            // names the modules available
+            const values = (text || '').split('|')
+            for (const label of values) {
+                if (MOD_KNOWN.has(label) && !this.modmap.has(label)) {
+                    const obj = {label}
+                    this.modarr.push(obj)
+                    this.modmap.set(label, obj)
                 }
-                const modSet = new Set(values)
-                this.isOrientationInit = modSet.has('ORI')
-                this.isBaseOrientationInit = modSet.has('ORF')
-                this.isMagInit = modSet.has('MAG')
-                break
-            default:
-                this.log('Unknown module', module)
-                break
+            }
+        } else {
+            this.log('Unknown module', module)
         }
     }
 
@@ -323,11 +250,6 @@ class App {
             if (!this.isDeviceConnected && this.shouldDeviceAutoconnect) {
                 await this.openDevice()
             }
-            // TODO
-            if (false) {
-                await this.refreshDeclinationAngle()
-            }
-
         } catch (err) {
             this.error(err)
         } finally {
@@ -359,6 +281,7 @@ class App {
 
     stopCommandWorker() {
         clearInterval(this.commandWorkerHandle)
+        this.commandWorkerHandle = null
         this.commandWorkerBusy = false
     }
 
@@ -370,22 +293,20 @@ class App {
         app.use('/static', express.static(import.meta.dirname + '/static'))
 
         app.get('/', (req, res) => {
-            this.status().then(status => {
-                res.render('index', {
-                    title: 'MoonUnit',
-                    // helper: this.templateHelper,
-                    status
-                })
-            })
+            res.render('index')
         })
 
         app.get('/status', (req, res) => {
-            this.status().then(status => res.status(200).json({ status }))
+            res.status(200).json({ status: this.status() })
         })
 
         app.post('/command', bodyParser.json(), (req, res) => {
             if (!req.body.command) {
                 res.status(400).json({ error: 'missing command' })
+                return
+            }
+            if (!this.isDeviceConnected) {
+                res.status(503).json({ error: 'Device not connected' })
                 return
             }
             try {
@@ -404,9 +325,7 @@ class App {
         app.post('/disconnect', (req, res) => {
             this.closeDevice()
             this.shouldDeviceAutoconnect = false
-            this.status().then(status => {
-                res.status(200).json({ message: 'Device disconnected', status })
-            })
+            res.status(200).json({ message: 'Device disconnected' })
         })
 
         app.post('/connect', (req, res) => {
@@ -415,9 +334,7 @@ class App {
                 return
             }
             this.openDevice().then(() => {
-                this.status().then(status => {
-                    res.status(200).json({ message: 'Device connected', status })
-                })
+                res.status(200).json({ message: 'Device connected' })
             }).catch(error => {
                 res.status(500).json({ error })
             })
@@ -449,23 +366,5 @@ class App {
         console.error(new Date, ...args)
     }
 }
-
-// class TemplateHelper {
-//     fixedSafe(val, n) {
-//         if (typeof val == 'number' && !isNaN(val)) {
-//             return val.toFixed(n)
-//         }
-//         return '' + val
-//     }
-//     connectedStr(val) {
-//         return val ? 'Connected' : 'Disconnected'
-//     }
-//     mcBusyStr(val) {
-//         if (val == null) {
-//             return '?'
-//         }
-//         return val ? 'Busy' : 'Ready'
-//     }
-// }
 
 export default App

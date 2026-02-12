@@ -15,26 +15,25 @@
  *
  * 75 - Reinit MCC & MCI module
  *
- *  :<id>:75 ;
+ *  :<id>:75;
  *
  * 76 - Send motor stop signal
  *
- *  :<id>:76 ;
+ *  :<id>:76;
  *
  * 77 - Reset motorcontroller
  *
- *  :<id>:77 ;
+ *  :<id>:77;
  *
  * 78 - Reset self
  *
- *  :<id>:78 ;
+ *  :<id>:78;
  */
 #include <Adafruit_BNO055.h>
 #include <Adafruit_GPS.h>
 #include <Adafruit_Sensor.h>
 #include <Adafruit_HMC5883_U.h>
 #include <SoftwareSerial.h>
-#include <TinyGPS.h>
 #include <utility/imumaths.h>
 #include <Wire.h>
 
@@ -401,11 +400,11 @@ void sendCommandErr(Stream &input, Stream &output, const char *errCode) {
 }
 
 void tripResetPin(byte pin) {
-    pinMode(pin, OUTPUT);
-    digitalWrite(pin, LOW);
-    delay(100);
-    digitalWrite(pin, HIGH);
-    pinMode(pin, INPUT_PULLUP);
+  pinMode(pin, OUTPUT);
+  digitalWrite(pin, LOW);
+  delay(100);
+  digitalWrite(pin, HIGH);
+  pinMode(pin, INPUT_PULLUP);
 }
 
 void writeAck(const long id, Stream &output, boolean withColon) {
@@ -497,7 +496,7 @@ void writeOrientation(Orientation &o, Stream &output) {
   output.write('|');
   output.print(o.cal_mag);
   output.write('|');
-  output.write(o.isCalibrated ? 'T' : 'F');
+  output.print((int) o.isCalibrated);
 }
 
 void writeGps(Gps &g, Stream &output) {
