@@ -13,42 +13,34 @@
  * 03 - Set acceleration for a motor
  * 
  *  :03 <motorId> <acceleration>;
- * 
- * 04 - Move single motor n degrees in a given direction
- * 
- *  :04 <motorId> <direction> <degrees>;
  *
  * 06 - Home a single motor
  *
  *  :06 <motorId>;
  *
- * 07 - Home both motors
+ * 07 - Home all motors
  *
- *  :07 ;
+ *  :07;
  *
  * 08 - End a single motor
  *
  *  :08 <motorId>;
  *
- * 09 - End both motors
+ * 09 - End all motors
  *
- *  :09 ;
+ *  :09;
  *
  * 10 - Move both motors by steps. Last param is arrive at same time.
  *
- *  :10 <direction_1> <steps_1> <direction_2> <steps_2> <T|F>;
- *
- * 11 - Move both motors by degrees. Last param is arrive at same time.
- *
- *  :11 <direction_1> <degrees_1> <direction_2> <degrees_2> <T|F>;
+ *  :10 <direction_1> <steps_1> <direction_2> <steps_2> <1|0>;
  *
  * 13 - No response (debug)
  *
- *  :13 ;
+ *  :13;
  *
  * 14 - OK noop, do data
  *
- *  :14 ;
+ *  :14;
  *
  * 15 - Print I2C data
  *
@@ -56,13 +48,16 @@
  *
  * 17 - Set limit switch enablement for a motor
  *
- *  :17 <motorId> <T|F>;
+ *  :17 <motorId> <1|0>;
+ *
+ * 18 - Set homing speed for a motor
+ *
+ *  :17 <motorId> <speed>;
  *
  * ===================================================
  *
  * Parameters
  * ----------
- * motorId   - 1: scope, 2: base
  * direction - 1: clockwise, 2: anti-clockwise
  *
  * Response Codes
@@ -167,9 +162,10 @@ struct Motor {
   MotorPins pins;
   unsigned long millistepsPerDegree;
   unsigned int maxDegrees;
-  unsigned long absMaxSpeed = 4000UL;
-  unsigned long defaultSpeed = 2000UL;
-  unsigned long maxAcceleration = 10000UL;
+  unsigned long absMaxSpeed = 5000;
+  unsigned long defaultSpeed = 2000;
+  unsigned long homingSpeed = 4000;
+  unsigned long maxAcceleration = 50000;
   /* Created on setup */
   AccelStepper stepper;
   byte id;
@@ -214,15 +210,11 @@ Motor motors[] = {
     { D1, D2, D0, D16, D15 },
     1230769UL, /* 1/0.0008125 degrees per step */
     190,
-    4000L,
-    2000L,
   },
   {
     { D7, D8, D9, D17, D18 },
     888889UL, /* 1/0.001125 degrees per step */
     380,
-    4000L,
-    2000L,
   },
 };
 
@@ -285,8 +277,6 @@ void takeCommand(Stream &input, Stream &output) {
     sendCommandErr(input, output, MALFORMED_COMMAND);
     return;
   }
-  // String command = input.readStringUntil(' ');
-  // long cmdId = command.toInt();
   const long cmdId = input.parseInt(SKIP_NONE);
   if (cmdId == 1) {
     // Move a motor n steps in a direction
@@ -311,69 +301,34 @@ void takeCommand(Stream &input, Stream &output) {
     input.readStringUntil(';');
     moveMotor(motors[motorId - 1], howMuch);
     output.write("=00\n");
-  } else if (cmdId == 2) {
-    // Set max speed for motor
+  } else if (cmdId == 2 || cmdId == 3 || cmdId == 18) {
+    // 2: Set max speed for motor
+    // 3: Set acceleration for motor
+    // 18: Set homing speed for motor
     // first param is the motor id
     const byte motorId = readMotorIdFromInput(input);
     if (motorId == 0) {
       sendCommandErr(input, output, INVALID_MOTORID);
       return;
     }
-    // second param is the speed
-    const unsigned long newSpeed = input.parseInt(SKIP_WHITESPACE);
-    if (newSpeed == 0) {
+    // second param is the new value
+    const unsigned long newValue = input.parseInt(SKIP_WHITESPACE);
+    if (newValue == 0) {
       sendCommandErr(input, output, INVALID_SPEED_OR_ACCELERATION);
       return;
     }
     input.readStringUntil(';');
-    setMaxSpeed(motors[motorId - 1], newSpeed);
+    if (cmdId == 2) {
+      setMaxSpeed(motors[motorId - 1], newValue);
+    } else if (cmdId == 3) {
+      setAcceleration(motors[motorId - 1], newValue);
+    } else if (cmdId == 18) {
+      setHomingSpeed(motors[motorId - 1], newValue);
+    }
     output.write("=00\n");
-  } else if (cmdId == 3) {
-    // Set acceleration for motor
-    // first param is the motor id
-    const byte motorId = readMotorIdFromInput(input);
-    if (motorId == 0) {
-      sendCommandErr(input, output, INVALID_MOTORID);
-      return;
-    }
-    // second param is the acceleration
-    const unsigned long newAccel = input.parseInt(SKIP_WHITESPACE);
-    if (newAccel == 0) {
-      sendCommandErr(input, output, INVALID_SPEED_OR_ACCELERATION);
-      return;
-    }
-    input.readStringUntil(';');
-    setAcceleration(motors[motorId - 1], newAccel);
-    output.write("=00\n");
-  } else if (cmdId == 4) {
-    // Move a motor n degrees in a direction
-    // first param is the motor id
-    const byte motorId = readMotorIdFromInput(input);
-    if (motorId == 0) {
-      sendCommandErr(input, output, INVALID_MOTORID);
-      return;
-    }
-    // second param is direction 1: clockwise, 2: anti-clockwise
-    const int dirMult = getDirMultiplier(input.parseInt(SKIP_WHITESPACE));
-    if (dirMult == 0) {
-      sendCommandErr(input, output, INVALID_DIRECTION);
-      return;
-    }
-    // third param is how many degrees
-    const float howMuch = input.parseFloat(SKIP_WHITESPACE) * dirMult;
-    if (howMuch == 0) {
-      sendCommandErr(input, output, INVALID_DISTANCE);
-      return;
-    }
-    input.readStringUntil(';');
-    Motor& m = motors[motorId - 1];
-    const long steps = degtos(m, howMuch);
-    moveMotor(m, steps);
-    output.write("=00;");
-    output.print(steps);
-    output.write('\n');
-  } else if (cmdId == 6) {
-    // home a single motor
+  } else if (cmdId == 6 || cmdId == 8) {
+    // 6: home a single motor
+    // 8: end a single motor
     // param is the motor id
     const byte motorId = readMotorIdFromInput(input);
     if (motorId == 0) {
@@ -386,10 +341,15 @@ void takeCommand(Stream &input, Stream &output) {
       sendCommandErr(input, output, INVALID_DISTANCE);
       return;
     }
-    homeMotor(m);
+    if (cmdId == 6) {
+      homeMotor(m);
+    } else if (cmdId == 8) {
+      endMotor(m);
+    }
     output.write("=00\n");
-  } else if (cmdId == 7) {
-    // home both motors
+  } else if (cmdId == 7 || cmdId == 9) {
+    // 7: home all motors
+    // 9: end all motors
     input.readStringUntil(';');
     for (auto& m : motors) {
       if (!motorCanHome(m)) {
@@ -399,38 +359,11 @@ void takeCommand(Stream &input, Stream &output) {
     }
     for (auto& m : motors) {
       if (motorCanHome(m)) {
-        homeMotor(m);
-      }
-    }
-    output.write("=00\n");
-  } else if (cmdId == 8) {
-    // end a single motor
-    // param is the motor id
-    const byte motorId = readMotorIdFromInput(input);
-    if (motorId == 0) {
-      sendCommandErr(input, output, INVALID_MOTORID);
-      return;
-    }
-    input.readStringUntil(';');
-    Motor& m = motors[motorId - 1];
-    if (!motorCanHome(m)) {
-      sendCommandErr(input, output, INVALID_DISTANCE);
-      return;
-    }
-    endMotor(m);
-    output.write("=00\n");
-  } else if (cmdId == 9) {
-    // end both motors
-    input.readStringUntil(';');
-    for (auto& m : motors) {
-      if (!motorCanHome(m)) {
-        sendCommandErr(input, output, INVALID_DISTANCE);
-        return;
-      }
-    }
-    for (auto& m : motors) {
-      if (motorCanHome(m)) {
-        endMotor(m);
+        if (cmdId == 7) {
+          homeMotor(m);
+        } else if (cmdId == 9) {
+          endMotor(m);
+        }
       }
     }
     output.write("=00\n");
@@ -474,52 +407,6 @@ void takeCommand(Stream &input, Stream &output) {
       moveMotor(motors[1], howMuch2);
     }
     output.write("=00\n");
-  } else if (cmdId == 11) {
-    // move both motors by degrees
-    // first param is direction_1
-    const int dirMult1 = getDirMultiplier(input.parseInt(SKIP_WHITESPACE));
-    if (dirMult1 == 0) {
-      sendCommandErr(input, output, INVALID_DIRECTION);
-      return;
-    }
-    // second param is degrees_1
-    const float howMuch1 = input.parseInt(SKIP_WHITESPACE) * dirMult1;
-    if (howMuch1 == 0) {
-      sendCommandErr(input, output, INVALID_DISTANCE);
-      return;
-    }
-    // third param is direction_2
-    const int dirMult2 = getDirMultiplier(input.parseInt(SKIP_WHITESPACE));
-    if (dirMult2 == 0) {
-      sendCommandErr(input, output, INVALID_DIRECTION);
-      return;
-    }
-    // fourth param is degrees_2
-    const float howMuch2 = input.parseFloat(SKIP_WHITESPACE) * dirMult2;
-    if (howMuch2 == 0) {
-      sendCommandErr(input, output, INVALID_DISTANCE);
-      return;
-    }
-    // fifth param is isSameTime
-    input.readStringUntil(' ');
-    const int isSameTime = getBoolParam(input.readStringUntil(';'));
-    if (isSameTime < 0) {
-      sendCommandErr(input, output, INVALID_OTHER);
-      return;
-    }
-    const long steps1 = degtos(motors[0], howMuch1);
-    const long steps2 = degtos(motors[1], howMuch2);
-    if (isSameTime) {
-      moveBothWithTiming(steps1, steps2);
-    } else {
-      moveMotor(motors[0], steps1);
-      moveMotor(motors[1], steps2);
-    }
-    output.write("=00;");
-    output.print(steps1, HEX);
-    output.write(':');
-    output.print(steps2, HEX);
-    output.write('\n');
   } else if (cmdId == 13) {
     // no response
     input.readStringUntil(';');
@@ -742,7 +629,7 @@ void homeMotor(Motor &m) {
     return;
   }
   m.isHoming = true;
-  overrideMaxSpeed(m, m.absMaxSpeed);
+  overrideMaxSpeed(m, m.homingSpeed);
   overrideAcceleration(m, m.maxAcceleration);
   if (isMotorHome(m)) {
     // move back just a little
@@ -759,7 +646,7 @@ void endMotor(Motor &m) {
     return;
   }
   m.isEnding = true;
-  overrideMaxSpeed(m, m.absMaxSpeed);
+  overrideMaxSpeed(m, m.homingSpeed);
   overrideAcceleration(m, m.maxAcceleration);
   if (isMotorEnd(m)) {
     // move forward just a little
@@ -799,6 +686,11 @@ void setMaxSpeed(Motor &m, unsigned long value) {
   if (!(m.isTiming || m.isHoming || m.isEnding)) {
     setupCachedEndData();
   }
+}
+
+void setHomingSpeed(Motor &m, unsigned long value) {
+  m.homingSpeed = min(value, m.absMaxSpeed);
+  setupCachedEndData();
 }
 
 void setAcceleration(Motor &m, unsigned long value) {
@@ -905,7 +797,6 @@ void requestEvent() {
 
 // Precalculated data cache
 String _cache_i2c_predatas;
-String _cache_i2c_settings;
 String _cache_i2c_enddatas;
 
 void setupStatusFlag() {
@@ -943,6 +834,8 @@ void setupCachedEndData() {
     s.concat('|');
     s.concat(String(m.defaultSpeed, HEX));
     s.concat('|');
+    s.concat(String(m.homingSpeed, HEX));
+    s.concat('|');
     s.concat(String(m.absMaxSpeed, HEX));
     s.concat('|');
     s.concat(String(m.maxAcceleration, HEX));
@@ -955,7 +848,6 @@ byte writeI2cData(Stream &output) {
   size += output.write('|');
   size += writePositions(output);
   if (!busy) {
-    size += output.print(_cache_i2c_settings);
     size += output.print(_cache_i2c_enddatas);
   }
   return size;
@@ -996,6 +888,7 @@ void setupMotors() {
     } else {
       m.defaultSpeed = min(m.defaultSpeed, m.absMaxSpeed);
     }
+    m.homingSpeed = min(m.homingSpeed, m.absMaxSpeed);
     m.maxSpeed = m.defaultSpeed;
     m.stepper.setMaxSpeed(m.maxSpeed);
     m.acceleration = m.maxAcceleration;

@@ -99,12 +99,16 @@ class Motor {
     return this.valueAt(5)
   }
 
-  get absMaxSpeed() {
+  get homingSpeed() {
     return this.valueAt(6)
   }
 
-  get maxAcceleration() {
+  get absMaxSpeed() {
     return this.valueAt(7)
+  }
+
+  get maxAcceleration() {
+    return this.valueAt(8)
   }
 
   get stepsPerDegree() {
@@ -134,7 +138,7 @@ class Motor {
   }
 
   valueAt(i) {
-    return this.mc.values[7 * (this.id - 1) + this.mc.motors.length + i]
+    return this.mc.values[8 * (this.id - 1) + this.mc.motors.length + i]
   }
 }
 
@@ -323,33 +327,45 @@ $(() => {
       try {
 
         if (target.is('#stopsignal')) {
-          cmd = getStopCommand()
+          cmd = Commands.STOP_MOTORS
         } if (target.is('#home_1')) {
-          cmd = getHomeSingleCommand(1)
+          cmd = Commands.HOME_MOTOR(1)
         } else if (target.is('#home_2')) {
-          cmd = getHomeSingleCommand(2)
+          cmd = Commands.HOME_MOTOR(2)
         } else if (target.is('#home_all')) {
-          cmd = getHomeAllCommand()
+          cmd = Commands.HOME_ALL_MOTORS
         } else if (target.is('#end_1')) {
-          cmd = getEndSingleCommand(1)
+          cmd = Commands.END_MOTOR(1)
         } else if (target.is('#end_2')) {
-          cmd = getEndSingleCommand(2)
+          cmd = Commands.END_MOTOR(2)
         } else if (target.is('#end_all')) {
-          cmd = getEndAllCommand()
+          cmd = Commands.END_ALL_MOTORS
         } else if (target.is('#go_up')) {
-          cmd = getMoveSingleCommand(1, 1)
+          cmd = Commands.MOVE_MOTOR(1, 1, $('#in_howmuch').val(), $('#in_units').val())
         } else if (target.is('#go_down')) {
-          cmd = getMoveSingleCommand(1, 2)
+          cmd = Commands.MOVE_MOTOR(1, 2, $('#in_howmuch').val(), $('#in_units').val())
         } else if (target.is('#go_left')) {
-          cmd = getMoveSingleCommand(2, 2)
+          cmd = Commands.MOVE_MOTOR(2, 2, $('#in_howmuch').val(), $('#in_units').val())
         } else if (target.is('#go_right')) {
-          cmd = getMoveSingleCommand(2, 1)
+          cmd = Commands.MOVE_MOTOR(2, 1, $('#in_howmuch').val(), $('#in_units').val())
         } else if (target.is('#go_both')) {
-          cmd = getMoveBothCommand()
+          cmd = Commands.MOVE_BOTH_MOTORS(
+            $('#in_dir1').val(),
+            $('#in_howmuch1').val(),
+            $('#in_dir2').val(),
+            $('#in_howmuch2').val(),
+            $('#in_sametime').is(':checked'),
+            $('#in_units2').val(),
+          )
+
         } else if (target.is('#reset_motorcontroller')) {
-          cmd = getResetMotorContollerCommand()
+          cmd = Commands.RESET_MC
         } else if (target.is('#go_raw')) {
-          cmd = getRawCommand()
+          const text = $('#in_raw').val().trim()
+          if (!text.length) {
+            throw new Error('Empty input')
+          }
+          cmd = `${text}\n`
         }
 
         sendRequest('command', 'POST', { command: cmd })
@@ -553,67 +569,6 @@ $(() => {
 
   }
 
-  // :04 <motorId> <direction> <degrees>;
-  function getMoveSingleCommand(motorId, direction) {
-    const howMuch = $('#in_howmuch').val()
-    const unit = $('#in_units').val()
-    if (isNaN(parseFloat(howMuch))) {
-      throw new Error('Invalid input: ' + howMuch)
-    }
-    return [unit == 'steps' ? ':01' : ':04', motorId, direction, howMuch].join(' ') + ';\n'
-  }
-
-  // :06 <motorId>;
-  function getHomeSingleCommand(motorId) {
-    return [':06', motorId].join(' ') + ';\n'
-  }
-
-  // :07 ;
-  function getHomeAllCommand() {
-    return ':07 ;\n'
-  }
-
-  // :08 <motorId>;
-  function getEndSingleCommand(motorId) {
-    return [':08', motorId].join(' ') + ';\n'
-  }
-
-  // :09 ;
-  function getEndAllCommand() {
-    return ':09 ;\n'
-  }
-
-  // :11 <direction_1> <degrees_1> <direction_2> <degrees_2>;
-  function getMoveBothCommand() {
-    const unit = $('#in_units2').val()
-    const dir1 = parseInt($('#in_dir1').val())
-    const dir2 = parseInt($('#in_dir2').val())
-    const howMuch1 = parseFloat($('#in_howmuch1').val())
-    const howMuch2 = parseFloat($('#in_howmuch2').val())
-    const isSameTime = $('#in_sametime').is(':checked') ? 'T' : 'F'
-    if (dir1 !== 1 && dir1 !== 2) {
-      throw new Error('Invalid direction_1 value: ' + dir1)
-    }
-    if (dir2 !== 1 && dir2 !== 2) {
-      throw new Error('Invalid direction_2 value: ' + dir2)
-    }
-    if (isNaN(howMuch1)) {
-      throw new Error('Invalid howmuch_1 value')
-    }
-    if (isNaN(howMuch2)) {
-      throw new Error('Invalid howmuch_2 value')
-    }
-    return [unit == 'steps' ? ':10' : ':11', dir1, howMuch1, dir2, howMuch2, isSameTime].join(' ') + ';\n'
-  }
-
-  function getStopCommand() {
-    return ':76 ;\n'
-  }
-
-  function getResetMotorContollerCommand() {
-    return ':77 ;\n'
-  }
-
   function getRawCommand() {
     const text = $('#in_raw').val().trim()
     if (!text.length) {
@@ -622,3 +577,57 @@ $(() => {
     return text + '\n'
   }
 })
+
+const Commands = {
+  STOP_MOTORS: ':76;\n',
+  RESET_MC: ':77;\n',
+  END_ALL_MOTORS: ':09;\n',
+  HOME_ALL_MOTORS: ':07;\n',
+  END_MOTOR: id => `:08 ${id};\n`,
+  HOME_MOTOR: id => `:06 ${id};\n`,
+  MOVE_MOTOR: (id, direction, howMuch, unit) => {
+    direction = parseInt(direction)
+    if (direction !== 1 && direction !== 2) {
+      throw new Error(`Invalid direction value: ${direction}`)
+    }
+    if (unit === 'degrees') {
+      const motor = mc.motors[id - 1]
+      howMuch = Math.round(parseFloat(howMuch) * motor.stepsPerDegree)
+    } else if (unit === 'steps') {
+      howMuch = parseInt(howMuch)
+    } else {
+      throw new Error(`Invalid unit`)
+    }
+    if (isNaN(howMuch) || howMuch <= 0) {
+      throw new Error(`Invalid howMuch value: ${howMuch}`)
+    }
+    return `:01 ${id} ${direction} ${howMuch};\n`
+  },
+  MOVE_BOTH_MOTORS: (direction1, howMuch1, direction2, howMuch2, isSameTime, unit) => {
+    direction1 = parseInt(direction1)
+    direction2 = parseInt(direction2)
+    if (direction1 !== 1 && direction1 !== 2) {
+      throw new Error(`Invalid direction1 value: ${direction1}`)
+    }
+    if (direction2 !== 1 && direction2 !== 2) {
+      throw new Error(`Invalid direction2 value: ${direction2}`)
+    }
+    if (unit === 'degrees') {
+      howMuch1 = Math.round(parseFloat(howMuch1) * mc.motors[0].stepsPerDegree)
+      howMuch2 = Math.round(parseFloat(howMuch2) * mc.motors[1].stepsPerDegree)
+    } else if (unit === 'steps') {
+      howMuch1 = parseInt(howMuch1)
+      howMuch2 = parseInt(howMuch2)
+    } else {
+      throw new Error(`Invalid unit`)
+    }
+    if (isNaN(howMuch1) || howMuch1 <= 0) {
+      throw new Error(`Invalid howMuch1 value: ${howMuch1}`)
+    }
+    if (isNaN(howMuch2) || howMuch2 <= 0) {
+      throw new Error(`Invalid howMuch2 value: ${howMuch2}`)
+    }
+    isSameTime = +Boolean(isSameTime)
+    return `:10 ${direction1} ${howMuch1} ${direction2} ${howMuch2} ${isSameTime};\n`
+  }
+}
