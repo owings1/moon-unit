@@ -1,6 +1,14 @@
 /*
  * Commands
  *
+ * 7 - Home all motors
+ *
+ *  :<id>:7;
+ *
+ * 9 - End all motors
+ *
+ *  :<id>:9;
+ *
  * 71 - Set mode
  *
  *  :<id>:71 <mode>;
@@ -17,7 +25,7 @@
  *
  *  :<id>:75;
  *
- * 76 - Send motor stop signal
+ * 76 - Stop all motors
  *
  *  :<id>:76;
  *
@@ -33,7 +41,6 @@
 #include <Adafruit_GPS.h>
 #include <Adafruit_Sensor.h>
 #include <Adafruit_HMC5883_U.h>
-#include <SoftwareSerial.h>
 #include <utility/imumaths.h>
 #include <Wire.h>
 
@@ -104,13 +111,10 @@ MotorControllerSerial mcc = {
 /******************************************/
 /* Motor Controller I2C                   */
 /******************************************/
-#define mciMessageLengthFull 84
-#define mciMessageLengthShort 20
-
 struct MotorControllerI2C {
   Module module;
   byte address;
-  unsigned long checkInterval = 2000UL;
+  unsigned long checkInterval = 500;
   unsigned long lastCheckTime;
   String statusStr;
 };
@@ -289,6 +293,28 @@ void takeCommand(Stream &input, Stream &output) {
   }
 
   const long cmdId = input.parseInt(SKIP_NONE);
+
+  if (cmdId == 76 || cmdId == 7 || cmdId == 9) {
+    input.readStringUntil(';');
+    byte reg = 0x3 << 0x6;
+    if (cmdId == 76) {
+      reg |= 0x1;
+    } else if (cmdId == 7) {
+      reg |= 0x2;
+    } else if (cmdId == 9) {
+      reg |= 0x3;
+    }
+    writeAck(id, output, true);
+    output.write('=');
+    mainWire.beginTransmission(mci.address);
+    mainWire.write(reg);
+    mainWire.endTransmission();
+    mainWire.requestFrom(mci.address, 1);
+    output.print(mainWire.read());
+    output.write('\n');
+    return;
+  }
+
   if (cmdId < 70) {
 
     if (!mcc.module.isInit) {
@@ -367,13 +393,6 @@ void takeCommand(Stream &input, Stream &output) {
     mccSerial.begin(mccBaudRate);
     mcc.module.isInit = checkMccConnected(mcc.stream);
     mci.module.isInit = checkMciConnected(mci);
-    output.write("=00\n");
-  } else if (cmdId == 76) {
-    // Send motor stop signal
-    input.readStringUntil(';');
-    digitalWrite(mcStopPin, HIGH);
-    delay(100);
-    digitalWrite(mcStopPin, LOW);
     output.write("=00\n");
   } else if (cmdId == 77) {
     // Reset motorcontroller
@@ -537,8 +556,6 @@ void readAll() {
   }
 }
 
-// should only do this occasionally, since it will slow
-// motor operations down.
 // read I2C
 void readMciStatus(MotorControllerI2C &m) {
   boolean mcBusy = digitalRead(mcBusyPin);
@@ -549,10 +566,41 @@ void readMciStatus(MotorControllerI2C &m) {
   if (!checkMciConnected(m)) {
     return;
   }
-  mainWire.requestFrom(m.address, mcBusy ? mciMessageLengthShort : mciMessageLengthFull);
-  m.statusStr = mainWire.readStringUntil('\n');
-  m.statusStr.trim();
-  m.module.hasData = m.statusStr.length() > 0;
+  String s;
+  unsigned int flag = (int) mcBusy;
+  for (byte mId = 1; mId <= 2; ++mId) {
+    mainWire.beginTransmission(m.address);
+    mainWire.write((1 << 0x6) | ((mId - 1) << 0x4) | 0x0);
+    mainWire.endTransmission();
+    mainWire.requestFrom(m.address, 1);
+    flag |= mainWire.read() << (0x4 * mId);
+  }
+  s.concat(String(flag, HEX));
+  byte buf[4];
+  for (byte mId = 1; mId <= 2; ++mId) {
+    mainWire.beginTransmission(m.address);
+    mainWire.write((1 << 0x6) | ((mId - 1) << 0x4) | 0x2);
+    mainWire.endTransmission();
+    mainWire.requestFrom(m.address, 4);
+    mainWire.readBytes(buf, 4);
+    s.concat('|');
+    s.concat(String(unpackLong(buf), HEX));
+  }
+  if (!mcBusy) {
+    for (byte mId = 1; mId <= 2; ++mId) {
+      for (byte reg = 0x3; reg <= 0xa; ++reg) {
+        mainWire.beginTransmission(m.address);
+        mainWire.write((1 << 0x6) | ((mId - 1) << 0x4) | reg);
+        mainWire.endTransmission();
+        mainWire.requestFrom(m.address, 4);
+        mainWire.readBytes(buf, 4);
+        s.concat('|');
+        s.concat(String(unpackLong(buf), HEX));
+      }
+    }
+  }
+  m.statusStr = s;
+  m.module.hasData = true;
 }
 
 void readOrientation(Orientation &o) {
@@ -676,3 +724,11 @@ boolean checkMccConnected(Stream &stream) {
   return true;
 }
 
+unsigned long unpackLong(byte *buf) {
+  return (
+    buf[0] << 0x18 |
+    buf[1] << 0x10 |
+    buf[2] << 0x8 |
+    buf[3]
+  );
+}

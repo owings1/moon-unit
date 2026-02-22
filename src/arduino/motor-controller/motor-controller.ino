@@ -18,17 +18,9 @@
  *
  *  :06 <motorId>;
  *
- * 07 - Home all motors
- *
- *  :07;
- *
  * 08 - End a single motor
  *
  *  :08 <motorId>;
- *
- * 09 - End all motors
- *
- *  :09;
  *
  * 10 - Move both motors by steps. Last param is arrive at same time.
  *
@@ -42,17 +34,13 @@
  *
  *  :14;
  *
- * 15 - Print I2C data
- *
- *  :15;
- *
  * 17 - Set limit switch enablement for a motor
  *
  *  :17 <motorId> <1|0>;
  *
  * 18 - Set homing speed for a motor
  *
- *  :17 <motorId> <speed>;
+ *  :18 <motorId> <speed>;
  *
  * ===================================================
  *
@@ -107,7 +95,6 @@ typedef enum {
 #define SDA_MAIN D14
 #define SCL_MAIN D13
 #define WIRE_ADDRESS 0x9
-// volatile byte wireReq = 0x0;
 
 /******************************************/
 /* Stop Signal                            */
@@ -191,8 +178,6 @@ struct Motor {
   boolean isBacking;
   // as above for ending purposes
   boolean isForwarding;
-  // flag for timing motors to arrive at same time
-  boolean isTiming;
   // flag to indicate homing in progress
   boolean isHoming;
   // flag to indicate ending in progress
@@ -230,9 +215,8 @@ void setup() {
   mainWire.setSDA(SDA_MAIN);
   mainWire.setSCL(SCL_MAIN);
   mainWire.onRequest(requestEvent);
+  mainWire.onReceive(receiveEvent);
   setupMotors();
-  setupStatusFlag();
-  setupCachedEndData();
   mainWire.begin(WIRE_ADDRESS);
   Serial.begin(BAUD_RATE);
   cmdSerial.begin(BAUD_RATE);
@@ -347,26 +331,6 @@ void takeCommand(Stream &input, Stream &output) {
       endMotor(m);
     }
     output.write("=00\n");
-  } else if (cmdId == 7 || cmdId == 9) {
-    // 7: home all motors
-    // 9: end all motors
-    input.readStringUntil(';');
-    for (auto& m : motors) {
-      if (!motorCanHome(m)) {
-        sendCommandErr(input, output, INVALID_DISTANCE);
-        return;
-      }
-    }
-    for (auto& m : motors) {
-      if (motorCanHome(m)) {
-        if (cmdId == 7) {
-          homeMotor(m);
-        } else if (cmdId == 9) {
-          endMotor(m);
-        }
-      }
-    }
-    output.write("=00\n");
   } else if (cmdId == 10) {
     // move both motors by steps
     // first param is direction_1
@@ -414,14 +378,6 @@ void takeCommand(Stream &input, Stream &output) {
     // noop OK, no data
     input.readStringUntil(';');
     output.write("=00\n");
-  } else if (cmdId == 15) {
-    // Print I2C data
-    input.readStringUntil(';');
-    output.write("=00;");
-    const byte size = writeI2cData(output);
-    output.write(':');
-    output.print(size, HEX);
-    output.write('\n');
   } else if (cmdId == 17) {
     // Set limit switch enablement for a motor
     const byte motorId = readMotorIdFromInput(input);
@@ -503,7 +459,6 @@ byte runMotorsIfNeeded() {
       runMask |= 1 << (m.id - 1);
       if (!m.isMoving) {
         m.isMoving = true;
-        setupStatusFlag();
       }
     } else {
       if (m.oldAcceleration) {
@@ -531,7 +486,6 @@ byte runMotorsIfNeeded() {
         }
         if (m.isMoving) {
           m.isMoving = false;
-          setupStatusFlag();
         }
         if (m.isStopping) {
           // we have finished stopping
@@ -542,16 +496,11 @@ byte runMotorsIfNeeded() {
               m.hasHomed = true;
               m.stepper.setCurrentPosition(0);
               m.pos = m.stepper.currentPosition();
-              setupStatusFlag();
             } else if (isMotorEnd(m) && m.hasHomed) {
               // store the known max position
               m.posMax = m.stepper.currentPosition();
-              setupStatusFlag();
             }
           }
-        }
-        if (m.isTiming) {
-          m.isTiming = false;
         }
       }
     }
@@ -582,8 +531,6 @@ void moveBothWithTiming(long howMuch1, long howMuch2) {
   setBusy(true);
   motors[0].oldMaxSpeed = motors[0].maxSpeed;
   motors[1].oldMaxSpeed = motors[1].maxSpeed;
-  motors[0].isTiming = true;
-  motors[1].isTiming = true;
   // how long (sec) will it take m1, given its current max speed (steps/sec), to move howMuch1 steps
   float t_pre_m1 = (float) abs(howMuch1) / motors[0].maxSpeed;
   float t_pre_m2 = (float) abs(howMuch2) / motors[1].maxSpeed;
@@ -683,22 +630,15 @@ float getMotorPositionDegrees(const Motor &m) {
 void setMaxSpeed(Motor &m, unsigned long value) {
   m.maxSpeed = min(value, m.absMaxSpeed);
   m.stepper.setMaxSpeed(m.maxSpeed);
-  if (!(m.isTiming || m.isHoming || m.isEnding)) {
-    setupCachedEndData();
-  }
 }
 
 void setHomingSpeed(Motor &m, unsigned long value) {
   m.homingSpeed = min(value, m.absMaxSpeed);
-  setupCachedEndData();
 }
 
 void setAcceleration(Motor &m, unsigned long value) {
   m.acceleration = min(value, m.maxAcceleration);
   m.stepper.setAcceleration(m.acceleration);
-  if (!(m.isStopping || m.isHoming || m.isEnding)) {
-    setupCachedEndData();
-  }
 }
 
 void overrideMaxSpeed(Motor &m, unsigned long value) {
@@ -725,7 +665,6 @@ void enableMotor(Motor &m) {
   if (!m.isActive) {
     digitalWrite(m.pins.enable, MOTOR_ON);
     m.isActive = true;
-    setupStatusFlag();
     delay(2);
   }
   registerMotorAction(m);
@@ -735,7 +674,6 @@ void disableMotor(Motor &m) {
   if (m.isActive) {
     digitalWrite(m.pins.enable, 1 - MOTOR_ON);
     m.isActive = false;
-    setupStatusFlag();
   }
 }
 
@@ -760,15 +698,11 @@ void readLimitSwitches() {
     byte cur = m.isLimit_cw | (m.isLimit_acw << 1);
     isChange |= old != cur;
   }
-  if (isChange) {
-    setupStatusFlag();
-  }
 }
 
 void setLimitSwitchEnablement(Motor &m, boolean value) {
   if (m.limitsEnabled != value) {
     m.limitsEnabled = value;
-    setupStatusFlag();
   }
 }
 
@@ -786,82 +720,346 @@ void setBusy(boolean value) {
   if (value != busy) {
     busy = value;
     digitalWrite(busyPin, busy ? BUSY_ON : 1 - BUSY_ON);
-    setupStatusFlag();
   }
 }
+
+byte getMotorFlag1(Motor &m) {
+  return (
+    (m.isLimit_cw << 0x0) |
+    (m.isLimit_acw << 0x1) |
+    (m.isMoving << 0x2) |
+    (m.isActive << 0x3) |
+    (m.hasHomed << 0x4) |
+    (m.limitsEnabled << 0x5) |
+    (m.isHoming << 0x6) |
+    (m.isEnding << 0x7)
+  );
+}
+
+byte getMotorFlag2(Motor &m) {
+  return (
+    (false << 0x0) |
+    (false << 0x1) |
+    (false << 0x2) |
+    (false << 0x3) |
+    (false << 0x4) |
+    (false << 0x5) |
+    (false << 0x6) |
+    (false << 0x7)
+  );
+}
+
+volatile byte wireReg1 = 0x0;
+volatile byte wireRes1 = 0x0;
 
 void requestEvent() {
-  writeI2cData(mainWire);
-  mainWire.write('\n');
-}
-
-// Precalculated data cache
-String _cache_i2c_predatas;
-String _cache_i2c_enddatas;
-
-void setupStatusFlag() {
-  auto& flag = statusFlag;
-  byte bit = 0;
-  flag = 0;
-  flag |= busy << bit++;
-  flag |= 0 << bit++; // reserved
-  flag |= 0 << bit++; // reserved
-  flag |= 0 << bit++; // reserved
-  for (auto& m : motors) {
-    flag |= m.isLimit_cw << bit++;
-    flag |= m.isLimit_acw << bit++;
-    flag |= m.isMoving << bit++;
-    flag |= m.isActive << bit++;
-    flag |= m.hasHomed << bit++;
-    flag |= m.limitsEnabled << bit++;
-    flag |= m.isHoming << bit++;
-    flag |= m.isEnding << bit++;
+  if (wireReg1 == 0x0) {
+    return;
   }
-  _cache_i2c_predatas = String(flag, HEX);
-}
-
-void setupCachedEndData() {
-  String s;
-  for (auto& m : motors) {
-    s.concat('|');
-    s.concat(String(m.maxSpeed, HEX));
-    s.concat('|');
-    s.concat(String(m.acceleration, HEX));
-    s.concat('|');
-    s.concat(String(m.millistepsPerDegree, HEX));
-    s.concat('|');
-    s.concat(String(m.maxDegrees, HEX));
-    s.concat('|');
-    s.concat(String(m.defaultSpeed, HEX));
-    s.concat('|');
-    s.concat(String(m.homingSpeed, HEX));
-    s.concat('|');
-    s.concat(String(m.absMaxSpeed, HEX));
-    s.concat('|');
-    s.concat(String(m.maxAcceleration, HEX));
-  }
-  _cache_i2c_enddatas = s;
-}
-
-byte writeI2cData(Stream &output) {
-  byte size = output.print(_cache_i2c_predatas);
-  size += output.write('|');
-  size += writePositions(output);
-  if (!busy) {
-    size += output.print(_cache_i2c_enddatas);
-  }
-  return size;
-}
-
-byte writePositions(Stream &output) {
-  byte size = 0;
-  for (auto& m : motors) {
-    if (size > 0) {
-      size += output.write('|');
+  // First 2 significant bits are category
+  const byte category = wireReg1 >> 0x6;
+  if (category == 0x1) {
+    // Category 1: single motor attribute/data
+    byte readReg = wireReg1 & ((1 << 0x6) - 1);
+    wireReg1 = 0x0;
+    // Next 2 bits are motor id
+    const byte motorId = (readReg >> 0x4) + 1;
+    readReg &= (1 << 0x4) - 1;
+    // Remaining 4 bits are motor attribute
+    const byte motorReg = readReg;
+    if (motorId > numMotors) {
+      if (motorReg <= 0x1) {
+        mainWire.write(0x0);
+      } else {
+        byte buf[4];
+        mainWire.write(buf, 4);
+      }
+    } else {
+      writeMotorReg(mainWire, motors[motorId - 1], motorReg);
     }
-    size += output.print(String(m.pos, HEX));
+  } else if (category == 0x2 || category == 0x3) {
+    mainWire.write(wireRes1);
   }
-  return size;
+}
+
+void receiveEvent(int howMany) {
+  if (howMany < 1) {
+    return;
+  }
+  wireReg1 = mainWire.read();
+  // First 2 significant bits are category
+  const byte category = wireReg1 >> 0x6;
+  if (category == 0x1) {
+    // Category 1: read single motor attribute/data
+    while (mainWire.available()) {
+      mainWire.read();
+      // no more bytes expected
+      wireReg1 = 0x0;
+    }
+  } else if (category == 0x2) {
+    // Category 2: single motor operation
+    byte readReg = wireReg1 & ((1 << 0x6) - 1);
+    // Next 2 bits are motor id
+    const byte motorId = (readReg >> 0x4) + 1;
+    readReg &= (1 << 0x4) - 1;
+    // Remaining 4 bits are motor attribute
+    const byte motorReg = readReg;
+    if (motorReg <= 0x7 && howMany > 1 || motorReg > 0x7 && howMany != 5) {
+      while (mainWire.available()) {
+        mainWire.read();
+      }
+      // wrong number of bytes
+      wireRes1 = 0x31;
+      return;
+    }
+    if (motorId > numMotors) {
+      // invalid motor id
+      wireRes1 = 0x2d;
+      return;
+    }
+    if (motorReg <= 0x7) {
+      wireRes1 = applyMotorReg(motors[motorId - 1], motorReg);
+    } else {
+      byte buf[4];
+      mainWire.readBytes(buf, 4);
+      wireRes1 = applyMotorReg(motors[motorId - 1], motorReg, unpackLong(buf));
+    }
+  } else if (category == 0x3) {
+    // Category 3: other
+    const byte otherReg = wireReg1 & ((1 << 0x6) - 1);
+    if (otherReg < 0x10) {
+      // Command with no params
+      if (howMany > 1) {
+        while (mainWire.available()) {
+          mainWire.read();
+        }
+        // wrong number of bytes
+        wireRes1 = 0x31;
+        return;
+      }
+      wireRes1 = applyOtherReg(otherReg);
+    } else if (otherReg < 0x20) {
+      // Command with 2 long params
+      if (howMany != 9) {
+        while (mainWire.available()) {
+          mainWire.read();
+        }
+        // wrong number of bytes
+        wireRes1 = 0x31;
+        return;
+      }
+      byte buf[4];
+      mainWire.readBytes(buf, 4);
+      unsigned long p1 = unpackLong(buf);
+      mainWire.readBytes(buf, 4);
+      unsigned long p2 = unpackLong(buf);
+      wireRes1 = applyOtherReg(otherReg, p1, p2);
+    } else if (otherReg < 0x30) {
+      wireRes1 = UNKNOWN_COMMAND;
+    } else if (otherReg < 0x40) {
+      wireRes1 = UNKNOWN_COMMAND;
+    }
+  }
+}
+
+void writeMotorReg(Stream &output, Motor &m, const byte reg) {
+  if (reg <= 0x1) {
+    if (reg == 0x0) {
+      output.write(getMotorFlag1(m));
+    } else if (reg == 0x1) {
+      output.write(getMotorFlag2(m));
+    }
+    return;
+  }
+  byte buf[4];
+  if (reg <= 0x8) {
+    if (reg == 0x2) {
+      packLong(m.pos, buf);
+    } else if (reg == 0x3) {
+      packLong(m.maxSpeed, buf);
+    } else if (reg == 0x4) {
+      packLong(m.acceleration, buf);
+    } else if (reg == 0x5) {
+      packLong(m.millistepsPerDegree, buf);
+    } else if (reg == 0x6) {
+      packLong(m.maxDegrees, buf);
+    } else if (reg == 0x7) {
+      packLong(m.defaultSpeed, buf);
+    } else if (reg == 0x8) {
+      packLong(m.homingSpeed, buf);
+    }
+  } else {
+    if (reg == 0x9) {
+      packLong(m.absMaxSpeed, buf);
+    } else if (reg == 0xa) {
+      packLong(m.maxAcceleration, buf);
+    } else if (reg == 0xb) {
+    } else if (reg == 0xc) {
+    } else if (reg == 0xd) {
+    } else if (reg == 0xe) {
+    } else if (reg == 0xf) {
+    }
+  }
+  output.write(buf, 4);
+}
+
+ResCode applyMotorReg(Motor &m, const byte reg) {
+  if (reg == 0x0) {
+    stopMotor(m);
+  } else if (reg == 0x1) {
+    homeMotor(m);
+  } else if (reg == 0x2) {
+    endMotor(m);
+  } else if (reg == 0x3) {
+    setLimitSwitchEnablement(m, true);
+  } else if (reg == 0x4) {
+    setLimitSwitchEnablement(m, false);
+  } else if (reg == 0x5) {
+    return UNKNOWN_COMMAND;
+  } else if (reg == 0x6) {
+    return UNKNOWN_COMMAND;
+  } else if (reg == 0x7) {
+    return UNKNOWN_COMMAND;
+  }
+  return OK;
+}
+
+ResCode applyMotorReg(Motor &m, const byte reg, const unsigned long value) {
+  if (reg == 0x8) {
+    moveMotor(m, value);
+  } else if (reg == 0x9) {
+    moveMotor(m, -value);
+  } else if (reg == 0xa) {
+    setMaxSpeed(m, value);
+  } else if (reg == 0xb) {
+    setAcceleration(m, value);
+  } else if (reg == 0xc) {
+    setHomingSpeed(m, value);
+  } else if (reg == 0xd) {
+    return UNKNOWN_COMMAND;
+  } else if (reg == 0xe) {
+    return UNKNOWN_COMMAND;
+  } else if (reg == 0xf) {
+    return UNKNOWN_COMMAND;
+  }
+  return OK;
+}
+
+ResCode applyOtherReg(const byte reg) {
+  if (reg == 0x0) {
+    return UNKNOWN_COMMAND;
+  } else if (reg == 0x1) {
+    // Stop all motors
+    for (auto& m : motors) {
+      stopMotor(m);
+    }
+  } else if (reg == 0x2) {
+    // Home all motors
+    for (auto& m : motors) {
+      homeMotor(m);
+    }
+  } else if (reg == 0x3) {
+    // End all motors
+    for (auto& m : motors) {
+      endMotor(m);
+    }
+  } else if (reg == 0x4) {
+    // Enable limits for all motors
+    for (auto& m : motors) {
+      setLimitSwitchEnablement(m, true);
+    }
+  } else if (reg == 0x5) {
+    // Disable limits for all motors
+    for (auto& m : motors) {
+      setLimitSwitchEnablement(m, false);
+    }
+  } else if (reg == 0x6) {
+    return UNKNOWN_COMMAND;
+  } else if (reg == 0x7) {
+    return UNKNOWN_COMMAND;
+  } else if (reg == 0x8) {
+    return UNKNOWN_COMMAND;
+  } else if (reg == 0x9) {
+    return UNKNOWN_COMMAND;
+  } else if (reg == 0xa) {
+    return UNKNOWN_COMMAND;
+  } else if (reg == 0xb) {
+    return UNKNOWN_COMMAND;
+  } else if (reg == 0xc) {
+    return UNKNOWN_COMMAND;
+  } else if (reg == 0xd) {
+    return UNKNOWN_COMMAND;
+  } else if (reg == 0xe) {
+    return UNKNOWN_COMMAND;
+  } else if (reg == 0xf) {
+    return UNKNOWN_COMMAND;
+  }
+  return OK;
+}
+
+ResCode applyOtherReg(const byte reg, const unsigned long p1, const unsigned long p2) {
+  if (reg == 0x10) {
+    return UNKNOWN_COMMAND;
+  } else if (reg == 0x11) {
+    // Move m1 and m2 cw without timing
+    moveMotor(motors[0], p1);
+    moveMotor(motors[1], p2);
+  } else if (reg == 0x12) {
+    // Move m1 and m2 acw without timing
+    moveMotor(motors[0], -p1);
+    moveMotor(motors[1], -p2);
+  } else if (reg == 0x13) {
+    // Move m1 cw and m2 acw without timing
+    moveMotor(motors[0], p1);
+    moveMotor(motors[1], -p2);
+  } else if (reg == 0x14) {
+    // Move m1 acw and m2 cw without timing
+    moveMotor(motors[0], -p1);
+    moveMotor(motors[1], p2);
+  } else if (reg == 0x15) {
+    // Move m1 and m2 cw with timing
+    moveBothWithTiming(p1, p2);
+  } else if (reg == 0x16) {
+    // Move m1 and m2 acw without timing
+    moveBothWithTiming(-p1, -p2);
+  } else if (reg == 0x17) {
+    // Move m1 cw and m2 acw with timing
+    moveBothWithTiming(p1, -p2);
+  } else if (reg == 0x18) {
+    // Move m1 acw and m2 cw with timing
+    moveBothWithTiming(-p1, p2);
+  } else if (reg == 0x19) {
+    return UNKNOWN_COMMAND;
+  } else if (reg == 0x1a) {
+    return UNKNOWN_COMMAND;
+  } else if (reg == 0x1b) {
+    return UNKNOWN_COMMAND;
+  } else if (reg == 0x1c) {
+    return UNKNOWN_COMMAND;
+  } else if (reg == 0x1d) {
+    return UNKNOWN_COMMAND;
+  } else if (reg == 0x1e) {
+    return UNKNOWN_COMMAND;
+  } else if (reg == 0x1f) {
+    return UNKNOWN_COMMAND;
+  }
+  return OK;
+}
+
+void packLong(const unsigned long value, byte *buf) {
+  buf[0] = (byte) ((value >> 0x18) & 0xff);
+  buf[1] = (byte) ((value >> 0x10) & 0xff);
+  buf[2] = (byte) ((value >> 0x8) & 0xff);
+  buf[3] = (byte) (value & 0xff);
+}
+
+unsigned long unpackLong(byte *buf) {
+  return (
+    buf[0] << 0x18 |
+    buf[1] << 0x10 |
+    buf[2] << 0x8 |
+    buf[3]
+  );
 }
 
 /******************************************/
