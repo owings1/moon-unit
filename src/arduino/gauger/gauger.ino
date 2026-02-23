@@ -1,13 +1,45 @@
 /*
  * Commands
+ * 
+ * 1 - Move single motor n steps in a given direction
+ * 
+ *  :<id>:1 <motorId> <direction> <steps>;
+ * 
+ * 2 - Set max speed for a motor
+ * 
+ *  :<id>:2 <motorId> <speed>;
+ * 
+ * 3 - Set acceleration for a motor
+ * 
+ *  :<id>:3 <motorId> <acceleration>;
+ *
+ * 6 - Home a single motor
+ *
+ *  :<id>:6 <motorId>;
  *
  * 7 - Home all motors
  *
  *  :<id>:7;
  *
+ * 8 - End a single motor
+ *
+ *  :<id>:8 <motorId>;
+ *
  * 9 - End all motors
  *
  *  :<id>:9;
+ *
+ * 10 - Move both motors by steps. Last param is arrive at same time.
+ *
+ *  :<id>:10 <direction_1> <steps_1> <direction_2> <steps_2> <1|0>;
+ *
+ * 17 - Set limit switch enablement for a motor
+ *
+ *  :<id>:17 <motorId> <1|0>;
+ *
+ * 18 - Set homing speed for a motor
+ *
+ *  :<id>:18 <motorId> <speed>;
  *
  * 71 - Set mode
  *
@@ -21,7 +53,7 @@
  *
  *  :<id>:74 <milliseconds>;
  *
- * 75 - Reinit MCC & MCI module
+ * 75 - Reinit MCI module
  *
  *  :<id>:75;
  *
@@ -39,7 +71,6 @@
  */
 #include <Adafruit_BNO055.h>
 #include <Adafruit_GPS.h>
-#include <Adafruit_Sensor.h>
 #include <Adafruit_HMC5883_U.h>
 #include <utility/imumaths.h>
 #include <Wire.h>
@@ -50,7 +81,6 @@
 #define gpsEnabled true
 #define magEnabled true
 #define mcBusyPin D8
-#define mcStopPin D9
 #define mcResetPin D10
 #define selfResetPin D18
 
@@ -60,6 +90,7 @@
 #define BAUD_RATE 115200L
 #define DEG_NULL 1000.00
 #define POS_NULL 10000000UL
+#define MAX_MOTORID 4
 
 /******************************************/
 /* I2C                                    */
@@ -76,9 +107,22 @@
 #define MODE_STREAM_ALL 2
 #define MODE_STREAM_GPS 3
 byte mode = MODE_QUIET;
+
 // Stream delay in milliseconds
 unsigned long streamDelay = 50;
 unsigned long lastStreamAt = 0;
+
+typedef enum {
+  OK = 0,
+  MODULE_UNAVAILABLE = 32,
+  MALFORMED_COMMAND = 40,
+  UNKNOWN_COMMAND = 44,
+  INVALID_MOTORID = 45,
+  INVALID_DIRECTION = 46,
+  INVALID_DISTANCE = 47,
+  INVALID_SPEED_OR_ACCELERATION = 48,
+  INVALID_OTHER = 49,
+} ResCode;
 
 /******************************************/
 /* Module                                 */
@@ -91,29 +135,13 @@ struct Module {
 };
 
 /******************************************/
-/* Motor Controller Serial                */
-/******************************************/
-#define mccSerial Serial2
-#define mccBaudRate 9600L
-
-struct MotorControllerSerial {
-  Module module;
-  Stream &stream;
-  unsigned long readTimeout = 250UL;
-  unsigned long writeTimeout = 10000UL;
-};
-
-MotorControllerSerial mcc = {
-  {"MCC", true},
-  mccSerial,
-};
-
-/******************************************/
 /* Motor Controller I2C                   */
 /******************************************/
 struct MotorControllerI2C {
   Module module;
   byte address;
+  byte numMotors;
+  TwoWire& wire = mainWire;
   unsigned long checkInterval = 500;
   unsigned long lastCheckTime;
   String statusStr;
@@ -122,6 +150,7 @@ struct MotorControllerI2C {
 MotorControllerI2C mci = {
   {"MCI", true},
   0x9,
+  2,
 };
 
 /******************************************/
@@ -202,21 +231,16 @@ Mag mag = {{"MAG", true}, 49138, (0x3C >> 1)};
 /******************************************/
 void setup() {
   pinMode(mcBusyPin, INPUT_PULLDOWN);
-  pinMode(mcStopPin, OUTPUT);
   Serial.begin(BAUD_RATE);
   mainWire.setSDA(SDA_MAIN);
   mainWire.setSCL(SCL_MAIN);
   mainWire.begin();
-  mccSerial.begin(mccBaudRate);
   setupModules();
 }
 
 void setupModules() {
   setupOrientationModule(ori);
   setupOrientationModule(orf);
-  if (mcc.module.isEnabled) {
-    mcc.module.isInit = checkMccConnected(mcc.stream);
-  }
   if (mci.module.isEnabled) {
     mci.module.isInit = checkMciConnected(mci);
   }
@@ -287,12 +311,89 @@ void takeCommand(Stream &input, Stream &output) {
   const long id = input.parseInt(SKIP_NONE);
 
   if (input.read() != ':') {
-    writeAck(id, output, true);
-    sendCommandErr(input, output, "40");
+    sendCommandErr(id, input, output, MALFORMED_COMMAND);
     return;
   }
 
   const long cmdId = input.parseInt(SKIP_NONE);
+
+  if (cmdId == 1 || cmdId == 2 || cmdId == 3 || cmdId == 6 || cmdId == 8 || cmdId == 17 || cmdId == 18) {
+    // Single motor command
+    byte reg = 0x2 << 0x6;
+    byte buf[4];
+    boolean hasBuf = false;
+    // 1: Move a motor n steps in a direction
+    // 2: Set max speed for motor
+    // 3: Set acceleration for motor
+    // 6: Home a motor
+    // 8: End a motor
+    // 17: Set limit switch enablement for a motor
+    // 18: Set homing speed for motor
+    const byte motorId = readMotorIdFromInput(input);
+    if (motorId == 0) {
+      sendCommandErr(id, input, output, INVALID_MOTORID);
+      return;
+    }
+    reg |= (motorId - 1) << 0x4;
+    if (cmdId == 1) {
+      // 1: Move a motor n steps in a direction
+      // second param is direction 1: clockwise, 2: anti-clockwise
+      const int dir = input.parseInt(SKIP_WHITESPACE);
+      if (dir != 1 && dir != 2) {
+        sendCommandErr(id, input, output, INVALID_DIRECTION);
+        return;
+      }
+      reg |= 0x7 + dir;
+    }
+    if (cmdId == 6 || cmdId == 8) {
+      input.readStringUntil(';');
+      if (cmdId == 6) {
+        reg |= 0x1;
+      } else {
+        reg |= 0x2;
+      }
+    } else if (cmdId == 17) {
+      input.readStringUntil(' ');
+      const int param = getBoolParam(input.readStringUntil(';'));
+      if (param < 0) {
+        sendCommandErr(id, input, output, INVALID_OTHER);
+        return;
+      }
+      reg |= 0x4 - param;
+    } else {
+      const long value = input.parseInt(SKIP_WHITESPACE);
+      if (value < 1) {
+        sendCommandErr(id, input, output, cmdId == 1 ? INVALID_DISTANCE : INVALID_SPEED_OR_ACCELERATION);
+        return;
+      }
+      input.readStringUntil(';');
+      packLong(value, buf);
+      hasBuf = true;
+      if (cmdId == 2) {
+        reg |= 0xa;
+      } else if (cmdId == 3) {
+        reg |= 0xb;
+      } else if (cmdId == 18) {
+        reg |= 0xc;
+      }
+    }
+    if (!mci.module.isInit) {
+      sendCommandErr(id, input, output, MODULE_UNAVAILABLE);
+      return;
+    }
+    writeAck(id, output, true);
+    output.write('=');
+    mci.wire.beginTransmission(mci.address);
+    mci.wire.write(reg);
+    if (hasBuf) {
+      mci.wire.write(buf, 4);
+    }
+    mci.wire.endTransmission();
+    mci.wire.requestFrom(mci.address, 1);
+    output.print(mci.wire.read());
+    output.write('\n');
+    return;
+  }
 
   if (cmdId == 76 || cmdId == 7 || cmdId == 9) {
     input.readStringUntil(';');
@@ -304,54 +405,94 @@ void takeCommand(Stream &input, Stream &output) {
     } else if (cmdId == 9) {
       reg |= 0x3;
     }
+    if (!mci.module.isInit) {
+      sendCommandErr(id, input, output, MODULE_UNAVAILABLE);
+      return;
+    }
     writeAck(id, output, true);
     output.write('=');
-    mainWire.beginTransmission(mci.address);
-    mainWire.write(reg);
-    mainWire.endTransmission();
-    mainWire.requestFrom(mci.address, 1);
-    output.print(mainWire.read());
+    mci.wire.beginTransmission(mci.address);
+    mci.wire.write(reg);
+    mci.wire.endTransmission();
+    mci.wire.requestFrom(mci.address, 1);
+    output.print(mci.wire.read());
     output.write('\n');
     return;
   }
 
-  if (cmdId < 70) {
-
-    if (!mcc.module.isInit) {
-      writeAck(id, output, true);
-      sendCommandErr(input, output, "01");
+  if (cmdId == 10) {
+    byte reg = 0x3 << 0x6;
+    byte buf1[4];
+    byte buf2[4];
+    // move both motors by steps
+    // first param is direction_1
+    const int dir1 = input.parseInt(SKIP_WHITESPACE);
+    if (dir1 != 1 && dir1 != 2) {
+      sendCommandErr(id, input, output, INVALID_DIRECTION);
       return;
     }
-    // forward to motorcontroller
-
-    if (digitalRead(mcBusyPin)) {
-      writeAck(id, output, true);
-      sendCommandErr(input, output, "04");
+    // second param is steps_1
+    const long howMuch1 = input.parseInt(SKIP_WHITESPACE);
+    if (howMuch1 < 1) {
+      sendCommandErr(id, input, output, INVALID_DISTANCE);
       return;
     }
-
-    String mcBody = String(":");
-    mcBody.concat(String(cmdId));
-    mcBody.concat(input.readStringUntil(';'));
-    mcBody.concat(";");
-    mcc.stream.print(mcBody);
-
-    int d = 0;
-    while (!mcc.stream.available()) {
-      delay(1);
-      d += 1;
-      if (d > mcc.writeTimeout) {
-        writeAck(id, output, true);
-        sendCommandErr(input, output, "02");
-        return;
+    // third param is direction_2
+    const int dir2 = input.parseInt(SKIP_WHITESPACE);
+    if (dir2 != 1 && dir2 != 2) {
+      sendCommandErr(id, input, output, INVALID_DIRECTION);
+      return;
+    }
+    // fourth param is steps_2
+    const long howMuch2 = input.parseInt(SKIP_WHITESPACE);
+    if (howMuch2 < 1) {
+      sendCommandErr(id, input, output, INVALID_DISTANCE);
+      return;
+    }
+    // fifth param is isSameTime
+    input.readStringUntil(' ');
+    const int isSameTime = getBoolParam(input.readStringUntil(';'));
+    if (isSameTime < 0) {
+      sendCommandErr(id, input, output, INVALID_OTHER);
+      return;
+    }
+    if (!isSameTime) {
+      if (dir1 == 1 && dir2 == 1) {
+        reg |= 0x11;
+      } else if (dir1 == 2 && dir2 == 2) {
+        reg |= 0x12;
+      } else if (dir1 == 1 && dir2 == 2) {
+        reg |= 0x13;
+      } else {
+        reg |= 0x14;
+      }
+    } else {
+      if (dir1 == 1 && dir2 == 1) {
+        reg |= 0x15;
+      } else if (dir1 == 2 && dir2 == 2) {
+        reg |= 0x16;
+      } else if (dir1 == 1 && dir2 == 2) {
+        reg |= 0x17;
+      } else {
+        reg |= 0x18;
       }
     }
-
-    String res = mcc.stream.readStringUntil('\n');
+    if (!mci.module.isInit) {
+      sendCommandErr(id, input, output, MODULE_UNAVAILABLE);
+      return;
+    }
+    packLong(howMuch1, buf1);
+    packLong(howMuch2, buf2);
     writeAck(id, output, true);
-    output.print(res);
+    output.write('=');
+    mci.wire.beginTransmission(mci.address);
+    mci.wire.write(reg);
+    mci.wire.write(buf1, 4);
+    mci.wire.write(buf2, 4);
+    mci.wire.endTransmission();
+    mci.wire.requestFrom(mci.address, 1);
+    output.print(mci.wire.read());
     output.write('\n');
- 
     return;
   }
 
@@ -361,61 +502,79 @@ void takeCommand(Stream &input, Stream &output) {
     // set mode
     const byte newMode = input.parseInt(SKIP_WHITESPACE);
     if (newMode < 1 || newMode > maxMode) {
-      sendCommandErr(input, output, "49");
+      sendCommandErr(input, output, INVALID_OTHER);
       return;
     }
-    input.readStringUntil(';');
     mode = newMode;
-    output.write("=00\n");
+    sendCommandErr(input, output, OK);
   } else if (cmdId == 73) {
     // set loop delay
     long newValue = input.parseInt(SKIP_WHITESPACE);
     if (newValue < 1) {
-      sendCommandErr(input, output, "49");
+      sendCommandErr(input, output, INVALID_OTHER);
       return;
     }
-    input.readStringUntil(';');
     streamDelay = newValue;
-    output.write("=00\n");
+    sendCommandErr(input, output, OK);
   } else if (cmdId == 74) {
     // set mci check interval
     long newValue = input.parseInt(SKIP_WHITESPACE);
     if (newValue < 1) {
-      sendCommandErr(input, output, "49");
+      sendCommandErr(input, output, INVALID_OTHER);
       return;
     }
-    input.readStringUntil(';');
     mci.checkInterval = newValue;
-    output.write("=00\n");
+    sendCommandErr(input, output, OK);
   } else if (cmdId == 75) {
-    // Reinit MCC & MCI module
-    input.readStringUntil(';');
-    mccSerial.begin(mccBaudRate);
-    mcc.module.isInit = checkMccConnected(mcc.stream);
+    // Reinit MCI module
     mci.module.isInit = checkMciConnected(mci);
-    output.write("=00\n");
+    sendCommandErr(input, output, OK);
   } else if (cmdId == 77) {
     // Reset motorcontroller
-    input.readStringUntil(';');
     tripResetPin(mcResetPin);
-    output.write("=00\n");
+    sendCommandErr(input, output, OK);
   } else if (cmdId == 78) {
     // Reset self
-    input.readStringUntil(';');
-    output.write("=00\n");
+    sendCommandErr(input, output, OK);
     tripResetPin(selfResetPin);
   } else {
-    sendCommandErr(input, output, "44");
+    sendCommandErr(input, output, UNKNOWN_COMMAND);
   }
 }
 
-void sendCommandErr(Stream &input, Stream &output, const char *errCode) {
+void sendCommandErr(const long &id, Stream &input, Stream &output, const ResCode &errCode) {
+  writeAck(id, output, true);
+  sendCommandErr(input, output, errCode);
+}
+
+void sendCommandErr(Stream &input, Stream &output, const ResCode &errCode) {
   if (input.available() && input.findUntil(";", ":")) {
     input.readStringUntil(';');
   }
   output.write('=');
-  output.write(errCode);
+  output.print(errCode);
   output.write('\n');
+}
+
+byte readMotorIdFromInput(Stream &input) {
+  const byte motorId = input.parseInt(SKIP_WHITESPACE);
+  if (motorId > 0 && motorId <= MAX_MOTORID) {
+    return motorId;
+  }
+  return 0;
+}
+
+int getBoolParam(String value) {
+  if (value.length() == 1) {
+    const char c = value.charAt(0);
+    if (c == 'T' || c == '1') {
+      return 1;
+    }
+    if (c == 'F' || c == '0') {
+      return 0;
+    }
+  }
+  return -1;
 }
 
 void tripResetPin(byte pin) {
@@ -426,7 +585,7 @@ void tripResetPin(byte pin) {
   pinMode(pin, INPUT_PULLUP);
 }
 
-void writeAck(const long id, Stream &output, boolean withColon) {
+void writeAck(const long &id, Stream &output, boolean withColon) {
   // clear with newline, for initialization and mode change
   output.write("\nACK:");
   output.print(id, DEC);
@@ -558,8 +717,7 @@ void readAll() {
 
 // read I2C
 void readMciStatus(MotorControllerI2C &m) {
-  boolean mcBusy = digitalRead(mcBusyPin);
-  if (mcBusy && millis() - m.lastCheckTime < m.checkInterval) {
+  if (millis() - m.lastCheckTime < m.checkInterval) {
     return;
   }
   m.lastCheckTime = millis();
@@ -567,33 +725,38 @@ void readMciStatus(MotorControllerI2C &m) {
     return;
   }
   String s;
-  unsigned int flag = (int) mcBusy;
-  for (byte mId = 1; mId <= 2; ++mId) {
-    mainWire.beginTransmission(m.address);
-    mainWire.write((1 << 0x6) | ((mId - 1) << 0x4) | 0x0);
-    mainWire.endTransmission();
-    mainWire.requestFrom(m.address, 1);
-    flag |= mainWire.read() << (0x4 * mId);
+  unsigned int flag = 0;
+  for (byte mId = 1; mId <= m.numMotors; ++mId) {
+    m.wire.beginTransmission(m.address);
+    m.wire.write((1 << 0x6) | ((mId - 1) << 0x4) | 0x0);
+    m.wire.endTransmission();
+    m.wire.requestFrom(m.address, 1);
+    byte mFlag = m.wire.read();
+    flag |= mFlag << (0x4 + 0x8 * (mId - 1));
+    // set bit 0x1 of overall flag (mc busy) if motor is moving (bit 0x4)
+    flag |= (mFlag & 0x4) == 0x4;
   }
   s.concat(String(flag, HEX));
+  // read positions
   byte buf[4];
-  for (byte mId = 1; mId <= 2; ++mId) {
-    mainWire.beginTransmission(m.address);
-    mainWire.write((1 << 0x6) | ((mId - 1) << 0x4) | 0x2);
-    mainWire.endTransmission();
-    mainWire.requestFrom(m.address, 4);
-    mainWire.readBytes(buf, 4);
+  for (byte mId = 1; mId <= m.numMotors; ++mId) {
+    m.wire.beginTransmission(m.address);
+    m.wire.write((1 << 0x6) | ((mId - 1) << 0x4) | 0x2);
+    m.wire.endTransmission();
+    m.wire.requestFrom(m.address, 4);
+    m.wire.readBytes(buf, 4);
     s.concat('|');
     s.concat(String(unpackLong(buf), HEX));
   }
-  if (!mcBusy) {
-    for (byte mId = 1; mId <= 2; ++mId) {
-      for (byte reg = 0x3; reg <= 0xa; ++reg) {
-        mainWire.beginTransmission(m.address);
-        mainWire.write((1 << 0x6) | ((mId - 1) << 0x4) | reg);
-        mainWire.endTransmission();
-        mainWire.requestFrom(m.address, 4);
-        mainWire.readBytes(buf, 4);
+  if ((flag & 0x1) == 0x0) {
+    // mc not busy, read extended data
+    for (byte mId = 1; mId <= m.numMotors; ++mId) {
+      for (byte reg = 0x3; reg <= 0xb; ++reg) {
+        m.wire.beginTransmission(m.address);
+        m.wire.write((1 << 0x6) | ((mId - 1) << 0x4) | reg);
+        m.wire.endTransmission();
+        m.wire.requestFrom(m.address, 4);
+        m.wire.readBytes(buf, 4);
         s.concat('|');
         s.concat(String(unpackLong(buf), HEX));
       }
@@ -704,24 +867,15 @@ boolean checkMagConnected(Mag &m) {
 }
 
 boolean checkMciConnected(MotorControllerI2C m) {
-  mainWire.beginTransmission(m.address);
-  return mainWire.endTransmission() == 0;
+  m.wire.beginTransmission(m.address);
+  return m.wire.endTransmission() == 0;
 }
 
-// send a status request with a 2 second timeout
-boolean checkMccConnected(Stream &stream) {
-  stream.write(":14 ;");
-  // timeout 2 seconds
-  int d = 0;
-  while (!stream.available()) {
-    delay(1);
-    d += 1;
-    if (d > 2000) {
-      return false;
-    }
-  }
-  stream.readStringUntil('\n');
-  return true;
+void packLong(const unsigned long value, byte *buf) {
+  buf[0] = (byte) ((value >> 0x18) & 0xff);
+  buf[1] = (byte) ((value >> 0x10) & 0xff);
+  buf[2] = (byte) ((value >> 0x8) & 0xff);
+  buf[3] = (byte) (value & 0xff);
 }
 
 unsigned long unpackLong(byte *buf) {

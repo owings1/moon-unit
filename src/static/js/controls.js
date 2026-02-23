@@ -111,6 +111,9 @@ class Motor {
     return this.valueAt(8)
   }
 
+  get posMax() {
+    return this.valueAt(9) || null
+  }
   get stepsPerDegree() {
     return this.millistepsPerDegree / 1000 || null
   }
@@ -129,6 +132,13 @@ class Motor {
       : pos * degreesPerStep
   }
 
+  get posMaxDegress() {
+    const {posMax, degreesPerStep} = this
+    return (posMax == null || degreesPerStep == null)
+      ? null
+      : posMax * degreesPerStep
+  }
+
   checkBit(bit) {
     const {flag} = this
     const n = 1 << bit
@@ -138,7 +148,7 @@ class Motor {
   }
 
   valueAt(i) {
-    return this.mc.values[8 * (this.id - 1) + this.mc.motors.length + i]
+    return this.mc.values[9 * (this.id - 1) + this.mc.motors.length + i]
   }
 }
 
