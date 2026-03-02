@@ -73,47 +73,45 @@ class Motor {
   }
 
   get pos() {
-    const value = this.mc.values[this.id]
-    return value === POS_NULL
-      ? null
-      : value
+    return posNullSafe(this.mc.values[this.id])
   }
 
   get maxSpeed() {
-    return this.valueAt(1)
+    return this.valueAt(1) || null
   }
 
   get acceleration() {
-    return this.valueAt(2)
+    return this.valueAt(2) || null
   }
 
   get millistepsPerDegree() {
-    return this.valueAt(3)
+    return this.valueAt(3) || null
   }
 
   get maxDegrees() {
-    return this.valueAt(4)
+    return this.valueAt(4) || null
   }
 
   get defaultSpeed() {
-    return this.valueAt(5)
+    return this.valueAt(5) || null
   }
 
   get homingSpeed() {
-    return this.valueAt(6)
+    return this.valueAt(6) || null
   }
 
   get absMaxSpeed() {
-    return this.valueAt(7)
+    return this.valueAt(7) || null
   }
 
   get maxAcceleration() {
-    return this.valueAt(8)
+    return this.valueAt(8) || null
   }
 
   get posMax() {
     return this.valueAt(9) || null
   }
+
   get stepsPerDegree() {
     return this.millistepsPerDegree / 1000 || null
   }
@@ -317,6 +315,10 @@ function degNullSafe(value) {
   return value === DEG_NULL ? null : value
 }
 
+function posNullSafe(value) {
+  return value === POS_NULL ? null : value
+}
+
 $(() => {
   let requestBusy = false
   let refreshBusy = false
@@ -474,8 +476,7 @@ $(() => {
       }
       opts.body = JSON.stringify(body)
     }
-    //console.log('Sending', req)
-    var reqText = [method, uri].join(' ')
+    let reqText = [method, uri].join(' ')
     if (body) {
       reqText = [reqText, '\n', JSON.stringify(body, null, 2)].join('\n')
     }
@@ -484,7 +485,6 @@ $(() => {
       requestBusy = false
       $('.go').removeClass('disabled').prop('disabled', false)
       res.json().then(resBody => {
-        //console.log(resBody)
         $('#response_output').text(JSON.stringify(resBody, null, 2))
       }).catch(err => {
         console.error(err)
@@ -589,12 +589,12 @@ $(() => {
 })
 
 const Commands = {
-  STOP_MOTORS: ':76;\n',
-  RESET_MC: ':77;\n',
-  END_ALL_MOTORS: ':09;\n',
-  HOME_ALL_MOTORS: ':07;\n',
-  END_MOTOR: id => `:08 ${id};\n`,
-  HOME_MOTOR: id => `:06 ${id};\n`,
+  STOP_MOTORS: ':76;',
+  RESET_MC: ':77;',
+  END_ALL_MOTORS: ':9;',
+  HOME_ALL_MOTORS: ':7;',
+  END_MOTOR: id => `:8 ${id};`,
+  HOME_MOTOR: id => `:6 ${id};`,
   MOVE_MOTOR: (id, direction, howMuch, unit) => {
     direction = parseInt(direction)
     if (direction !== 1 && direction !== 2) {
@@ -611,7 +611,7 @@ const Commands = {
     if (isNaN(howMuch) || howMuch <= 0) {
       throw new Error(`Invalid howMuch value: ${howMuch}`)
     }
-    return `:01 ${id} ${direction} ${howMuch};\n`
+    return `:01 ${id} ${direction} ${howMuch};`
   },
   MOVE_BOTH_MOTORS: (direction1, howMuch1, direction2, howMuch2, isSameTime, unit) => {
     direction1 = parseInt(direction1)
@@ -638,6 +638,6 @@ const Commands = {
       throw new Error(`Invalid howMuch2 value: ${howMuch2}`)
     }
     isSameTime = +Boolean(isSameTime)
-    return `:10 ${direction1} ${howMuch1} ${direction2} ${howMuch2} ${isSameTime};\n`
+    return `:10 ${direction1} ${howMuch1} ${direction2} ${howMuch2} ${isSameTime};`
   }
 }

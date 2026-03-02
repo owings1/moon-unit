@@ -3,8 +3,8 @@
  * RP2350
  *
  *  Unallocated pins:
- *    D3
- *    D5
+ *    D4 (SDA1)
+ *    D5 (SCL1)
  *    D6
  *    D10
  *    D11
@@ -37,7 +37,7 @@ typedef enum {
 /******************************************/
 /* Stop Signal                            */
 /******************************************/
-#define stopPin D4
+#define stopPin D3
 boolean shouldStop = false;
 
 /******************************************/

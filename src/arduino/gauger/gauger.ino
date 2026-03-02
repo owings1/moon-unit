@@ -64,10 +64,6 @@
  * 77 - Reset motorcontroller
  *
  *  :<id>:77;
- *
- * 78 - Reset self
- *
- *  :<id>:78;
  */
 #include <Adafruit_BNO055.h>
 #include <Adafruit_GPS.h>
@@ -80,9 +76,7 @@
 /******************************************/
 #define gpsEnabled true
 #define magEnabled true
-#define mcBusyPin D8
 #define mcResetPin D10
-#define selfResetPin D18
 
 /******************************************/
 /* Constants                              */
@@ -95,9 +89,9 @@
 /******************************************/
 /* I2C                                    */
 /******************************************/
-#define mainWire Wire
-#define SDA_MAIN D14
-#define SCL_MAIN D13
+#define mainWire Wire1
+#define SDA_MAIN D4
+#define SCL_MAIN D5
 
 /******************************************/
 /* Behavior                               */
@@ -230,7 +224,6 @@ Mag mag = {{"MAG", true}, 49138, (0x3C >> 1)};
 /* Setup                                  */
 /******************************************/
 void setup() {
-  pinMode(mcBusyPin, INPUT_PULLDOWN);
   Serial.begin(BAUD_RATE);
   mainWire.setSDA(SDA_MAIN);
   mainWire.setSCL(SCL_MAIN);
@@ -533,10 +526,6 @@ void takeCommand(Stream &input, Stream &output) {
     // Reset motorcontroller
     tripResetPin(mcResetPin);
     sendCommandErr(input, output, OK);
-  } else if (cmdId == 78) {
-    // Reset self
-    sendCommandErr(input, output, OK);
-    tripResetPin(selfResetPin);
   } else {
     sendCommandErr(input, output, UNKNOWN_COMMAND);
   }
