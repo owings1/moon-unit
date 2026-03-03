@@ -1,12 +1,16 @@
 from __future__ import annotations
 
 import board
+import time
 from microcontroller import Pin
 
 def as_pin(pin: str|Pin) -> Pin:
   if isinstance(pin, str):
     pin = getattr(board, pin)
   return pin
+
+def millis() -> int:
+  return time.monotonic_ns() // 1_000_000
 
 def init_settings(defaults: MT, settings: ModuleType) -> MT:
   for name in defaults.__dict__:
@@ -17,6 +21,10 @@ def init_settings(defaults: MT, settings: ModuleType) -> MT:
 import defaults
 import settings
 settings = init_settings(defaults, settings)
+
+def debug(*args, **kw):
+  if settings.debug:
+    print(*args, **kw)
 
 def i2c_scan():
   i2c = board.I2C()

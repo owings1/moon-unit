@@ -1,8 +1,10 @@
 from __future__ import annotations
 
-import busio
-from adafruit_bus_device.i2c_device import I2CDevice
 from collections import OrderedDict
+
+import busio
+
+from . import Component, I2CMixin, RefreshMixin
 
 __all__ = (
   'Controller',
@@ -13,6 +15,9 @@ LSHIFT_CATEGORY = 0x06
 LSHIFT_MOTORIDX = 0x04
 
 C1_MASK = 0x1 << LSHIFT_CATEGORY
+C2_MASK = 0x2 << LSHIFT_CATEGORY
+C3_MASK = 0x3 << LSHIFT_CATEGORY
+
 C1_FLAG1 = C1_MASK | 0x00
 C1_FLAG2 = C1_MASK | 0x01
 
@@ -26,8 +31,8 @@ C1_HOMING_SPEED = C1_MASK | 0x08
 C1_ABS_MAX_SPEED = C1_MASK | 0x09
 C1_MAX_ACCELERATION = C1_MASK | 0x0a
 C1_POSITION_MAX = C1_MASK | 0x0b
+C1_TARGET_POSITION = C1_MASK | 0x0c
 
-C2_MASK = 0x2 << LSHIFT_CATEGORY
 C2_STOP = C2_MASK | 0x00
 C2_HOME = C2_MASK | 0x01
 C2_END = C2_MASK | 0x02
@@ -45,7 +50,6 @@ C2_MOVE_TO_AT_SPEED = C2_MASK | 0x0d
 C2_MOVE_CW_AT_SPEED = C2_MASK | 0x0e
 C2_MOVE_ACW_AT_SPEED = C2_MASK | 0x0f
 
-C3_MASK = 0x3 << LSHIFT_CATEGORY
 C3_STOP_ALL = C3_MASK | 0x01
 C3_HOME_ALL = C3_MASK | 0x02
 C3_END_ALL = C3_MASK | 0x03
@@ -66,7 +70,7 @@ CODE_COMMAND_IGNORED = 0x2e
 
 POS_NULL = 10_000_000
 
-class Controller:
+class Controller(I2CMixin, RefreshMixin, Component):
   ACTMAP = OrderedDict((x[0], x) for x in (
     ('stop_all', C3_STOP_ALL, 0),
     ('home_all', C3_HOME_ALL, 0),
@@ -79,12 +83,31 @@ class Controller:
     ('move_many_to_timing', C3_MOVE_MANY_TO_TIMING, 'M'),
   ))
 
-  def __init__(self, i2c: busio.I2C, address: int, *, motors: int = 0) -> None:
-    self.device = I2CDevice(i2c, address)
+  def __init__(self, i2c: busio.I2C, address: int, *, refresh_interval: int = 1000, motors: int = 0) -> None:
+    super().__init__(i2c=i2c, address=address)
+    self.refresh_interval = refresh_interval
     self.motors: tuple[Motor, ...] = tuple(
       Motor(self, i + 1) for i in range(motors))
+    self.packed = b''.join(m.packed for m in self.motors)
 
-  def write(self, name: str, flag: int|None = None, values: tuple[int, ...]|None = None):
+  def refresh(self) -> bool:
+    a = self.packed
+    moving = False
+    for m in self.motors:
+      m.read('flag1')
+      moving = moving or m['is_moving']
+    for m in self.motors:
+      if moving:
+        m.read('position')
+        m.read('target_position')
+      else:
+        for name in m.ATTRMAP:
+          if name != 'flag1':
+            m.read(name)
+    self.packed = b''.join(m.packed for m in self.motors)
+    return a != self.packed
+
+  def write(self, name: str, flag: int|None = None, values: tuple[int, ...]|None = None) -> int:
     actdef = self.ACTMAP[name]
     reg = actdef[1]
     if actdef[2] == 'M':
@@ -110,7 +133,8 @@ class Controller:
       device.write_then_readinto(bufw, bufr)
     return int.from_bytes(bufr)
 
-class Motor:
+class Motor(Component):
+  PACKSIZE = 46
   ATTRMAP = OrderedDict((x[0], x) for x in (
     ('flag1', C1_FLAG1, 0, 1),
     ('flag2', C1_FLAG2, 1, 2),
@@ -124,8 +148,8 @@ class Motor:
     ('abs_max_speed', C1_ABS_MAX_SPEED, 30, 34),
     ('max_acceleration', C1_MAX_ACCELERATION, 34, 38),
     ('position_max', C1_POSITION_MAX, 38, 42),
+    ('target_position', C1_TARGET_POSITION, 42, 46),
   ))
-  PACKSIZE = 42
   FLAGMAP = OrderedDict((x[0], x) for x in (
     ('is_limit_cw', 'flag1', 0x0),
     ('is_limit_acw', 'flag1', 0x1),
@@ -153,6 +177,10 @@ class Motor:
     ('move_acw_at_speed', C2_MOVE_ACW_AT_SPEED, 2),
   ))
 
+  @property
+  def component_address(self) -> int:
+    return self.mc.component_address | self.id
+
   def __init__(self, mc: Controller, id: int) -> None:
     if not 1 <= id <= 4:
       raise ValueError(f'{id=}')
@@ -168,14 +196,14 @@ class Motor:
     attrdef = self.ATTRMAP[name]
     slc = slice(attrdef[2], attrdef[3])
     value = int.from_bytes(self.packed[slc])
-    if name == 'position' and value == POS_NULL:
+    if value == POS_NULL and (name == 'position' or name == 'target_position'):
       return None
     if name == 'position_max' and not value:
       return None
     return value
 
-  def asdict(self):
-    return OrderedDict(
+  def items(self) -> Generator[tuple[str, int]]:
+    return (
       (name, self[name])
       for names in (self.FLAGMAP, self.ATTRMAP)
         for name in names)
@@ -218,3 +246,8 @@ def check_long(value: int) -> None:
 def check_byte(value: int) -> None:
   if not (isinstance(value, int) and value >= 0 and value.bit_length() <= 0x08):
     raise ValueError(f'{value=}')
+
+try:
+  from typing import Generator
+except ImportError:
+  pass

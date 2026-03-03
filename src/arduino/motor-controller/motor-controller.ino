@@ -3,6 +3,7 @@
  * RP2350
  *
  *  Unallocated pins:
+ *    D3
  *    D4 (SDA1)
  *    D5 (SCL1)
  *    D6
@@ -45,22 +46,16 @@ typedef enum {
 #define WIRE_ADDRESS 0x9
 
 /******************************************/
-/* Stop Signal                            */
-/******************************************/
-#define stopPin D3
-boolean shouldStop = false;
-
-/******************************************/
 /* Constants                              */
 /******************************************/
 #define BAUD_RATE 9600L
 #define DEG_NULL 1000.00
 #define POS_NULL 10000000UL
 #define LIMIT_TRIPPED HIGH
-#define STOP_TRIPPED HIGH
 #define MOTOR_ON LOW
 #define MAX_MOTORS 4
 #define ENABLE_DELAY_MS 2
+#define MOTOR_SLEEP_TIMEOUT_MS 2000
 
 /******************************************/
 /* Motor Pins                             */
@@ -72,11 +67,6 @@ struct MotorPins {
   byte limit_cw;
   byte limit_acw;
 };
-
-/******************************************/
-/* Motor Settings                         */
-/******************************************/
-#define motorSleepTimeout 2000L
 
 /******************************************/
 /* Motor Definition                       */
@@ -99,6 +89,7 @@ struct Motor {
   unsigned long maxSpeed;
   /* Stateful attributes */
   long pos = POS_NULL;
+  long targetPos = POS_NULL;
   boolean isLimit_cw;
   boolean isLimit_acw;
   boolean isActive;
@@ -150,7 +141,6 @@ const byte numMotors = min(sizeof(motors) / sizeof(motors[0]), MAX_MOTORS);
 /* Entrypoint Functions                   */
 /******************************************/
 void setup() {
-  pinMode(stopPin, STOP_TRIPPED == HIGH ? INPUT_PULLDOWN : INPUT_PULLUP);
   mainWire.setSDA(SDA_MAIN);
   mainWire.setSCL(SCL_MAIN);
   mainWire.onRequest(requestEvent);
@@ -161,7 +151,6 @@ void setup() {
 }
 
 void loop() {
-  shouldStop = digitalRead(stopPin) == STOP_TRIPPED;
   if (!runMotorsIfNeeded()) {
     readLimitSwitches();
   }
@@ -172,9 +161,13 @@ byte runMotorsIfNeeded() {
   for (auto& m : motors) {
     if (m.stepper.distanceToGo() != 0) {
       runActiveMotor(m);
-      runMask |= 1 << (m.id - 1);
+      runMask |= 1 << m.id - 1;
     } else {
-      updateIdleMotor(m);
+      if (m.isMoving) {
+        updateIdleMotor(m);
+      } else if (m.isActive) {
+        checkMotorSleep(m);
+      }
     }
   }
   return runMask;
@@ -184,16 +177,18 @@ void runActiveMotor(Motor &m) {
   readLimitSwitches(m);
   if (millis() > m.enabledAt + ENABLE_DELAY_MS) {
     // this will move at most one step
-    if (m.stepper.run() && m.hasHomed) {
-      m.pos = m.stepper.currentPosition();
-    }
-    if (shouldStop || !motorCanMove(m, m.stepper.distanceToGo())) {
-      stopMotor(m, shouldStop);
+    m.stepper.run();
+    if (!motorCanMove(m, m.stepper.distanceToGo())) {
+      stopMotor(m, false);
     }
   }
   registerMotorAction(m);
   if (!m.isMoving) {
     m.isMoving = true;
+  }
+  if (m.hasHomed) {
+    m.pos = m.stepper.currentPosition();
+    m.targetPos = m.stepper.targetPosition();
   }
 }
 
@@ -231,6 +226,7 @@ void updateIdleMotor(Motor &m) {
       if (isMotorHome(m)) {
         m.hasHomed = true;
         m.stepper.setCurrentPosition(0);
+        m.stepper.setMaxSpeed(m.maxSpeed);
         m.pos = m.stepper.currentPosition();
       } else if (isMotorEnd(m) && m.hasHomed) {
         // store the known max position
@@ -238,6 +234,7 @@ void updateIdleMotor(Motor &m) {
       }
     }
   }
+  m.targetPos = m.pos;
   checkMotorSleep(m);
 }
 
@@ -268,13 +265,6 @@ boolean moveMotor(Motor &m, const long howMuch) {
   return false;
 }
 
-boolean moveMotorTo(Motor &m, const unsigned long pos) {
-  if (m.pos == POS_NULL) {
-    return false;
-  }
-  return moveMotor(m, pos - m.pos);
-}
-
 // the howMuch is just a positive/negative direction reference.
 boolean motorCanMove(const Motor &m, const long howMuch) {
   return !m.limitsEnabled || (howMuch > 0 ? !m.isLimit_cw : !m.isLimit_acw);
@@ -289,7 +279,7 @@ long degtos(const Motor &m, const float howMuch) {
 /******************************************/
 
 boolean homeMotor(Motor &m) {
-  if (!motorCanHome(m) || m.isHoming || m.isEnding || m.isBacking || m.isForwarding) {
+  if (!m.limitsEnabled || m.isHoming || m.isEnding || m.isBacking || m.isForwarding) {
     return false;
   }
   overrideMaxSpeed(m, m.homingSpeed);
@@ -307,7 +297,7 @@ boolean homeMotor(Motor &m) {
 }
 
 boolean endMotor(Motor &m) {
-  if (!motorCanHome(m) || m.isHoming || m.isEnding || m.isBacking || m.isForwarding) {
+  if (!m.limitsEnabled || m.isHoming || m.isEnding || m.isBacking || m.isForwarding) {
     return false;
   }
   overrideMaxSpeed(m, m.homingSpeed);
@@ -324,16 +314,12 @@ boolean endMotor(Motor &m) {
   return true;
 }
 
-boolean motorCanHome(const Motor &m) {
-  return m.limitsEnabled;
-}
-
 boolean isMotorHome(const Motor &m) {
-  return motorCanHome(m) && m.isLimit_acw;
+  return m.limitsEnabled && m.isLimit_acw;
 }
 
 boolean isMotorEnd(const Motor &m) {
-  return motorCanHome(m) && m.isLimit_cw;
+  return m.limitsEnabled && m.isLimit_cw;
 }
 
 void readLimitSwitches() {
@@ -355,20 +341,12 @@ void setLimitSwitchEnablement(Motor &m, const boolean value) {
 
 unsigned long getOverLimitStepsToMove(const Motor &m) {
   float degreesToMove = m.maxDegrees;
-  const float mposDegrees = getMotorPositionDegrees(m);
+  const float mposDegrees = m.hasHomed ? (m.pos * 1000) / m.millistepsPerDegree : DEG_NULL;
   // if we know position, don't way overshoot
   if (mposDegrees != DEG_NULL && mposDegrees > 0) {
     degreesToMove = mposDegrees + 10;
   }
   return degtos(m, degreesToMove);
-}
-
-// returns DEG_NULL if motor has not homed.
-float getMotorPositionDegrees(const Motor &m) {
-  if (m.hasHomed) {
-    return (m.pos * 1000) / m.millistepsPerDegree;
-  }
-  return DEG_NULL;
 }
 
 /******************************************/
@@ -445,7 +423,7 @@ void registerMotorAction(Motor &m) {
 }
 
 void checkMotorSleep(Motor &m) {
-  if (m.isActive && !m.isMoving && millis() - m.lastActionTime > motorSleepTimeout) {
+  if (m.isActive && !m.isMoving && millis() - m.lastActionTime > MOTOR_SLEEP_TIMEOUT_MS) {
     disableMotor(m);
   }
 }
@@ -644,6 +622,7 @@ void writeMotorReg(Stream &output, const Motor &m, const byte reg) {
     } else if (reg == 0xb) {
       packLong(m.posMax, buf);
     } else if (reg == 0xc) {
+      packLong(m.targetPos, buf);
     } else if (reg == 0xd) {
     } else if (reg == 0xe) {
     } else if (reg == 0xf) {
@@ -685,7 +664,7 @@ ResCode applyMotorReg(Motor &m, const byte reg, const unsigned long value) {
     return MOTOR_BUSY;
   }
   if (reg == 0x7) {
-    if (!moveMotorTo(m, value)) {
+    if (m.pos == POS_NULL || !moveMotor(m, value - m.pos)) {
       return COMMAND_IGNORED;
     }
   } else if (reg == 0x8) {
@@ -713,7 +692,7 @@ ResCode applyMotorReg(Motor &m, const byte reg, const unsigned long p1, const un
   overrideMaxSpeed(m, p2);
   boolean ret = false;
   if (reg == 0xd) {
-    ret = moveMotorTo(m, p1);
+    ret = m.pos != POS_NULL && moveMotor(m, p1 - m.pos);
   } else if (reg == 0xe) {
     ret = moveMotor(m, p1);
   } else if (reg == 0xf) {
@@ -846,14 +825,9 @@ ResCode applyOtherReg(const byte reg, const byte flag, long *values, const byte 
       }
     }
   }
-  // D_println("otherReg: " + String(otherReg));
-  // D_println("motorFlag: " + String(motorFlag));
-  // D_println("motorCount: " + String(motorCount));
   for (byte i = 0; i < count; ++i) {
     Motor& m = motors[ids[i] - 1];
     long& howMuch = values[i];
-    // D_println("id: " + String(ids[i]));
-    // D_println("howMuch: " + String(howMuch));
     if (howMuch != 0 && motorCanMove(m, howMuch)) {
       moveMotor(m, howMuch);
     }
