@@ -7,11 +7,29 @@ from utils import millis
 class Component:
   ATTRMAP = {}
   FLAGMAP = {}
+  PERSIST_NS: int|None = None
+  PERSIST_VER: int = 0x01
   component_address: int
   refresh_interval = 1000
   refreshed_at = 0
   changed_at = 0
+  persistkey: tuple[int, int, int]|None = None
   debug: bool|None = None
+
+  @property
+  def persist_id(self) -> int|None:
+    return self.persistkey and self.persistkey[2]
+
+  @persist_id.setter
+  def persist_id(self, value: int|None) -> None:
+    if self.PERSIST_NS and self.PERSIST_VER and value:
+      self.persistkey = (self.PERSIST_NS, self.PERSIST_VER, value)
+    else:
+      self.persistkey = None
+
+  @property
+  def persistable(self) -> bool:
+    return bool(self.persistkey)
 
   def __getitem__(self, name: str):
     raise KeyError(name)
@@ -52,6 +70,15 @@ class Component:
   def deinit(self) -> None:
     pass
 
+  def load_persistent(self, buf: bytes) -> None:
+    pass
+
+  def dump_persistent(self) -> bytes|bytearray|None:
+    pass
+
+  def app_ready(self, app: App) -> None:
+    pass
+
 class DeviceComponent(Component):
 
   def __init__(self, i2c: busio.I2C, address: int) -> None:
@@ -67,6 +94,7 @@ class DeviceComponent(Component):
     yield 'device_address', hex(self.device_address)
 
 try:
+  from app import App
   from typing import Any, Iterable
 except ImportError:
   pass

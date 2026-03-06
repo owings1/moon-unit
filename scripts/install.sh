@@ -6,12 +6,21 @@ if [[ "$#" -ne 1 ]]; then
 fi
 dest="$(realpath "$1")"
 cd "$(dirname "$0")/../src/cmdr"
-cp -X -v -r \
-  code.py \
-  defaults.py \
-  utils.py \
-  components \
-  "$dest"
+mkdir -pv components
+files=(
+  app.py
+  code.py
+  defaults.py
+  utils.py
+  components/*
+)
+for file in "${files[@]}"; do
+  if [[ -e "$dest/$file" ]] && [[ "$(md5sum "$file" | awk '{print $1}')" == "$(md5sum "$dest/$file" | awk '{print $1}')" ]] ; then
+    echo "no change: $file"
+  else
+    cp -X -v "$file" "$dest/$file"
+  fi
+done
 cp -X -v -n \
   settings.py \
   "$dest" || true

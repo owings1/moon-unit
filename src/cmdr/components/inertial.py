@@ -17,12 +17,8 @@ class IMU6(DeviceComponent):
   TEMPERATURE_SENSITIVITY = 256
   TEMPERATURE_OFFSET = 25.0
   ATTRMAP = OrderedDict((x[0], x) for x in (
-    ('accel_x', 'accel', PKR.size, PKR.add('h')),
-    ('accel_y', 'accel', PKR.size, PKR.add('h')),
-    ('accel_z', 'accel', PKR.size, PKR.add('h')),
-    ('gyro_x', 'gyro', PKR.size, PKR.add('h')),
-    ('gyro_y', 'gyro', PKR.size, PKR.add('h')),
-    ('gyro_z', 'gyro', PKR.size, PKR.add('h')),
+    ('accel', 'accel', PKR.size, PKR.add('3h')),
+    ('gyro', 'gyro', PKR.size, PKR.add('3h')),
     ('temperature', 'temp', PKR.size, PKR.add('h')),
   ))
   onboard_i2c: bool = False
@@ -51,7 +47,10 @@ class IMU6(DeviceComponent):
   def __getitem__(self, name: str):
     attrdef = self.ATTRMAP[name]
     raw = struct.unpack_from(attrdef[3], self.packed, attrdef[2])
-    return self.scale(attrdef[1], *raw)
+    it = (self.scale(attrdef[1], x) for x in raw)
+    if len(raw) == 1:
+      return next(it)
+    return tuple(it)
 
   def refresh(self) -> bool:
     a = bytes(self.packed)
@@ -86,37 +85,16 @@ class IMU9(DeviceComponent):
   SCALE_MAG = SCALE_EULER = 1 / 16
   SCALE_QUAT = 1 / (1 << 14)
   ATTRMAP = OrderedDict((x[0], x) for x in (
-    ('accel_x', SCALE_ACCEL, PKR.size, PKR.add('h')),
-    ('accel_y', SCALE_ACCEL, PKR.size, PKR.add('h')),
-    ('accel_z', SCALE_ACCEL, PKR.size, PKR.add('h')),
-    ('gyro_x', SCALE_GYRO, PKR.size, PKR.add('h')),
-    ('gyro_y', SCALE_GYRO, PKR.size, PKR.add('h')),
-    ('gyro_z', SCALE_GYRO, PKR.size, PKR.add('h')),
-    ('mag_x', SCALE_MAG, PKR.size, PKR.add('h')),
-    ('mag_y', SCALE_MAG, PKR.size, PKR.add('h')),
-    ('mag_z', SCALE_MAG, PKR.size, PKR.add('h')),
-    ('euler_heading', SCALE_EULER, PKR.size, PKR.add('h')),
-    ('euler_roll', SCALE_EULER, PKR.size, PKR.add('h')),
-    ('euler_pitch', SCALE_EULER, PKR.size, PKR.add('h')),
-    ('quaternion_w', SCALE_QUAT, PKR.size, PKR.add('h')),
-    ('quaternion_x', SCALE_QUAT, PKR.size, PKR.add('h')),
-    ('quaternion_y', SCALE_QUAT, PKR.size, PKR.add('h')),
-    ('quaternion_z', SCALE_QUAT, PKR.size, PKR.add('h')),
-    ('gravity_x', SCALE_GRAVITY, PKR.size, PKR.add('h')),
-    ('gravity_y', SCALE_GRAVITY, PKR.size, PKR.add('h')),
-    ('gravity_z', SCALE_GRAVITY, PKR.size, PKR.add('h')),
-    ('linearaccel_x', SCALE_ACCEL, PKR.size, PKR.add('h')),
-    ('linearaccel_y', SCALE_ACCEL, PKR.size, PKR.add('h')),
-    ('linearaccel_z', SCALE_ACCEL, PKR.size, PKR.add('h')),
-    ('offset_accel_x', 1, PKR.size, PKR.add('h')),
-    ('offset_accel_y', 1, PKR.size, PKR.add('h')),
-    ('offset_accel_z', 1, PKR.size, PKR.add('h')),
-    ('offset_mag_x', 1, PKR.size, PKR.add('h')),
-    ('offset_mag_y', 1, PKR.size, PKR.add('h')),
-    ('offset_mag_z', 1, PKR.size, PKR.add('h')),
-    ('offset_gyro_x', 1, PKR.size, PKR.add('h')),
-    ('offset_gyro_y', 1, PKR.size, PKR.add('h')),
-    ('offset_gyro_z', 1, PKR.size, PKR.add('h')),
+    ('accel', SCALE_ACCEL, PKR.size, PKR.add('3h')),
+    ('mag', SCALE_MAG, PKR.size, PKR.add('3h')),
+    ('gyro', SCALE_GYRO, PKR.size, PKR.add('3h')),
+    ('euler', SCALE_EULER, PKR.size, PKR.add('3h')),
+    ('quaternion', SCALE_QUAT, PKR.size, PKR.add('4h')),
+    ('gravity', SCALE_GRAVITY, PKR.size, PKR.add('3h')),
+    ('linearaccel', SCALE_ACCEL, PKR.size, PKR.add('3h')),
+    ('offsets_accel', 1, PKR.size, PKR.add('3h')),
+    ('offsets_mag', 1, PKR.size, PKR.add('3h')),
+    ('offsets_gyro', 1, PKR.size, PKR.add('3h')),
     ('radius_accel', 1, PKR.size, PKR.add('h')),
     ('radius_mag', 1, PKR.size, PKR.add('h')),
     ('calflag', 1, PKR.size, PKR.add('B')),
@@ -131,12 +109,21 @@ class IMU9(DeviceComponent):
     ('calibrated', 'calflag', 0x0),
   ))
   ACTMAP = OrderedDict((x[0], x) for x in (
-    ('offsets_mag', 'offsets_magnetometer', 'hhh'),
-    ('offsets_accel', 'offsets_accelerometer', 'hhh'),
-    ('offsets_gyro', 'offsets_gyroscope', 'hhh'),
+    ('offsets_accel', 'offsets_accelerometer', '3h'),
+    ('offsets_mag', 'offsets_magnetometer', '3h'),
+    ('offsets_gyro', 'offsets_gyroscope', '3h'),
   ))
+  PERSIST_NS = 0x4939
+  PERSIST_VER = 0x01
+  PERSIST_SLC = slice(ATTRMAP['offsets_accel'][2], ATTRMAP['offsets_accel'][2] + struct.calcsize('9h'))
 
-  def __init__(self, i2c: busio.I2C, address: int = 0x29, *, refresh_interval: int = 200, offsets: dict[str, tuple[int, int, int]]|None = None) -> None:
+  def __init__(
+    self, i2c: busio.I2C,
+    address: int = 0x29,
+    *,
+    refresh_interval: int = 200,
+    offsets: dict[str, tuple[int, int, int]]|None = None,
+  ) -> None:
     super().__init__(i2c, address)
     from adafruit_bno055 import BNO055_I2C
     self.sensor = BNO055_I2C(i2c, address)
@@ -156,7 +143,10 @@ class IMU9(DeviceComponent):
         return value & 0x3
     attrdef = self.ATTRMAP[name]
     raw = struct.unpack_from(attrdef[3], self.packed, attrdef[2])
-    return raw[0] * attrdef[1]
+    it = (x * attrdef[1] for x in raw)
+    if len(raw) == 1:
+      return next(it)
+    return tuple(it)
 
   def refresh(self) -> bool:
     a = bytes(self.packed)
@@ -189,6 +179,17 @@ class IMU9(DeviceComponent):
     values = value if isinstance(value, tuple) else (value,)
     struct.pack(actdef[2], *values)
     setattr(self.sensor, actdef[1], value)
+
+  def dump_persistent(self):
+    if self['calibrated']:
+      return self.packed[self.PERSIST_SLC]
+
+  def load_persistent(self, buf: bytes) -> None:
+    sensor = self.sensor
+    values = struct.unpack('9h', buf)
+    sensor.offsets_accelerometer = values[:3]
+    sensor.offsets_gyroscope = values[3:6]
+    sensor.offsets_magnetometer = values[6:]
 
   @staticmethod
   def descale(scale: int|float, *values: int|float|None):
