@@ -4,10 +4,10 @@ from collections import OrderedDict
 
 import busio
 
-from . import Component, I2CMixin, RefreshMixin
+from . import Component, DeviceComponent
 
 __all__ = (
-  'Controller',
+  'MotorController',
   'Motor',
 )
 
@@ -70,7 +70,7 @@ CODE_COMMAND_IGNORED = 0x2e
 
 POS_NULL = 10_000_000
 
-class Controller(I2CMixin, RefreshMixin, Component):
+class MotorController(DeviceComponent):
   ACTMAP = OrderedDict((x[0], x) for x in (
     ('stop_all', C3_STOP_ALL, 0),
     ('home_all', C3_HOME_ALL, 0),
@@ -83,12 +83,15 @@ class Controller(I2CMixin, RefreshMixin, Component):
     ('move_many_to_timing', C3_MOVE_MANY_TO_TIMING, 'M'),
   ))
 
-  def __init__(self, i2c: busio.I2C, address: int, *, refresh_interval: int = 1000, motors: int = 0) -> None:
+  def __init__(self, i2c: busio.I2C, address: int = 0x9, *, refresh_interval: int = 500, motors: int = 0) -> None:
     super().__init__(i2c=i2c, address=address)
     self.refresh_interval = refresh_interval
     self.motors: tuple[Motor, ...] = tuple(
       Motor(self, i + 1) for i in range(motors))
     self.packed = b''.join(m.packed for m in self.motors)
+
+  def subcomponents(self):
+    return self.motors
 
   def refresh(self) -> bool:
     a = self.packed
@@ -133,6 +136,14 @@ class Controller(I2CMixin, RefreshMixin, Component):
       device.write_then_readinto(bufw, bufr)
     return int.from_bytes(bufr)
 
+  def debug_lines(self) -> Generator[str]:
+    yield from super().debug_lines()
+    for m in self.motors:
+      yield ''
+      for line in m.debug_lines():
+        yield f'[M{m.id}] {line}'
+      yield ''
+
 class Motor(Component):
   PACKSIZE = 46
   ATTRMAP = OrderedDict((x[0], x) for x in (
@@ -151,14 +162,14 @@ class Motor(Component):
     ('target_position', C1_TARGET_POSITION, 42, 46),
   ))
   FLAGMAP = OrderedDict((x[0], x) for x in (
-    ('is_limit_cw', 'flag1', 0x0),
-    ('is_limit_acw', 'flag1', 0x1),
-    ('is_moving', 'flag1', 0x2),
-    ('is_active', 'flag1', 0x3),
-    ('has_homed', 'flag1', 0x4),
-    ('limits_enabled', 'flag1', 0x5),
-    ('is_homing', 'flag1', 0x6),
-    ('is_ending', 'flag1', 0x7),
+    ('is_limit_cw', 'flag1', 0x0, 0x1),
+    ('is_limit_acw', 'flag1', 0x1, 0x1),
+    ('is_moving', 'flag1', 0x2, 0x1),
+    ('is_active', 'flag1', 0x3, 0x1),
+    ('has_homed', 'flag1', 0x4, 0x1),
+    ('limits_enabled', 'flag1', 0x5, 0x1),
+    ('is_homing', 'flag1', 0x6, 0x1),
+    ('is_ending', 'flag1', 0x7, 0x1),
   ))
   ACTMAP = OrderedDict((x[0], x) for x in (
     ('stop', C2_STOP, 0),
@@ -181,7 +192,7 @@ class Motor(Component):
   def component_address(self) -> int:
     return self.mc.component_address | self.id
 
-  def __init__(self, mc: Controller, id: int) -> None:
+  def __init__(self, mc: MotorController, id: int) -> None:
     if not 1 <= id <= 4:
       raise ValueError(f'{id=}')
     self.mc = mc
@@ -192,7 +203,7 @@ class Motor(Component):
   def __getitem__(self, name: str):
     if name in self.FLAGMAP:
       flagdef = self.FLAGMAP[name]
-      return bool((self[flagdef[1]] >> flagdef[2]) & 1)
+      return (self[flagdef[1]] >> flagdef[2]) & flagdef[3]
     attrdef = self.ATTRMAP[name]
     slc = slice(attrdef[2], attrdef[3])
     value = int.from_bytes(self.packed[slc])
@@ -202,15 +213,8 @@ class Motor(Component):
       return None
     return value
 
-  def items(self) -> Generator[tuple[str, int]]:
-    return (
-      (name, self[name])
-      for names in (self.FLAGMAP, self.ATTRMAP)
-        for name in names)
-
-  def readall(self) -> None:
-    for name in self.ATTRMAP:
-      self.read(name)
+  def refresh_if_needed(self) -> Literal[0]:
+    return 0
 
   def read(self, name: str) -> None:
     attrdef = self.ATTRMAP[name]
@@ -248,6 +252,6 @@ def check_byte(value: int) -> None:
     raise ValueError(f'{value=}')
 
 try:
-  from typing import Generator
+  from typing import Generator, Literal
 except ImportError:
   pass

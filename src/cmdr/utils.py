@@ -1,8 +1,22 @@
 from __future__ import annotations
 
-import board
+import struct
 import time
+
+import board
 from microcontroller import Pin
+
+
+class Pkr:
+
+  def __init__(self, bom: str = ''):
+    self.bom = self.fmt = bom
+    self.size = 0
+
+  def add(self, fmt: str):
+    self.fmt += fmt
+    self.size = struct.calcsize(self.fmt)
+    return fmt
 
 def as_pin(pin: str|Pin) -> Pin:
   if isinstance(pin, str):
@@ -20,6 +34,7 @@ def init_settings(defaults: MT, settings: ModuleType) -> MT:
 
 import defaults
 import settings
+
 settings = init_settings(defaults, settings)
 
 def debug(*args, **kw):
