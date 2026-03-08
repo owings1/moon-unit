@@ -14,7 +14,7 @@
 #include <AccelStepper.h>
 #include <Wire.h>
 
-#define DEBUG 0
+#define DEBUG 1
 
 #if DEBUG
 #define D_SerialBegin(...) Serial.begin(__VA_ARGS__)
@@ -28,6 +28,8 @@
 #define D_println(...)
 #endif
 
+#include "Motor.h"
+
 typedef enum {
   OK = 0x0,
   MOTOR_BUSY = 0x1f,
@@ -35,118 +37,52 @@ typedef enum {
   UNKNOWN_COMMAND = 0x2c,
   INVALID_MOTORID = 0x2d,
   COMMAND_IGNORED = 0x2e,
+  COMMAND_PARTIALLY_IGNORED = 0x2f,
 } ResCode;
 
 /******************************************/
 /* I2C                                    */
 /******************************************/
-#define mainWire Wire
+#define I2C_MAIN Wire
 #define SDA_MAIN D14
 #define SCL_MAIN D13
-#define WIRE_ADDRESS 0x9
+#define I2C_ADDRESS 0x9
 
 /******************************************/
 /* Constants                              */
 /******************************************/
 #define BAUD_RATE 9600L
-#define DEG_NULL 1000.00
-#define POS_NULL 10000000UL
-#define LIMIT_TRIPPED HIGH
-#define MOTOR_ON LOW
 #define MAX_MOTORS 4
-#define ENABLE_DELAY_MS 2
-#define MOTOR_SLEEP_TIMEOUT_MS 2000
 
-/******************************************/
-/* Motor Pins                             */
-/******************************************/
-struct MotorPins {
-  byte dir;
-  byte step;
-  byte enable;
-  byte limit_cw;
-  byte limit_acw;
-};
+const byte numMotors = 2;
 
-/******************************************/
-/* Motor Definition                       */
-/******************************************/
-struct Motor {
-  /* Fixed attributes */
-  MotorPins pins;
-  unsigned long millistepsPerDegree;
-  unsigned int maxDegrees;
-  unsigned long absMaxSpeed = 5000;
-  unsigned long defaultSpeed = 2000;
-  unsigned long homingSpeed = 4000;
-  unsigned long maxAcceleration = 50000;
-  /* Created on setup */
-  AccelStepper stepper;
-  byte id;
-  /* Runtime configurable settings */
-  boolean limitsEnabled = true;
-  unsigned long acceleration;
-  unsigned long maxSpeed;
-  /* Stateful attributes */
-  long pos = POS_NULL;
-  long targetPos = POS_NULL;
-  boolean isLimit_cw;
-  boolean isLimit_acw;
-  boolean isActive;
-  boolean isMoving;
-  unsigned long lastActionTime;
-  // the position is only meaningful if homed
-  boolean hasHomed;
-  /* Temporary flags */
-  // flag to reset acceleration to oldAcceleration after motors are finished
-  // running, for smooth stop on limits.  
-  boolean isStopping;
-  // when a motor is stopped by a command instead of naturally from limit
-  boolean isForceStop;
-  // flag for when we are backing up for homing purposes, so that immediately
-  // after we can re-initiate homing.
-  boolean isBacking;
-  // as above for ending purposes
-  boolean isForwarding;
-  // flag to indicate homing in progress
-  boolean isHoming;
-  // flag to indicate ending in progress
-  boolean isEnding;
-  // if we have homed and ended, we know the actual effective range
-  unsigned long posMax;
-  // for temporarily overriding acceleration during stopping.
-  unsigned long oldAcceleration;
-  // for temporarily overriding max speed during timing.
-  unsigned long oldMaxSpeed;  
-  // for delaying after enabling motor
-  unsigned long enabledAt;
-};
 
 Motor motors[] = {
-  {
+  Motor(
     { D1, D2, D0, D16, D15 },
-    1230769UL, /* 1/0.0008125 degrees per step */
-    190,
-  },
-  {
+    {
+      1230769UL, /* 1/0.0008125 degrees per step */
+      190,
+    }
+  ),
+  Motor(
     { D7, D8, D9, D17, D18 },
-    888889UL, /* 1/0.001125 degrees per step */
-    380,
-  },
+    {
+      888889UL, /* 1/0.001125 degrees per step */
+      380,
+    }
+  )
 };
 
-const byte numMotors = min(sizeof(motors) / sizeof(motors[0]), MAX_MOTORS);
-
-/******************************************/
-/* Entrypoint Functions                   */
-/******************************************/
 void setup() {
-  mainWire.setSDA(SDA_MAIN);
-  mainWire.setSCL(SCL_MAIN);
-  mainWire.onRequest(requestEvent);
-  mainWire.onReceive(receiveEvent);
-  setupMotors();
-  mainWire.begin(WIRE_ADDRESS);
+  for (auto& m : motors) {
+    m.begin();
+  }
+  I2C_MAIN.setSDA(SDA_MAIN);
+  I2C_MAIN.setSCL(SCL_MAIN);
+  I2C_MAIN.onRequest(requestEvent);
+  I2C_MAIN.onReceive(receiveEvent);
+  I2C_MAIN.begin(I2C_ADDRESS);
   D_SerialBegin(BAUD_RATE);
 }
 
@@ -159,303 +95,15 @@ void loop() {
 byte runMotorsIfNeeded() {
   byte runMask = 0;
   for (auto& m : motors) {
-    if (m.stepper.distanceToGo() != 0) {
-      runActiveMotor(m);
-      runMask |= 1 << m.id - 1;
-    } else {
-      if (m.isMoving) {
-        updateIdleMotor(m);
-      } else if (m.isActive) {
-        checkMotorSleep(m);
-      }
-    }
+    runMask |= m.runIfNeeded() << m.id - 1;
   }
   return runMask;
 }
 
-void runActiveMotor(Motor &m) {
-  readLimitSwitches(m);
-  if (millis() > m.enabledAt + ENABLE_DELAY_MS) {
-    // this will move at most one step
-    m.stepper.run();
-    if (!motorCanMove(m, m.stepper.distanceToGo())) {
-      stopMotor(m, false);
-    }
-  }
-  registerMotorAction(m);
-  if (!m.isMoving) {
-    m.isMoving = true;
-  }
-  if (m.hasHomed) {
-    m.pos = m.stepper.currentPosition();
-    m.targetPos = m.stepper.targetPosition();
-  }
-}
-
-void updateIdleMotor(Motor &m) {
-  restoreAcceleration(m);
-  restoreMaxSpeed(m);
-  if (m.isBacking) {
-    // we have finished backing for home
-    m.isBacking = false;
-    homeMotor(m);
-    return;
-  }
-  if (m.isForwarding) {
-    // we have finished forwarding for end
-    m.isForwarding = false;
-    endMotor(m);
-    return;
-  }
-  if (m.isHoming) {
-    m.isHoming = false;
-  }
-  if (m.isEnding) {
-    m.isEnding = false;
-  }
-  if (m.isMoving) {
-    m.isMoving = false;
-  }
-  if (m.isStopping) {
-    // we have finished stopping
-    m.isStopping = false;
-    if (m.isForceStop) {
-      m.isForceStop = false;
-    } else {
-      // we have reached a limit switch, see if we are home
-      if (isMotorHome(m)) {
-        m.hasHomed = true;
-        m.stepper.setCurrentPosition(0);
-        m.stepper.setMaxSpeed(m.maxSpeed);
-        m.pos = m.stepper.currentPosition();
-      } else if (isMotorEnd(m) && m.hasHomed) {
-        // store the known max position
-        m.posMax = m.stepper.currentPosition();
-      }
-    }
-  }
-  m.targetPos = m.pos;
-  checkMotorSleep(m);
-}
-
-/******************************************/
-/* Move Functions                         */
-/******************************************/
-
-void stopMotor(Motor &m, const boolean force) {
-  if (m.isStopping) {
-    // don't duplicate action
-    return;
-  }
-  if (!m.isMoving) {
-    return;
-  }
-  m.isStopping = true;
-  m.isForceStop = force;
-  overrideAcceleration(m, m.maxAcceleration);
-  m.stepper.stop();
-}
-
-boolean moveMotor(Motor &m, const long howMuch) {
-  if (motorCanMove(m, howMuch)) {
-    m.stepper.move(howMuch);
-    enableMotor(m);
-    return true;
-  }
-  return false;
-}
-
-// the howMuch is just a positive/negative direction reference.
-boolean motorCanMove(const Motor &m, const long howMuch) {
-  return !m.limitsEnabled || (howMuch > 0 ? !m.isLimit_cw : !m.isLimit_acw);
-}
-
-long degtos(const Motor &m, const float howMuch) {
-  return (howMuch * m.millistepsPerDegree) / 1000;
-}
-
-/******************************************/
-/* Home/End Functions                     */
-/******************************************/
-
-boolean homeMotor(Motor &m) {
-  if (!m.limitsEnabled || m.isHoming || m.isEnding || m.isBacking || m.isForwarding) {
-    return false;
-  }
-  overrideMaxSpeed(m, m.homingSpeed);
-  overrideAcceleration(m, m.maxAcceleration);
-  if (isMotorHome(m)) {
-    // move back just a little
-    m.isBacking = true;
-    moveMotor(m, degtos(m, 1.5));
-    // homing will recommence after backing is complete
-  } else {
-    m.isHoming = true;
-    moveMotor(m, -getOverLimitStepsToMove(m));
-  }
-  return true;
-}
-
-boolean endMotor(Motor &m) {
-  if (!m.limitsEnabled || m.isHoming || m.isEnding || m.isBacking || m.isForwarding) {
-    return false;
-  }
-  overrideMaxSpeed(m, m.homingSpeed);
-  overrideAcceleration(m, m.maxAcceleration);
-  if (isMotorEnd(m)) {
-    // move forward just a little
-    m.isForwarding = true;
-    moveMotor(m, -degtos(m, 1.5));
-    // ending will recommence after forwarding is complete
-  } else {
-    m.isEnding = true;
-    moveMotor(m, getOverLimitStepsToMove(m));
-  }
-  return true;
-}
-
-boolean isMotorHome(const Motor &m) {
-  return m.limitsEnabled && m.isLimit_acw;
-}
-
-boolean isMotorEnd(const Motor &m) {
-  return m.limitsEnabled && m.isLimit_cw;
-}
-
 void readLimitSwitches() {
   for (auto& m : motors) {
-    readLimitSwitches(m);
+    m.readLimitSwitches();
   }
-}
-
-void readLimitSwitches(Motor &m) {
-  m.isLimit_cw = digitalRead(m.pins.limit_cw) == LIMIT_TRIPPED;
-  m.isLimit_acw = digitalRead(m.pins.limit_acw) == LIMIT_TRIPPED;
-}
-
-void setLimitSwitchEnablement(Motor &m, const boolean value) {
-  if (m.limitsEnabled != value) {
-    m.limitsEnabled = value;
-  }
-}
-
-unsigned long getOverLimitStepsToMove(const Motor &m) {
-  float degreesToMove = m.maxDegrees;
-  const float mposDegrees = m.hasHomed ? (m.pos * 1000) / m.millistepsPerDegree : DEG_NULL;
-  // if we know position, don't way overshoot
-  if (mposDegrees != DEG_NULL && mposDegrees > 0) {
-    degreesToMove = mposDegrees + 10;
-  }
-  return degtos(m, degreesToMove);
-}
-
-/******************************************/
-/* Other Functions                        */
-/******************************************/
-
-void setMaxSpeed(Motor &m, unsigned long value) {
-  m.maxSpeed = min(value, m.absMaxSpeed);
-  m.stepper.setMaxSpeed(m.maxSpeed);
-}
-
-void setHomingSpeed(Motor &m, unsigned long value) {
-  m.homingSpeed = min(value, m.absMaxSpeed);
-}
-
-void setAcceleration(Motor &m, unsigned long value) {
-  m.acceleration = min(value, m.maxAcceleration);
-  m.stepper.setAcceleration(m.acceleration);
-}
-
-void overrideMaxSpeed(Motor &m, unsigned long value) {
-  value = min(value, m.absMaxSpeed);
-  if (m.maxSpeed != value) {
-    if (!m.oldMaxSpeed) {
-      m.oldMaxSpeed = m.maxSpeed;
-    }
-    setMaxSpeed(m, value);
-  }
-}
-
-void overrideAcceleration(Motor &m, unsigned long value) {
-  value = min(value, m.maxAcceleration);
-  if (m.acceleration != value) {
-    if (!m.oldAcceleration) {
-      m.oldAcceleration = m.acceleration;
-    }
-    setAcceleration(m, value);
-  }
-}
-
-void restoreMaxSpeed(Motor &m) {
-  if (m.oldMaxSpeed) {
-    setMaxSpeed(m, m.oldMaxSpeed);
-    m.oldMaxSpeed = 0;
-  }
-}
-
-void restoreAcceleration(Motor &m) {
-  if (m.oldAcceleration) {
-    setAcceleration(m, m.oldAcceleration);
-    m.oldAcceleration = 0;
-  }
-}
-
-void enableMotor(Motor &m) {
-  if (!m.isActive) {
-    digitalWrite(m.pins.enable, MOTOR_ON);
-    m.isActive = true;
-    m.enabledAt = millis();
-  }
-  registerMotorAction(m);
-}
-
-void disableMotor(Motor &m) {
-  if (m.isActive) {
-    digitalWrite(m.pins.enable, 1 - MOTOR_ON);
-    m.isActive = false;
-    m.enabledAt = 0;
-  }
-}
-
-void registerMotorAction(Motor &m) {
-  m.lastActionTime = millis();
-}
-
-void checkMotorSleep(Motor &m) {
-  if (m.isActive && !m.isMoving && millis() - m.lastActionTime > MOTOR_SLEEP_TIMEOUT_MS) {
-    disableMotor(m);
-  }
-}
-
-/******************************************/
-/* I2C Functions                          */
-/******************************************/
-
-byte getMotorFlag1(const Motor &m) {
-  return (
-    (m.isLimit_cw << 0x0) |
-    (m.isLimit_acw << 0x1) |
-    (m.isMoving << 0x2) |
-    (m.isActive << 0x3) |
-    (m.hasHomed << 0x4) |
-    (m.limitsEnabled << 0x5) |
-    (m.isHoming << 0x6) |
-    (m.isEnding << 0x7)
-  );
-}
-
-byte getMotorFlag2(const Motor &m) {
-  return (
-    (false << 0x0) |
-    (false << 0x1) |
-    (false << 0x2) |
-    (false << 0x3) |
-    (false << 0x4) |
-    (false << 0x5) |
-    (false << 0x6) |
-    (false << 0x7)
-  );
 }
 
 volatile byte wireReg1 = 0x0;
@@ -465,7 +113,7 @@ void requestEvent() {
   if (wireReg1 == 0x0) {
     return;
   }
-  TwoWire& wire = mainWire;
+  TwoWire& wire = I2C_MAIN;
   // First 2 significant bits are category
   const byte category = wireReg1 >> 0x6;
   if (category == 0x1) {
@@ -496,7 +144,7 @@ void receiveEvent(int howMany) {
   if (howMany < 1) {
     return;
   }
-  TwoWire& wire = mainWire;
+  TwoWire& wire = I2C_MAIN;
   wireReg1 = wire.read();
   // First 2 significant bits are category
   const byte category = wireReg1 >> 0x6;
@@ -576,7 +224,7 @@ void receiveEvent(int howMany) {
         byte buf[4];
         for (byte i = 0; i < numValues; ++i) {
           wire.readBytes(buf, 4);
-          values[i] = (long) unpackLong(buf);
+          values[i] = (long)unpackLong(buf);
         }
         wireRes1 = applyOtherReg(otherReg, flag, values, numValues);
       } else {
@@ -588,41 +236,45 @@ void receiveEvent(int howMany) {
   }
 }
 
-void writeMotorReg(Stream &output, const Motor &m, const byte reg) {
+void writeMotorReg(Stream& output, const Motor& m, const byte reg) {
   if (reg <= 0x1) {
     if (reg == 0x0) {
-      output.write(getMotorFlag1(m));
+      byte buf[2];
+      packShort(m.state.flags, buf);
+      output.write(buf, 2);
+      // output.write((byte)m.state.flags & 0xff);
+      // output.write(m.state.flags)
     } else if (reg == 0x1) {
-      output.write(getMotorFlag2(m));
+      output.write((byte)m.settings.flags);
     }
     return;
   }
   byte buf[4];
   if (reg <= 0x8) {
     if (reg == 0x2) {
-      packLong(m.pos, buf);
+      packLong(m.state.pos, buf);
     } else if (reg == 0x3) {
-      packLong(m.maxSpeed, buf);
+      packLong(m.settings.maxSpeed, buf);
     } else if (reg == 0x4) {
-      packLong(m.acceleration, buf);
+      packLong(m.settings.acceleration, buf);
     } else if (reg == 0x5) {
-      packLong(m.millistepsPerDegree, buf);
+      packLong(m.parameters.millistepsPerDegree, buf);
     } else if (reg == 0x6) {
-      packLong(m.maxDegrees, buf);
+      packLong(m.parameters.maxDegrees, buf);
     } else if (reg == 0x7) {
-      packLong(m.defaultSpeed, buf);
+      packLong(m.parameters.defaultSpeed, buf);
     } else if (reg == 0x8) {
-      packLong(m.homingSpeed, buf);
+      packLong(m.settings.homingSpeed, buf);
     }
   } else {
     if (reg == 0x9) {
-      packLong(m.absMaxSpeed, buf);
+      packLong(m.parameters.absMaxSpeed, buf);
     } else if (reg == 0xa) {
-      packLong(m.maxAcceleration, buf);
+      packLong(m.parameters.maxAcceleration, buf);
     } else if (reg == 0xb) {
-      packLong(m.posMax, buf);
+      packLong(m.state.posMax, buf);
     } else if (reg == 0xc) {
-      packLong(m.targetPos, buf);
+      packLong(m.state.targetPos, buf);
     } else if (reg == 0xd) {
     } else if (reg == 0xe) {
     } else if (reg == 0xf) {
@@ -631,25 +283,27 @@ void writeMotorReg(Stream &output, const Motor &m, const byte reg) {
   output.write(buf, 4);
 }
 
-ResCode applyMotorReg(Motor &m, const byte reg) {
+ResCode applyMotorReg(Motor& m, const byte reg) {
   if (reg == 0x0) {
-    stopMotor(m, true);
+    if (!m.stop()) {
+      return COMMAND_IGNORED;
+    }
   } else if (reg <= 0x4) {
-    if (m.isMoving) {
+    if ((m.state.flags >> Motor::BitIsMoving) & 1) {
       return MOTOR_BUSY;
     }
     if (reg == 0x1) {
-      if (!homeMotor(m)) {
+      if (!m.moveHome()) {
         return COMMAND_IGNORED;
       }
     } else if (reg == 0x2) {
-      if (!endMotor(m)) {
+      if (!m.moveEnd()) {
         return COMMAND_IGNORED;
       }
     } else if (reg == 0x3) {
-      setLimitSwitchEnablement(m, true);
+      m.setLimitSwitchEnablement(true);
     } else if (reg == 0x4) {
-      setLimitSwitchEnablement(m, false);
+      m.setLimitSwitchEnablement(false);
     }
   } else if (reg == 0x5) {
     return UNKNOWN_COMMAND;
@@ -659,47 +313,47 @@ ResCode applyMotorReg(Motor &m, const byte reg) {
   return OK;
 }
 
-ResCode applyMotorReg(Motor &m, const byte reg, const unsigned long value) {
-  if (m.isMoving) {
+ResCode applyMotorReg(Motor& m, const byte reg, const unsigned long value) {
+  if ((m.state.flags >> Motor::BitIsMoving) & 1) {
     return MOTOR_BUSY;
   }
   if (reg == 0x7) {
-    if (m.pos == POS_NULL || !moveMotor(m, value - m.pos)) {
+    if (m.state.pos == Motor::POS_NULL || !m.move(value - m.state.pos)) {
       return COMMAND_IGNORED;
     }
   } else if (reg == 0x8) {
-    if (!moveMotor(m, value)) {
+    if (!m.move(value)) {
       return COMMAND_IGNORED;
     }
   } else if (reg == 0x9) {
-    if (!moveMotor(m, -value)) {
+    if (!m.move(-value)) {
       return COMMAND_IGNORED;
     }
   } else if (reg == 0xa) {
-    setMaxSpeed(m, value);
+    m.setMaxSpeed(value);
   } else if (reg == 0xb) {
-    setAcceleration(m, value);
+    m.setAcceleration(value);
   } else if (reg == 0xc) {
-    setHomingSpeed(m, value);
+    m.setHomingSpeed(value);
   }
   return OK;
 }
 
-ResCode applyMotorReg(Motor &m, const byte reg, const unsigned long p1, const unsigned long p2) {
-  if (m.isMoving) {
+ResCode applyMotorReg(Motor& m, const byte reg, const unsigned long p1, const unsigned long p2) {
+  if ((m.state.flags >> Motor::BitIsMoving) & 1) {
     return MOTOR_BUSY;
   }
-  overrideMaxSpeed(m, p2);
+  m.overrideMaxSpeed(p2);
   boolean ret = false;
   if (reg == 0xd) {
-    ret = m.pos != POS_NULL && moveMotor(m, p1 - m.pos);
+    ret = m.state.pos != Motor::POS_NULL && m.move(p1 - m.state.pos);
   } else if (reg == 0xe) {
-    ret = moveMotor(m, p1);
+    ret = m.move(p1);
   } else if (reg == 0xf) {
-    ret = moveMotor(m, -p1);
+    ret = m.move(-p1);
   }
   if (!ret) {
-    restoreMaxSpeed(m);
+    m.restoreMaxSpeed();
     return COMMAND_IGNORED;
   }
   return OK;
@@ -711,33 +365,33 @@ ResCode applyOtherReg(const byte reg) {
   } else if (reg == 0x1) {
     // Stop all motors
     for (auto& m : motors) {
-      stopMotor(m, true);
+      m.stop();
     }
   } else if (reg <= 0x5) {
     for (auto& m : motors) {
-      if (m.isMoving) {
+      if ((m.state.flags >> Motor::BitIsMoving) & 1) {
         return MOTOR_BUSY;
       }
     }
     if (reg == 0x2) {
       // Home all motors
       for (auto& m : motors) {
-        homeMotor(m);
+        m.moveHome();
       }
     } else if (reg == 0x3) {
       // End all motors
       for (auto& m : motors) {
-        endMotor(m);
+        m.moveEnd();
       }
     } else if (reg == 0x4) {
       // Enable limits for all motors
       for (auto& m : motors) {
-        setLimitSwitchEnablement(m, true);
+        m.setLimitSwitchEnablement(true);
       }
     } else if (reg == 0x5) {
       // Disable limits for all motors
       for (auto& m : motors) {
-        setLimitSwitchEnablement(m, false);
+        m.setLimitSwitchEnablement(false);
       }
     }
   } else if (reg == 0x6) {
@@ -764,7 +418,7 @@ ResCode applyOtherReg(const byte reg) {
   return OK;
 }
 
-ResCode applyOtherReg(const byte reg, const byte flag, long *values, const byte numValues) {
+ResCode applyOtherReg(const byte reg, const byte flag, long* values, const byte numValues) {
   // first 4 flag bits select the motors
   byte ids[MAX_MOTORS];
   byte count = 0;
@@ -785,8 +439,8 @@ ResCode applyOtherReg(const byte reg, const byte flag, long *values, const byte 
   }
   // ensure all motors are not busy
   for (byte i = 0; i < count; ++i) {
-    Motor& m = motors[ids[i] - 1];
-    if (m.isMoving) {
+    auto& m = motors[ids[i] - 1];
+    if ((m.state.flags >> Motor::BitIsMoving) & 1) {
       return MOTOR_BUSY;
     }
   }
@@ -794,91 +448,64 @@ ResCode applyOtherReg(const byte reg, const byte flag, long *values, const byte 
     // move relative number of steps
     // last 4 bits select direction for each motor (1 is ACW)
     for (byte i = 0; i < count; ++i) {
-      if (flag >> ids[i] - 1 & 1) {
+      if ((flag >> (ids[i] - 1)) & 1) {
         values[i] *= -1;
       }
     }
   } else {
     // move to absolute position
     for (byte i = 0; i < count; ++i) {
-      Motor& m = motors[ids[i] - 1];
-      if (m.pos == POS_NULL) {
+      auto& m = motors[ids[i] - 1];
+      if (m.state.pos == Motor::POS_NULL) {
         // not all motors have known position
         return COMMAND_IGNORED;
       }
-      values[i] -= m.pos;
+      values[i] -= m.state.pos;
     }
   }
   if (reg == 0x21 || reg == 0x23) {
     // calculate max time
     float maxTime = 0;
     for (byte i = 0; i < count; ++i) {
-      maxTime = max(maxTime, (float) abs(values[i]) / motors[ids[i] - 1].maxSpeed);
+      maxTime = max(maxTime, (float)abs(values[i]) / motors[ids[i] - 1].settings.maxSpeed);
     }
     // calculate max speeds
     if (maxTime > 0) {
       for (byte i = 0; i < count; ++i) {
         const unsigned long maxSpeed = abs(values[i]) / maxTime;
         if (maxSpeed > 0) {
-          overrideMaxSpeed(motors[ids[i] - 1], maxSpeed);
+          motors[ids[i] - 1].overrideMaxSpeed(maxSpeed);
         }
       }
     }
   }
   for (byte i = 0; i < count; ++i) {
-    Motor& m = motors[ids[i] - 1];
+    auto& m = motors[ids[i] - 1];
     long& howMuch = values[i];
-    if (howMuch != 0 && motorCanMove(m, howMuch)) {
-      moveMotor(m, howMuch);
+    if (howMuch != 0 && m.canMove(howMuch)) {
+      m.move(howMuch);
     }
   }
   return OK;
 }
 
-void packLong(const unsigned long value, byte *buf) {
-  buf[0] = (byte) ((value >> 0x18) & 0xff);
-  buf[1] = (byte) ((value >> 0x10) & 0xff);
-  buf[2] = (byte) ((value >> 0x8) & 0xff);
-  buf[3] = (byte) (value & 0xff);
+void packLong(const unsigned long value, byte* buf) {
+  buf[0] = (byte)((value >> 0x18) & 0xff);
+  buf[1] = (byte)((value >> 0x10) & 0xff);
+  buf[2] = (byte)((value >> 0x8) & 0xff);
+  buf[3] = (byte)(value & 0xff);
 }
 
-unsigned long unpackLong(byte *buf) {
+unsigned long unpackLong(byte* buf) {
   return (
-    buf[0] << 0x18 |
-    buf[1] << 0x10 |
-    buf[2] << 0x8 |
-    buf[3]
-  );
+    buf[0] << 0x18 | buf[1] << 0x10 | buf[2] << 0x8 | buf[3]);
 }
 
-/******************************************/
-/* Setup Functions                        */
-/******************************************/
-void setupMotors() {
-  for (byte i = 0; i < numMotors; i++) {
-    Motor& m = motors[i];
-    m.id = i + 1;
-    // Declare pins as output:
-    pinMode(m.pins.step, OUTPUT);
-    pinMode(m.pins.dir, OUTPUT);
-    pinMode(m.pins.enable, OUTPUT);
-    // Declare limit switch pins as input
-    pinMode(m.pins.limit_cw, LIMIT_TRIPPED == HIGH ? INPUT_PULLDOWN : INPUT_PULLUP);
-    pinMode(m.pins.limit_acw, LIMIT_TRIPPED == HIGH ? INPUT_PULLDOWN : INPUT_PULLUP);
-    // set initial state of motor to disabled
-    digitalWrite(m.pins.enable, 1 - MOTOR_ON);
-    m.stepper = AccelStepper(AccelStepper::FULL2WIRE, m.pins.step, m.pins.dir);
-    m.lastActionTime = millis();
-    // step max speed & acceleration
-    if (m.defaultSpeed == 0) {
-      m.defaultSpeed = m.absMaxSpeed;
-    } else {
-      m.defaultSpeed = min(m.defaultSpeed, m.absMaxSpeed);
-    }
-    m.homingSpeed = min(m.homingSpeed, m.absMaxSpeed);
-    m.maxSpeed = m.defaultSpeed;
-    m.stepper.setMaxSpeed(m.maxSpeed);
-    m.acceleration = m.maxAcceleration;
-    m.stepper.setAcceleration(m.acceleration);
-  }
+void packShort(const uint16_t value, byte* buf) {
+  buf[0] = (byte)((value >> 0x8) & 0xff);
+  buf[1] = (byte)(value & 0xff);
+}
+
+uint16_t unpackShort(byte* buf) {
+  return buf[0] << 0x8 | buf[1];
 }

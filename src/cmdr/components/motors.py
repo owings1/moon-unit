@@ -5,6 +5,7 @@ from collections import OrderedDict
 import busio
 
 from . import Component, DeviceComponent
+from utils import debug, Pkr
 
 __all__ = (
   'MotorController',
@@ -97,7 +98,7 @@ class MotorController(DeviceComponent):
     a = self.packed
     moving = False
     for m in self.motors:
-      m.read('flag1')
+      m.read('state_flags')
       moving = moving or m['is_moving']
     for m in self.motors:
       if moving:
@@ -105,7 +106,7 @@ class MotorController(DeviceComponent):
         m.read('target_position')
       else:
         for name in m.ATTRMAP:
-          if name != 'flag1':
+          if name != 'state_flags':
             m.read(name)
     self.packed = b''.join(m.packed for m in self.motors)
     return a != self.packed
@@ -145,31 +146,35 @@ class MotorController(DeviceComponent):
       yield ''
 
 class Motor(Component):
-  PACKSIZE = 46
+  PKR = Pkr('>')
   ATTRMAP = OrderedDict((x[0], x) for x in (
-    ('flag1', C1_FLAG1, 0, 1),
-    ('flag2', C1_FLAG2, 1, 2),
-    ('position', C1_POSITION, 2, 6),
-    ('max_speed', C1_MAX_SPEED, 6, 10),
-    ('acceleration', C1_ACCELERATION, 10, 14),
-    ('millisteps_per_degree', C1_MILLISTEPS_PER_DEGREE, 14, 18),
-    ('max_degrees', C1_MAX_DEGREES, 18, 22),
-    ('default_speed', C1_DEFAULT_SPEED, 22, 26),
-    ('homing_speed', C1_HOMING_SPEED, 26, 30),
-    ('abs_max_speed', C1_ABS_MAX_SPEED, 30, 34),
-    ('max_acceleration', C1_MAX_ACCELERATION, 34, 38),
-    ('position_max', C1_POSITION_MAX, 38, 42),
-    ('target_position', C1_TARGET_POSITION, 42, 46),
+    ('state_flags', C1_FLAG1, PKR.size, PKR.add('H') and PKR.size),
+    ('settings_flags', C1_FLAG2, PKR.size, PKR.add('B') and PKR.size),
+    ('position', C1_POSITION, PKR.size, PKR.add('L') and PKR.size),
+    ('max_speed', C1_MAX_SPEED, PKR.size, PKR.add('L') and PKR.size),
+    ('acceleration', C1_ACCELERATION, PKR.size, PKR.add('L') and PKR.size),
+    ('millisteps_per_degree', C1_MILLISTEPS_PER_DEGREE, PKR.size, PKR.add('L') and PKR.size),
+    ('max_degrees', C1_MAX_DEGREES, PKR.size, PKR.add('L') and PKR.size),
+    ('default_speed', C1_DEFAULT_SPEED, PKR.size, PKR.add('L') and PKR.size),
+    ('homing_speed', C1_HOMING_SPEED, PKR.size, PKR.add('L') and PKR.size),
+    ('abs_max_speed', C1_ABS_MAX_SPEED, PKR.size, PKR.add('L') and PKR.size),
+    ('max_acceleration', C1_MAX_ACCELERATION, PKR.size, PKR.add('L') and PKR.size),
+    ('position_max', C1_POSITION_MAX, PKR.size, PKR.add('L') and PKR.size),
+    ('target_position', C1_TARGET_POSITION, PKR.size, PKR.add('L') and PKR.size),
   ))
   FLAGMAP = OrderedDict((x[0], x) for x in (
-    ('is_limit_cw', 'flag1', 0x0, 0x1),
-    ('is_limit_acw', 'flag1', 0x1, 0x1),
-    ('is_moving', 'flag1', 0x2, 0x1),
-    ('is_active', 'flag1', 0x3, 0x1),
-    ('has_homed', 'flag1', 0x4, 0x1),
-    ('limits_enabled', 'flag1', 0x5, 0x1),
-    ('is_homing', 'flag1', 0x6, 0x1),
-    ('is_ending', 'flag1', 0x7, 0x1),
+    ('is_limit_cw', 'state_flags', 0x0, 0x1),
+    ('is_limit_acw', 'state_flags', 0x1, 0x1),
+    ('is_active', 'state_flags', 0x2, 0x1),
+    ('is_moving', 'state_flags', 0x3, 0x1),
+    ('has_homed', 'state_flags', 0x4, 0x1),
+    ('is_homing', 'state_flags', 0x5, 0x1),
+    ('is_ending', 'state_flags', 0x6, 0x1),
+    ('is_force_stop', 'state_flags', 0x7, 0x1),
+    ('is_stopping', 'state_flags', 0x8, 0x1),
+    ('is_forwarding', 'state_flags', 0x9, 0x1),
+    ('is_backing', 'state_flags', 0xa, 0x1),
+    ('limits_enabled', 'settings_flags', 0x0, 0x1),
   ))
   ACTMAP = OrderedDict((x[0], x) for x in (
     ('stop', C2_STOP, 0),
@@ -197,7 +202,7 @@ class Motor(Component):
       raise ValueError(f'{id=}')
     self.mc = mc
     self.id = id
-    self.packed = bytearray(self.PACKSIZE)
+    self.packed = bytearray(self.PKR.size)
     self.idmask = self.id - 1 << LSHIFT_MOTORIDX
 
   def __getitem__(self, name: str):

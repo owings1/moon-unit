@@ -11,7 +11,7 @@ import components.stowage
 import sdcardio
 import storage
 from components import Component
-from utils import as_pin, debug, settings
+from utils import as_pin, debug, settings, millis
 
 try:
   from types import ModuleType
@@ -40,6 +40,16 @@ class App:
       print(f'Stopping from Ctrl-C')
     finally:
       self.deinit()
+
+  def iloop(self, duration_ms: int|None = None):
+    stop_at = duration_ms and millis() + duration_ms
+    try:
+      while True:
+        self.loop()
+        if stop_at and millis() >= stop_at:
+          break
+    except KeyboardInterrupt:
+      print(f'Stopping from Ctrl-C')
 
   def loop(self) -> None:
     for component in self.components.values():
