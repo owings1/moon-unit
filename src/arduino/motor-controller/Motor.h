@@ -96,7 +96,6 @@ public:
   void overrideAcceleration(uint16_t value);
   void restoreAcceleration();
   void setSettingsFlags(const uint8_t value);
-  // void setLimitSwitchEnablement(const boolean value);
   void readLimitSwitches();
 
 private:

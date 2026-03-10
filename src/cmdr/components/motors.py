@@ -19,7 +19,6 @@ LSHIFT_MOTORIDX = 0x04
 
 C1_MASK = 0x1 << LSHIFT_CATEGORY
 C2_MASK = 0x2 << LSHIFT_CATEGORY
-# C3_MASK = 0x3 << LSHIFT_CATEGORY
 
 C1_STATE_FLAGS = C1_MASK | 0x00
 C1_SETTINGS_FLAGS = C1_MASK | 0x01
@@ -27,40 +26,13 @@ C1_SETTINGS_FLAGS = C1_MASK | 0x01
 C1_POSITION = C1_MASK | 0x02
 C1_MAX_SPEED = C1_MASK | 0x03
 C1_ACCELERATION = C1_MASK | 0x04
-# C1_BACKING_STEPS = C1_MASK | 0x05
-# C1_MAX_STEPS = C1_MASK | 0x06
-# C1_DEFAULT_SPEED = C1_MASK | 0x07
-# C1_HOMING_SPEED = C1_MASK | 0x08
 C1_ABS_MAX_SPEED = C1_MASK | 0x09
 C1_MAX_ACCELERATION = C1_MASK | 0x0a
-# C1_POSITION_MAX = C1_MASK | 0x0b
 C1_TARGET_POSITION = C1_MASK | 0x0c
 
 C2_STOP = C2_MASK | 0x00
-# C2_HOME = C2_MASK | 0x01
-# C2_END = C2_MASK | 0x02
-# C2_LIMITS_ON = C2_MASK | 0x03
-# C2_LIMITS_OFF = C2_MASK | 0x04
-
-# C2_MOVE_TO = C2_MASK | 0x07
 C2_MOVE_CW = C2_MASK | 0x08
 C2_MOVE_ACW = C2_MASK | 0x09
-
-# C2_MOVE_TO_AT_SPEED = C2_MASK | 0x0d
-# C2_MOVE_CW_AT_SPEED = C2_MASK | 0x0e
-# C2_MOVE_ACW_AT_SPEED = C2_MASK | 0x0f
-
-# C3_STATE_FLAGS = C3_MASK | 0x00
-# C3_STOP_ALL = C3_MASK | 0x01
-# C3_HOME_ALL = C3_MASK | 0x02
-# C3_END_ALL = C3_MASK | 0x03
-# C3_LIMITS_ON_ALL = C3_MASK | 0x04
-# C3_LIMITS_OFF_ALL = C3_MASK | 0x05
-
-# C3_MOVE_MANY_NO_TIMING = C3_MASK | 0x20
-# C3_MOVE_MANY_TIMING = C3_MASK | 0x21
-# C3_MOVE_MANY_TO_NO_TIMING = C3_MASK | 0x22
-# C3_MOVE_MANY_TO_TIMING = C3_MASK | 0x23
 
 CODE_OK = 0x00
 CODE_MOTOR_BUSY = 0x1f
@@ -107,8 +79,6 @@ class MotorController(DeviceComponent):
               m.persist_id = v
             else:
               m.write(k, v)
-    # self.moving = False
-    # self.packed = b''.join(m.packed for m in self.motors)
     self.packed = bytearray(0)
 
   def subcomponents(self):
@@ -116,12 +86,6 @@ class MotorController(DeviceComponent):
 
   def refresh(self) -> bool:
     return False
-    # a = bytes(self.packed)
-    # # buf = bytearray(1)
-    # with self.device as device:
-    #   device.write_then_readinto(C3_STATE_FLAGS.to_bytes(), self.packed)
-    # self.moving = (self.packed[0] & 1) == 1
-    # return a != self.packed
 
   def write(self, name: str, *v) -> int:
     actdef = self.ACTMAP[name]
@@ -132,42 +96,11 @@ class MotorController(DeviceComponent):
         return getattr(self, actdef[1])(*v)
     return CODE_UNKNOWN_COMMAND
 
-    # reg = actdef[1]
-    # if actdef[2] == 'M':
-    #   check_byte(flag)
-    #   if not 2 <= len(values) <= 4:
-    #     raise ValueError(f'{values=}')
-    #   bufw = bytearray(2 + 4 * len(values))
-    #   bufw[1] = flag
-    #   i = 2
-    #   for v in values:
-    #     check_long(v)
-    #     bufw[i:i+4] = v.to_bytes(4)
-    #     i += 4
-    # else:
-    #   if flag is not None:
-    #     raise ValueError(f'{flag=}')
-    #   if values is not None:
-    #     raise ValueError(f'{values=}')
-    #   bufw = bytearray(1)
-    # bufw[0] = reg
-    # bufr = bytearray(1)
-    # with self.device as device:
-    #   device.write_then_readinto(bufw, bufr)
-    # return int.from_bytes(bufr)
-
   def _act_stop_all(self):
     for m in self.motors:
       m.write('stop')
     return CODE_OK
 
-  # def debug_lines(self) -> Generator[str]:
-  #   yield from super().debug_lines()
-  #   for m in self.motors:
-  #     yield ''
-  #     for line in m.debug_lines():
-  #       yield f'[M{m.id}] {line}'
-  #     yield ''
 class MotorControllerRoutine:
   ...
 

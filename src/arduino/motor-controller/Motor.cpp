@@ -139,13 +139,6 @@ void Motor::setSettingsFlags(const uint8_t value) {
   _settings.values.flags = value & SETTINGS_FLAGS_MASK;
 }
 
-// void Motor::setLimitSwitchEnablement(const boolean value) {
-//   auto& flags = _settings.values.flags;
-//   if ((boolean)((flags >> BitLimitsEnabled) & 1) != value) {
-//     flags = (flags & ~(1 << BitLimitsEnabled)) | (value << BitLimitsEnabled);
-//   }
-// }
-
 void Motor::readLimitSwitches() {
   _state.values.flags = (
     (_state.values.flags & ~LIMIT_SWITCHES_MASK) |
