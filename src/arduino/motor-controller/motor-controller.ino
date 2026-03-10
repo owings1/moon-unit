@@ -67,10 +67,10 @@ void setup() {
   for (auto& m : motors) {
     m.begin();
   }
-  motors[0].setMaxSteps(233846); //1230769UL, /* 1/0.0008125 degrees per step */
-  motors[0].setBackingSteps(1846);
-  motors[1].setMaxSteps(337777); //888889UL, /* 1/0.001125 degrees per step */
-  motors[1].setBackingSteps(1333);
+  // motors[0].setMaxSteps(233846); //1230769UL, /* 1/0.0008125 degrees per step */
+  // motors[0].setBackingSteps(1846);
+  // motors[1].setMaxSteps(337777); //888889UL, /* 1/0.001125 degrees per step */
+  // motors[1].setBackingSteps(1333);
   I2C_MAIN.setSDA(SDA_MAIN);
   I2C_MAIN.setSCL(SCL_MAIN);
   I2C_MAIN.onRequest(requestEvent);
@@ -133,23 +133,23 @@ void requestEvent() {
       writeMotorReg(wire, motors[motorId - 1], motorReg);
     }
   } else if (category == 0x2 || category == 0x3) {
-    if (category == 0x3) {
-      const byte otherReg = wireReg1 & ((1 << 0x6) - 1);
-      if (otherReg == 0x0) {
-        // read global flags
-        wireReg1 = 0x0;
-        // quick and dirty: only flag so far is moving flag
-        for (auto& m : motors) {
-          if ((m.state.values.flags >> Motor::BitIsMoving) & 1) {
-            wire.write((byte) 0x1);
-            return;
-          }
-          wire.write((byte) 0x0);
-          return;
-        }
-      }
+    // if (category == 0x3) {
+    //   const byte otherReg = wireReg1 & ((1 << 0x6) - 1);
+    //   if (otherReg == 0x0) {
+    //     // read global flags
+    //     wireReg1 = 0x0;
+    //     // quick and dirty: only flag so far is moving flag
+    //     for (auto& m : motors) {
+    //       if ((m.state.values.flags >> Motor::BitIsMoving) & 1) {
+    //         wire.write((byte) 0x1);
+    //         return;
+    //       }
+    //       wire.write((byte) 0x0);
+    //       return;
+    //     }
+    //   }
 
-    }
+    // }
     wire.write(wireRes1);
   }
 }
@@ -171,7 +171,7 @@ void receiveEvent(int howMany) {
     if (howMany > 1) {
       wireReg1 = 0x1;
       if (motorReg >= 0x2 && motorReg <= 0xa) {
-        if (motorReg == 0x2 || motorReg == 0x6) {
+        if (motorReg == 0x2) {
           if (howMany == 5) {
             if (motorId > numMotors) {
               wireRes1 = INVALID_MOTORID;
@@ -274,11 +274,11 @@ void receiveEvent(int howMany) {
         wireRes1 = MALFORMED_COMMAND;
         return;
       }
-      if (otherReg == 0x0) {
-        // read global flags
-        wireRes1 = OK;
-        return;
-      }
+      // if (otherReg == 0x0) {
+      //   // read global flags
+      //   wireRes1 = OK;
+      //   return;
+      // }
       wireRes1 = applyOtherReg(otherReg);
     } else if (otherReg < 0x20) {
       wireRes1 = UNKNOWN_COMMAND;
@@ -327,13 +327,13 @@ void writeMotorReg(Stream& output, const Motor& m, const byte reg) {
     } else if (reg == 0x4) {
       output.write((uint8_t*)&m.settings.values.acceleration, 2);
     } else if (reg == 0x5) {
-      output.write((uint8_t*)&m.settings.values.backingSteps, 2);
+      // output.write((uint8_t*)&m.settings.values.backingSteps, 2);
     } else if (reg == 0x6) {
-      output.write((uint8_t*)&m.settings.values.maxSteps, 4);
+      // output.write((uint8_t*)&m.settings.values.maxSteps, 4);
     } else if (reg == 0x7) {
-      output.write((uint8_t*)&m.settings.values.defaultSpeed, 2);
+      // output.write((uint8_t*)&m.settings.values.defaultSpeed, 2);
     } else if (reg == 0x8) {
-      output.write((uint8_t*)&m.settings.values.homingSpeed, 2);
+      // output.write((uint8_t*)&m.settings.values.homingSpeed, 2);
     }
   } else {
     if (reg == 0x9) {
@@ -341,7 +341,7 @@ void writeMotorReg(Stream& output, const Motor& m, const byte reg) {
     } else if (reg == 0xa) {
       output.write((uint8_t*)&m.settings.values.maxAcceleration, 2);
     } else if (reg == 0xb) {
-      output.write((uint8_t*)&m.state.values.posMax, 4);
+      // output.write((uint8_t*)&m.state.values.posMax, 4);
     } else if (reg == 0xc) {
       output.write((uint8_t*)&m.state.values.targetPos, 4);
     } else if (reg == 0xd) {
@@ -357,11 +357,14 @@ ResCode setMotorAttr(Motor& m, const byte reg, const uint16_t value) {
   } else if (reg == 0x4) {
     m.setAcceleration(value);
   } else if (reg == 0x5) {
-    m.setBackingSteps(value);
+    // m.setBackingSteps(value);
+    return UNKNOWN_COMMAND;
   } else if (reg == 0x7) {
-    m.setDefaultSpeed(value);
+    // m.setDefaultSpeed(value);
+    return UNKNOWN_COMMAND;
   } else if (reg == 0x8) {
-    m.setHomingSpeed(value);
+    // m.setHomingSpeed(value);
+    return UNKNOWN_COMMAND;
   } else if (reg == 0x9) {
     m.setAbsMaxSpeed(value);
   } else if (reg == 0xa) {
@@ -379,7 +382,8 @@ ResCode setMotorAttr(Motor& m, const byte reg, const uint32_t value) {
     }
     m.setPosition(value);
   } else if (reg == 0x6) {
-    m.setMaxSteps(value);
+    // m.setMaxSteps(value);
+    return UNKNOWN_COMMAND;
   } else {
     return UNKNOWN_COMMAND;
   }
@@ -396,13 +400,15 @@ ResCode applyMotorReg(Motor& m, const byte reg) {
       return MOTOR_BUSY;
     }
     if (reg == 0x1) {
-      if (!m.moveHome()) {
-        return COMMAND_IGNORED;
-      }
+      return UNKNOWN_COMMAND;
+      // if (!m.moveHome()) {
+      //   return COMMAND_IGNORED;
+      // }
     } else if (reg == 0x2) {
-      if (!m.moveEnd()) {
-        return COMMAND_IGNORED;
-      }
+      return UNKNOWN_COMMAND;
+      // if (!m.moveEnd()) {
+      //   return COMMAND_IGNORED;
+      // }
     } else if (reg == 0x3) {
       m.setLimitSwitchEnablement(true);
     } else if (reg == 0x4) {
@@ -471,31 +477,35 @@ ResCode applyOtherReg(const byte reg) {
       m.stop();
     }
   } else if (reg <= 0x5) {
-    for (auto& m : motors) {
-      if ((m.state.values.flags >> Motor::BitIsMoving) & 1) {
-        return MOTOR_BUSY;
-      }
-    }
+    // for (auto& m : motors) {
+    //   if ((m.state.values.flags >> Motor::BitIsMoving) & 1) {
+    //     return MOTOR_BUSY;
+    //   }
+    // }
     if (reg == 0x2) {
-      // Home all motors
-      for (auto& m : motors) {
-        m.moveHome();
-      }
+      return UNKNOWN_COMMAND;
+      // // Home all motors
+      // for (auto& m : motors) {
+      //   m.moveHome();
+      // }
     } else if (reg == 0x3) {
-      // End all motors
-      for (auto& m : motors) {
-        m.moveEnd();
-      }
+      return UNKNOWN_COMMAND;
+      // // End all motors
+      // for (auto& m : motors) {
+      //   m.moveEnd();
+      // }
     } else if (reg == 0x4) {
-      // Enable limits for all motors
-      for (auto& m : motors) {
-        m.setLimitSwitchEnablement(true);
-      }
+      return UNKNOWN_COMMAND;
+      // // Enable limits for all motors
+      // for (auto& m : motors) {
+      //   m.setLimitSwitchEnablement(true);
+      // }
     } else if (reg == 0x5) {
-      // Disable limits for all motors
-      for (auto& m : motors) {
-        m.setLimitSwitchEnablement(false);
-      }
+      return UNKNOWN_COMMAND;
+      // // Disable limits for all motors
+      // for (auto& m : motors) {
+      //   m.setLimitSwitchEnablement(false);
+      // }
     }
   } else if (reg == 0x6) {
     return UNKNOWN_COMMAND;

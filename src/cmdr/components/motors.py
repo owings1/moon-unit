@@ -21,15 +21,15 @@ C1_MASK = 0x1 << LSHIFT_CATEGORY
 C2_MASK = 0x2 << LSHIFT_CATEGORY
 C3_MASK = 0x3 << LSHIFT_CATEGORY
 
-C1_FLAG1 = C1_MASK | 0x00
-C1_FLAG2 = C1_MASK | 0x01
+C1_STATE_FLAGS = C1_MASK | 0x00
+C1_SETTINGS_FLAGS = C1_MASK | 0x01
 
 C1_POSITION = C1_MASK | 0x02
 C1_MAX_SPEED = C1_MASK | 0x03
 C1_ACCELERATION = C1_MASK | 0x04
 # C1_BACKING_STEPS = C1_MASK | 0x05
 # C1_MAX_STEPS = C1_MASK | 0x06
-C1_DEFAULT_SPEED = C1_MASK | 0x07
+# C1_DEFAULT_SPEED = C1_MASK | 0x07
 # C1_HOMING_SPEED = C1_MASK | 0x08
 C1_ABS_MAX_SPEED = C1_MASK | 0x09
 C1_MAX_ACCELERATION = C1_MASK | 0x0a
@@ -50,17 +50,17 @@ C2_MOVE_TO_AT_SPEED = C2_MASK | 0x0d
 C2_MOVE_CW_AT_SPEED = C2_MASK | 0x0e
 C2_MOVE_ACW_AT_SPEED = C2_MASK | 0x0f
 
-C3_STATE_FLAGS = C3_MASK | 0x00
+# C3_STATE_FLAGS = C3_MASK | 0x00
 C3_STOP_ALL = C3_MASK | 0x01
 # C3_HOME_ALL = C3_MASK | 0x02
 # C3_END_ALL = C3_MASK | 0x03
 # C3_LIMITS_ON_ALL = C3_MASK | 0x04
 # C3_LIMITS_OFF_ALL = C3_MASK | 0x05
 
-C3_MOVE_MANY_NO_TIMING = C3_MASK | 0x20
-C3_MOVE_MANY_TIMING = C3_MASK | 0x21
-C3_MOVE_MANY_TO_NO_TIMING = C3_MASK | 0x22
-C3_MOVE_MANY_TO_TIMING = C3_MASK | 0x23
+# C3_MOVE_MANY_NO_TIMING = C3_MASK | 0x20
+# C3_MOVE_MANY_TIMING = C3_MASK | 0x21
+# C3_MOVE_MANY_TO_NO_TIMING = C3_MASK | 0x22
+# C3_MOVE_MANY_TO_TIMING = C3_MASK | 0x23
 
 CODE_OK = 0x00
 CODE_MOTOR_BUSY = 0x1f
@@ -80,10 +80,10 @@ class MotorController(DeviceComponent):
     # ('end_all', C3_END_ALL, 0),
     # ('limits_on_all', C3_LIMITS_ON_ALL, 0),
     # ('limits_off_all', C3_LIMITS_OFF_ALL, 0),
-    ('move_many_no_timing', C3_MOVE_MANY_NO_TIMING, 'M'),
-    ('move_many_timing', C3_MOVE_MANY_TIMING, 'M'),
-    ('move_many_to_no_timing', C3_MOVE_MANY_TO_NO_TIMING, 'M'),
-    ('move_many_to_timing', C3_MOVE_MANY_TO_TIMING, 'M'),
+    # ('move_many_no_timing', C3_MOVE_MANY_NO_TIMING, 'M'),
+    # ('move_many_timing', C3_MOVE_MANY_TIMING, 'M'),
+    # ('move_many_to_no_timing', C3_MOVE_MANY_TO_NO_TIMING, 'M'),
+    # ('move_many_to_timing', C3_MOVE_MANY_TO_TIMING, 'M'),
   ))
 
   def __init__(
@@ -106,20 +106,21 @@ class MotorController(DeviceComponent):
               m.persist_id = v
             else:
               m.write(k, v)
-    self.moving = False
+    # self.moving = False
     # self.packed = b''.join(m.packed for m in self.motors)
-    self.packed = bytearray(1)
+    self.packed = bytearray(0)
 
   def subcomponents(self):
     return self.motors
 
   def refresh(self) -> bool:
-    a = bytes(self.packed)
-    # buf = bytearray(1)
-    with self.device as device:
-      device.write_then_readinto(C3_STATE_FLAGS.to_bytes(), self.packed)
-    self.moving = (self.packed[0] & 1) == 1
-    return a != self.packed
+    return False
+    # a = bytes(self.packed)
+    # # buf = bytearray(1)
+    # with self.device as device:
+    #   device.write_then_readinto(C3_STATE_FLAGS.to_bytes(), self.packed)
+    # self.moving = (self.packed[0] & 1) == 1
+    # return a != self.packed
 
   def write(self, name: str, flag: int|None = None, values: tuple[int, ...]|None = None) -> int:
     actdef = self.ACTMAP[name]
@@ -179,14 +180,14 @@ def mattr(pkr: Pkr, name: str, reg: int|None, fmt: str, writeable: bool):
 class Motor(Component):
   PKR = Pkr('<')
   ATTRMAP: dict[str, MotorAttr] = OrderedDict()
-  ATTRMAP['state_flags'] = mattr(PKR, 'state_flags', C1_FLAG1, 'H', False)
-  ATTRMAP['settings_flags'] = mattr(PKR, 'settings_flags', C1_FLAG2, 'B', False)
+  ATTRMAP['state_flags'] = mattr(PKR, 'state_flags', C1_STATE_FLAGS, 'H', False)
+  ATTRMAP['settings_flags'] = mattr(PKR, 'settings_flags', C1_SETTINGS_FLAGS, 'B', False)
   ATTRMAP['position'] = mattr(PKR, 'position', C1_POSITION, 'l', True)
   ATTRMAP['max_speed'] = mattr(PKR, 'max_speed', C1_MAX_SPEED, 'H', True)
   ATTRMAP['acceleration'] = mattr(PKR, 'acceleration', C1_ACCELERATION, 'H', True)
   ATTRMAP['backing_steps'] = mattr(PKR, 'backing_steps', None, 'H', True)
   ATTRMAP['max_steps'] = mattr(PKR, 'max_steps', None, 'L', True)
-  ATTRMAP['default_speed'] = mattr(PKR, 'default_speed', C1_DEFAULT_SPEED, 'H', True)
+  ATTRMAP['default_speed'] = mattr(PKR, 'default_speed', None, 'H', True)
   ATTRMAP['homing_speed'] = mattr(PKR, 'homing_speed', None, 'H', True)
   ATTRMAP['fixing_speed'] = mattr(PKR, 'fixing_speed', None, 'H', True)
   ATTRMAP['abs_max_speed'] = mattr(PKR, 'abs_max_speed', C1_ABS_MAX_SPEED, 'H', True)
@@ -201,7 +202,7 @@ class Motor(Component):
     # ('has_homed', 'state_flags', 0x4, 0x1),
     # ('is_homing', 'state_flags', 0x5, 0x1),
     # ('is_ending', 'state_flags', 0x6, 0x1),
-    ('is_force_stop', 'state_flags', 0x7, 0x1),
+    # ('is_force_stop', 'state_flags', 0x7, 0x1),
     ('is_stopping', 'state_flags', 0x8, 0x1),
     # ('is_forwarding', 'state_flags', 0x9, 0x1),
     # ('is_backing', 'state_flags', 0xa, 0x1),
@@ -238,6 +239,7 @@ class Motor(Component):
     self.id = id
     self.packed = bytearray(self.PKR.size)
     self.idmask = self.id - 1 << LSHIFT_MOTORIDX
+    self.write('default_speed', 2000)
     self.write('homing_speed', 4000)
     self.write('fixing_speed', 400)
 
@@ -259,7 +261,7 @@ class Motor(Component):
     a = bytes(self.packed)
     if self.routine:
       try:
-        next(self.routine)
+        self.routine.next()
       except StopIteration:
         self.routine = None
     for name in self.ATTRMAP:
@@ -293,10 +295,16 @@ class Motor(Component):
     else:
       actdef = self.ACTMAP[name]
       if isinstance(actdef[1], str):
-        if self.routine:
-          return CODE_COMMAND_IGNORED
-        self.routine = getattr(self, actdef[1])()
-        return CODE_OK
+        if actdef[2]:
+          v = struct.unpack(actdef[2], struct.pack(actdef[2], *v))
+        if actdef[1].startswith('_routine'):
+          if self.routine:
+            return CODE_COMMAND_IGNORED
+          self.routine = getattr(self, actdef[1])(*v)
+          self.refresh_next_tick = True
+          return CODE_OK
+        if actdef[1].startswith('_act'):
+          return getattr(self, actdef[1])(*v)
       reg = actdef[1] | self.idmask
       fmt = '>B' + actdef[2]
     bufw = bytearray(struct.calcsize(fmt))
