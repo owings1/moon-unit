@@ -9,7 +9,9 @@
 class Motor {
 
 public:
-  static const unsigned long POS_NULL = 10000000UL;
+  static const uint32_t POS_NULL = 10000000UL;
+  static const uint16_t SYS_MAX_SPEED = 0xffff;
+  static const uint16_t SYS_MAX_ACCELERATION = 0xffff;
   typedef enum {
     // limit switch states
     BitIsLimitCw = 0,
@@ -34,6 +36,8 @@ public:
     BitIsBacking = 9,
     // as above for ending purposes
     BitIsForwarding = 10,
+    // pos was manually set
+    BitIsManualPos = 11,
   } StateFlagBit;
 
   typedef enum {
@@ -48,71 +52,83 @@ public:
     uint8_t limit_acw;
   };
 
-  struct Parameters {
-    unsigned long millistepsPerDegree;
-    unsigned int maxDegrees;
-    unsigned long absMaxSpeed = 5000;
-    unsigned long defaultSpeed = 2000;
-    unsigned long maxAcceleration = 50000;
-  };
-
-  struct Settings {
+  struct __attribute__((packed)) Settings {
     volatile uint8_t flags = 0x0 | (1 << BitLimitsEnabled);
-    volatile unsigned long homingSpeed = 4000;
-    volatile unsigned long acceleration;
-    volatile unsigned long maxSpeed;
+    volatile uint16_t defaultSpeed = 2000;
+    volatile uint16_t homingSpeed = 4000;
+    volatile uint16_t maxSpeed = 2000;
+    volatile uint16_t absMaxSpeed = 5000;
+    volatile uint16_t acceleration = 50000;
+    volatile uint16_t maxAcceleration = 50000;
+    volatile uint32_t maxSteps = 5000;
+    volatile uint16_t backingSteps = 1000;
   };
 
-  struct State {
+  union SettingsUnion {
+    Settings values = {};
+    byte buf[sizeof(Settings)];
+  };
+
+  struct __attribute__((packed)) State {
     volatile uint16_t flags;
-    long pos = POS_NULL;
-    long targetPos = POS_NULL;
+    int32_t pos = POS_NULL;
+    int32_t targetPos = POS_NULL;
     // measured effective range after calibration
-    unsigned long posMax;
+    uint32_t posMax;
     // for delaying after enabling motor
-    volatile unsigned long enabledAt;
+    volatile uint32_t enabledAt;
     // for checking motor sleep
-    volatile unsigned long lastActionTime;
+    volatile uint32_t lastActionTime;
     // for temporarily overriding acceleration during stopping.
-    volatile unsigned long oldAcceleration;
+    volatile uint16_t oldAcceleration;
     // for temporarily overriding max speed during timing.
-    volatile unsigned long oldMaxSpeed;
+    volatile uint16_t oldMaxSpeed;
   };
 
-  Motor(Motor::Pins pins, Motor::Parameters parameters);
+  union StateUnion {
+    State values = {};
+    byte buf[sizeof(State)];
+  };
+
+  Motor(Motor::Pins pins);
 
   const uint8_t id;
   const Motor::Pins pins;
-  const Motor::Parameters &parameters;
-  const Motor::Settings &settings;
-  const Motor::State &state;
+  const Motor::SettingsUnion &settings;
+  const Motor::StateUnion &state;
 
   void begin();
 
   boolean runIfNeeded();
 
-  boolean canMove(const long direction);
-  boolean move(const long howMuch);
+  boolean canMove(const int32_t direction);
+  boolean move(const int32_t howMuch);
   boolean moveHome();
   boolean moveEnd();
   boolean stop();
   boolean isHome();
   boolean isEnd();
 
-  void setMaxSpeed(unsigned long value);
-  void setHomingSpeed(unsigned long value);
-  void setAcceleration(unsigned long value);
-  void overrideMaxSpeed(unsigned long value);
-  void overrideAcceleration(unsigned long value);
+  void setPosition(int32_t value);
+  void setDefaultSpeed(uint16_t value);
+  void setHomingSpeed(uint16_t value);
+  void setMaxSpeed(uint16_t value);
+  void setAbsMaxSpeed(uint16_t value);
+  void overrideMaxSpeed(uint16_t value);
   void restoreMaxSpeed();
+  void setAcceleration(uint16_t value);
+  void setMaxAcceleration(uint16_t value);
+  void overrideAcceleration(uint16_t value);
   void restoreAcceleration();
+  void setMaxSteps(uint32_t value);
+  void setBackingSteps(uint16_t value);
   void setLimitSwitchEnablement(const boolean value);
   void readLimitSwitches();
 
 private:
-  Motor::Parameters _params;
-  Motor::Settings _settings;
-  Motor::State _state;
+  // Motor::Parameters _params;
+  Motor::SettingsUnion _settings;
+  Motor::StateUnion _state;
   AccelStepper _stepper;
   void _runActive();
   void _updateIdle();
@@ -120,8 +136,6 @@ private:
   void _enable();
   void _disable();
   void _checkSleep();
-  long _degtos(const float howMuch);
-  unsigned long _getOverLimitStepsToMove();
 };
 
 #endif

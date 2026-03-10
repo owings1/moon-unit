@@ -14,14 +14,12 @@ class Persister(Component):
 
   def __init__(
     self,
-    i2c: busio.I2C|None = None,
     address: int = 0x5,
-    refresh_interval: int = 5 * 60 * 1000,
+    refresh_interval: int = 30 * 1000,
     root: str = '/',
     path: str = '/persist',
     readonly: bool = False,
   ) -> None:
-    self.i2c = i2c
     self.component_address = address
     self.refresh_interval = refresh_interval
     self.root = root

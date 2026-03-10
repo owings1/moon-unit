@@ -3,6 +3,7 @@ from __future__ import annotations
 import time
 from collections import OrderedDict, deque
 
+import board
 import busio
 from utils import millis
 
@@ -45,9 +46,15 @@ class GPS(DeviceComponent):
     ('timestamp', 'timestamp_utc', 17, 25, 't'),    # RMC
   ))
 
-  def __init__(self, i2c: busio.I2C, address: int = 0x10, *, refresh_interval: int = 1000) -> None:
+  def __init__(
+    self,
+    i2c: busio.I2C|None = None,
+    address: int = 0x10,
+    refresh_interval: int = 1000
+  ) -> None:
     from adafruit_gps import GPS_GtopI2C
-    self.gtop = GPS_GtopI2C(i2c, address=address, debug=False)
+    self.bus = i2c or board.I2C()
+    self.gtop = GPS_GtopI2C(self.bus, address=address, debug=False)
     self.device = self.gtop._i2c
     self.device_address = address
     self.refresh_interval = refresh_interval
@@ -105,8 +112,3 @@ def unpack(type: str, buf: bytes) -> int|float:
   if type == 't':
     return int.from_bytes(buf)
   raise ValueError(f'{type=}')
-
-try:
-  from typing import Generator
-except ImportError:
-  pass

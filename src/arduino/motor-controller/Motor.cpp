@@ -19,27 +19,27 @@ uint8_t _lastid = 0;
 
 const uint16_t LIMIT_SWITCHES_MASK = (1 << Motor::BitIsLimitCw) | (1 << Motor::BitIsLimitAcw);
 const uint16_t HOME_END_PASS_MASK = (1 << Motor::BitIsHoming) | (1 << Motor::BitIsEnding) | (1 << Motor::BitIsBacking) | (1 << Motor::BitIsForwarding);
-const unsigned long DEG_NULL = 1000.00;
 
-Motor::Motor(
-  Motor::Pins pins,
-  Motor::Parameters parameters)
-  : _params(parameters),
-    _settings({}),
+Motor::Motor(Motor::Pins pins)
+  : _settings({}),
     _state({}),
     id(++_lastid),
     pins(pins),
-    parameters(_params),
     settings(_settings),
     state(_state),
     _stepper(AccelStepper(AccelStepper::FULL2WIRE, pins.step, pins.dir))
 {
-  _params.defaultSpeed = min(_params.defaultSpeed, _params.absMaxSpeed);
-  _settings.homingSpeed = min(_settings.homingSpeed, _params.absMaxSpeed);
-  _settings.maxSpeed = _params.defaultSpeed;
-  _settings.acceleration = _params.maxAcceleration;
-  _stepper.setMaxSpeed(_settings.maxSpeed);
-  _stepper.setAcceleration(_settings.acceleration);
+  // setLimitSwitchEnablement(true);
+  // setAbsMaxSpeed(5000);
+  // setMaxAcceleration(50000);
+  // setMaxSpeed(2000);
+  // setDefaultSpeed(2000);
+  // setHomingSpeed(4000);
+  // setAcceleration(50000);
+  // setMaxSteps(5000);
+  // setBackingSteps(1000);
+  _stepper.setMaxSpeed(_settings.values.defaultSpeed);
+  _stepper.setAcceleration(_settings.values.acceleration);
 }
 
 void Motor::begin() {
@@ -49,7 +49,7 @@ void Motor::begin() {
   pinMode(pins.limit_cw, LIMIT_TRIPPED == HIGH ? INPUT_PULLDOWN : INPUT_PULLUP);
   pinMode(pins.limit_acw, LIMIT_TRIPPED == HIGH ? INPUT_PULLDOWN : INPUT_PULLUP);
   digitalWrite(pins.enable, 1 - MOTOR_ON);
-  _state.lastActionTime = millis();
+  _state.values.lastActionTime = millis();
 }
 
 boolean Motor::runIfNeeded() {
@@ -57,23 +57,23 @@ boolean Motor::runIfNeeded() {
     _runActive();
     return true;
   }
-  if ((state.flags >> BitIsMoving) & 1) {
+  if ((state.values.flags >> BitIsMoving) & 1) {
     _updateIdle();
-  } else if ((state.flags >> BitIsActive) & 1) {
+  } else if ((state.values.flags >> BitIsActive) & 1) {
     _checkSleep();
   }
   return false;
 }
 
-boolean Motor::canMove(const long direction) {
+boolean Motor::canMove(const int32_t direction) {
   // the direction is just a positive/negative direction reference.
-  if (!((settings.flags >> BitLimitsEnabled) & 1)) {
+  if (!((settings.values.flags >> BitLimitsEnabled) & 1)) {
     return true;
   }
-  return !((state.flags >> (direction > 0 ? BitIsLimitCw : BitIsLimitAcw)) & 1);
+  return !((state.values.flags >> (direction > 0 ? BitIsLimitCw : BitIsLimitAcw)) & 1);
 }
 
-boolean Motor::move(const long howMuch) {
+boolean Motor::move(const int32_t howMuch) {
   if (canMove(howMuch)) {
     _stepper.move(howMuch);
     _enable();
@@ -83,43 +83,43 @@ boolean Motor::move(const long howMuch) {
 }
 
 boolean Motor::moveHome() {
-  if (!((settings.flags >> BitLimitsEnabled) & 1) || (state.flags & HOME_END_PASS_MASK)) {
+  if (!((settings.values.flags >> BitLimitsEnabled) & 1) || (state.values.flags & HOME_END_PASS_MASK)) {
     // D_println("ignore moveHome");
     return false;
   }
-  overrideMaxSpeed(settings.homingSpeed);
-  overrideAcceleration(parameters.maxAcceleration);
+  overrideMaxSpeed(settings.values.homingSpeed);
+  overrideAcceleration(settings.values.maxAcceleration);
   if (isHome()) {
     // move back just a little
     // D_println("moving back");
-    _state.flags |= 1 << BitIsBacking;
-    move(_degtos(1.5));
+    _state.values.flags |= 1 << BitIsBacking;
+    move(settings.values.backingSteps);
     // homing will recommence after backing is complete
   } else {
     // D_println("moving home");
-    _state.flags |= 1 << BitIsHoming;
-    move(-_getOverLimitStepsToMove());
+    _state.values.flags |= 1 << BitIsHoming;
+    move(-settings.values.maxSteps);
   }
   return true;
 }
 
 boolean Motor::moveEnd() {
-  if (!((settings.flags >> BitLimitsEnabled) & 1) || (state.flags & HOME_END_PASS_MASK)) {
+  if (!((settings.values.flags >> BitLimitsEnabled) & 1) || (state.values.flags & HOME_END_PASS_MASK)) {
     // D_println("ignore moveEnd");
     return false;
   }
-  overrideMaxSpeed(settings.homingSpeed);
-  overrideAcceleration(parameters.maxAcceleration);
+  overrideMaxSpeed(settings.values.homingSpeed);
+  overrideAcceleration(settings.values.maxAcceleration);
   if (isEnd()) {
     // move forward just a little
     // D_println("moving forward");
-    _state.flags |= 1 << BitIsForwarding;
-    move(-_degtos(1.5));
+    _state.values.flags |= 1 << BitIsForwarding;
+    move(-settings.values.backingSteps);
     // ending will recommence after forwarding is complete
   } else {
     // D_println("moving end");
-    _state.flags |= 1 << BitIsEnding;
-    move(_getOverLimitStepsToMove());
+    _state.values.flags |= 1 << BitIsEnding;
+    move(settings.values.maxSteps);
   }
   return true;
 }
@@ -129,71 +129,97 @@ boolean Motor::stop() {
 }
 
 boolean Motor::isHome() {
-  return ((settings.flags >> BitLimitsEnabled) & 1) && ((state.flags >> BitIsLimitAcw) & 1);
+  return ((settings.values.flags >> BitLimitsEnabled) & 1) && ((state.values.flags >> BitIsLimitAcw) & 1);
 }
 
 boolean Motor::isEnd() {
-  return ((settings.flags >> BitLimitsEnabled )& 1) && ((state.flags >> BitIsLimitCw) & 1);
+  return ((settings.values.flags >> BitLimitsEnabled )& 1) && ((state.values.flags >> BitIsLimitCw) & 1);
 }
 
-void Motor::setMaxSpeed(unsigned long value) {
-  _settings.maxSpeed = min(value, parameters.absMaxSpeed);
-  _stepper.setMaxSpeed(_settings.maxSpeed);
+void Motor::setPosition(int32_t value) {
+  _stepper.setCurrentPosition(value);
+  _state.values.pos = _stepper.currentPosition();
+  _state.values.flags |= 1 << BitIsManualPos;
 }
 
-void Motor::setHomingSpeed(unsigned long value) {
-  _settings.homingSpeed = min(value, parameters.absMaxSpeed);
+void Motor::setDefaultSpeed(uint16_t value) {
+  _settings.values.defaultSpeed = value > settings.values.absMaxSpeed ? settings.values.absMaxSpeed : value;
 }
 
-void Motor::setAcceleration(unsigned long value) {
-  _settings.acceleration = min(value, parameters.maxAcceleration);
-  _stepper.setAcceleration(settings.acceleration);
+void Motor::setHomingSpeed(uint16_t value) {
+  _settings.values.homingSpeed = value > settings.values.absMaxSpeed ? settings.values.absMaxSpeed : value;
 }
 
-void Motor::overrideMaxSpeed(unsigned long value) {
-  value = min(value, parameters.absMaxSpeed);
-  if (settings.maxSpeed != value) {
-    if (!state.oldMaxSpeed) {
-      _state.oldMaxSpeed = settings.maxSpeed;
+void Motor::setMaxSpeed(uint16_t value) {
+  _settings.values.maxSpeed = value > settings.values.absMaxSpeed ? settings.values.absMaxSpeed : value;
+  _stepper.setMaxSpeed(_settings.values.maxSpeed);
+}
+
+void Motor::setAbsMaxSpeed(uint16_t value) {
+  _settings.values.absMaxSpeed = value > SYS_MAX_SPEED ? SYS_MAX_SPEED : value;
+}
+
+void Motor::overrideMaxSpeed(uint16_t value) {
+  value = value > settings.values.absMaxSpeed ? settings.values.absMaxSpeed : value;
+  if (settings.values.maxSpeed != value) {
+    if (!state.values.oldMaxSpeed) {
+      _state.values.oldMaxSpeed = settings.values.maxSpeed;
     }
     setMaxSpeed(value);
   }
 }
 
-void Motor::overrideAcceleration(unsigned long value) {
-  value = min(value, parameters.maxAcceleration);
-  if (settings.acceleration != value) {
-    if (!state.oldAcceleration) {
-      _state.oldAcceleration = settings.acceleration;
+void Motor::restoreMaxSpeed() {
+  if (state.values.oldMaxSpeed) {
+    setMaxSpeed(state.values.oldMaxSpeed);
+    _state.values.oldMaxSpeed = 0;
+  }
+}
+
+void Motor::setAcceleration(uint16_t value) {
+  _settings.values.acceleration = value > settings.values.maxAcceleration ? settings.values.maxAcceleration : value;
+  _stepper.setAcceleration(settings.values.acceleration);
+}
+
+void Motor::setMaxAcceleration(uint16_t value) {
+  _settings.values.maxAcceleration = value > SYS_MAX_ACCELERATION ? SYS_MAX_ACCELERATION : value;
+}
+
+void Motor::overrideAcceleration(uint16_t value) {
+  value = value > settings.values.maxAcceleration ? settings.values.maxAcceleration : value;
+  if (settings.values.acceleration != value) {
+    if (!state.values.oldAcceleration) {
+      _state.values.oldAcceleration = settings.values.acceleration;
     }
     setAcceleration(value);
   }
 }
 
-void Motor::restoreMaxSpeed() {
-  if (state.oldMaxSpeed) {
-    setMaxSpeed(state.oldMaxSpeed);
-    _state.oldMaxSpeed = 0;
+void Motor::restoreAcceleration() {
+  if (state.values.oldAcceleration) {
+    setAcceleration(state.values.oldAcceleration);
+    _state.values.oldAcceleration = 0;
   }
 }
 
-void Motor::restoreAcceleration() {
-  if (state.oldAcceleration) {
-    setAcceleration(state.oldAcceleration);
-    _state.oldAcceleration = 0;
-  }
+void Motor::setMaxSteps(uint32_t value) {
+  _settings.values.maxSteps = value;
+}
+
+void Motor::setBackingSteps(uint16_t value) {
+  _settings.values.backingSteps = value;
 }
 
 void Motor::setLimitSwitchEnablement(const boolean value) {
-  auto& flags = _settings.flags;
+  auto& flags = _settings.values.flags;
   if ((boolean)((flags >> BitLimitsEnabled) & 1) != value) {
     flags = (flags & ~(1 << BitLimitsEnabled)) | (value << BitLimitsEnabled);
   }
 }
 
 void Motor::readLimitSwitches() {
-  _state.flags = (
-    (_state.flags & ~LIMIT_SWITCHES_MASK) |
+  _state.values.flags = (
+    (_state.values.flags & ~LIMIT_SWITCHES_MASK) |
     ((digitalRead(pins.limit_cw) == LIMIT_TRIPPED) << BitIsLimitCw) |
     ((digitalRead(pins.limit_acw) == LIMIT_TRIPPED) << BitIsLimitAcw)
   );
@@ -201,115 +227,102 @@ void Motor::readLimitSwitches() {
 
 void Motor::_runActive() {
   readLimitSwitches();
-  if (millis() > state.enabledAt + ENABLE_DELAY_MS) {
+  if (millis() > state.values.enabledAt + ENABLE_DELAY_MS) {
     // this will move at most one step
     _stepper.run();
     if (!canMove(_stepper.distanceToGo())) {
       _stop(false);
     }
   }
-  _state.lastActionTime = millis();
-  auto& flags = _state.flags;
-  flags |= 1 << BitIsMoving;
-  if ((flags >> BitHasHomed) & 1) {
-    _state.pos = _stepper.currentPosition();
-    _state.targetPos = _stepper.targetPosition();
+  _state.values.lastActionTime = millis();
+  _state.values.flags |= 1 << BitIsMoving;
+  // auto& flags = _state.values.flags;
+  // flags |= 1 << BitIsMoving;
+  if (((_state.values.flags >> BitHasHomed) & 1) || ((_state.values.flags >> BitIsManualPos) & 1)) {
+    _state.values.pos = _stepper.currentPosition();
+    _state.values.targetPos = _stepper.targetPosition();
   }
 }
 
 void Motor::_updateIdle() {
   restoreAcceleration();
   restoreMaxSpeed();
-  auto& flags = _state.flags;
-  if ((flags >> BitIsBacking) & 1) {
+  // auto& flags = _state.values.flags;
+  if ((_state.values.flags >> BitIsBacking) & 1) {
     // we have finished backing for home
     // D_println("finished backing");
-    flags ^= 1 << BitIsBacking;
+    _state.values.flags ^= 1 << BitIsBacking;
     moveHome();
     return;
   }
-  if ((flags >> BitIsForwarding) & 1) {
+  if ((_state.values.flags >> BitIsForwarding) & 1) {
     // we have finished forwarding for end
     // D_println("finished forwarding");
-    flags ^= 1 << BitIsForwarding;
+    _state.values.flags ^= 1 << BitIsForwarding;
     moveEnd();
     return;
   }
-  flags &= ~((1 << BitIsHoming) | (1 << BitIsEnding) | (1 << BitIsMoving));
-  if ((flags >> BitIsStopping) & 1) {
+  _state.values.flags &= ~((1 << BitIsHoming) | (1 << BitIsEnding) | (1 << BitIsMoving));
+  if ((_state.values.flags >> BitIsStopping) & 1) {
     // we have finished stopping
     // D_println("finished stopping");
-    flags ^= 1 << BitIsStopping;
-    if ((flags >> BitIsForceStop) & 1) {
-      flags ^= 1 << BitIsForceStop;
+    _state.values.flags ^= 1 << BitIsStopping;
+    if ((_state.values.flags >> BitIsForceStop) & 1) {
+      _state.values.flags ^= 1 << BitIsForceStop;
     } else {
       // we have reached a limit switch, see if we are home
       if (isHome()) {
-        flags |= 1 << BitHasHomed;
-        // _state.hasHomed = true;
+        _state.values.flags |= 1 << BitHasHomed;
+        // _state.values.hasHomed = true;
         _stepper.setCurrentPosition(0);
-        _stepper.setMaxSpeed(settings.maxSpeed);
-        _state.pos = _stepper.currentPosition();
-      } else if (isEnd() && ((flags >> BitHasHomed) & 1)) {
+        _stepper.setMaxSpeed(settings.values.maxSpeed);
+        _state.values.pos = _stepper.currentPosition();
+      } else if (isEnd() && ((_state.values.flags >> BitHasHomed) & 1)) {
         // store the known max position
-        _state.posMax = _stepper.currentPosition();
+        _state.values.posMax = _stepper.currentPosition();
       }
     }
   }
-  _state.targetPos = _state.pos;
+  _state.values.targetPos = _state.values.pos;
   _checkSleep();
 }
 
 boolean Motor::_stop(const boolean force) {
-  auto& flags = _state.flags;
-  if (((flags >> BitIsStopping) & 1) || !((flags >> BitIsMoving) & 1)) {
+  // auto& flags = _state.values.flags;
+  if (((_state.values.flags >> BitIsStopping) & 1) || !((_state.values.flags >> BitIsMoving) & 1)) {
     // skip duplicate or unnecessary action
     // D_println("ignoring stop");
     return false;
   }
-  flags = (flags & ~(1 << BitIsForceStop)) | (force << BitIsForceStop) | (1 << BitIsStopping);
-  overrideAcceleration(parameters.maxAcceleration);
+  _state.values.flags = (_state.values.flags & ~(1 << BitIsForceStop)) | (force << BitIsForceStop) | (1 << BitIsStopping);
+  overrideAcceleration(settings.values.maxAcceleration);
   _stepper.stop();
   return true;
 }
 
 void Motor::_enable() {
-  auto& flags = _state.flags;
-  if (!((flags >> BitIsActive) & 1)) {
+  // auto& flags = _state.values.flags;
+  if (!((_state.values.flags >> BitIsActive) & 1)) {
     digitalWrite(pins.enable, MOTOR_ON);
-    flags |= 1 << BitIsActive;
-    _state.enabledAt = millis();
+    _state.values.flags |= 1 << BitIsActive;
+    _state.values.enabledAt = millis();
   }
-  _state.lastActionTime = millis();
+  _state.values.lastActionTime = millis();
 }
 
 void Motor::_disable() {
-  auto& flags = _state.flags;
-  if ((flags >> BitIsActive) & 1) {
+  // auto& flags = _state.values.flags;
+  if ((_state.values.flags >> BitIsActive) & 1) {
     digitalWrite(pins.enable, 1 - MOTOR_ON);
-    flags &= ~(1 << BitIsActive);
-    _state.enabledAt = 0;
+    _state.values.flags &= ~(1 << BitIsActive);
+    _state.values.enabledAt = 0;
   }
 }
 
 void Motor::_checkSleep() {
-  auto& flags = state.flags;
-  if (((flags >> BitIsActive )& 1) && !((flags >> BitIsMoving) & 1) && millis() - state.lastActionTime > MOTOR_SLEEP_TIMEOUT_MS) {
+  // auto& flags = state.values.flags;
+  if (((_state.values.flags >> BitIsActive )& 1) && !((_state.values.flags >> BitIsMoving) & 1) && millis() - state.values.lastActionTime > MOTOR_SLEEP_TIMEOUT_MS) {
     _disable();
   }
 }
 
-
-long Motor::_degtos(const float howMuch) {
-  return (howMuch * parameters.millistepsPerDegree) / 1000;
-}
-
-unsigned long Motor::_getOverLimitStepsToMove() {
-  float degreesToMove = parameters.maxDegrees;
-  const float mposDegrees = ((state.flags >> BitHasHomed) & 1) ? (state.pos * 1000) / parameters.millistepsPerDegree : DEG_NULL;
-  // if we know position, don't way overshoot
-  if (mposDegrees != DEG_NULL && mposDegrees > 0) {
-    degreesToMove = mposDegrees + 10;
-  }
-  return _degtos(degreesToMove);
-}

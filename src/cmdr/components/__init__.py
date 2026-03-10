@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import board
 import busio
 from adafruit_bus_device.i2c_device import I2CDevice
 from utils import millis
+
 
 class Component:
   ATTRMAP = {}
@@ -15,6 +17,7 @@ class Component:
   changed_at = 0
   persistkey: tuple[int, int, int]|None = None
   debug: bool|None = None
+  bus: busio.I2C|busio.SPI|None = None
 
   @property
   def persist_id(self) -> int|None:
@@ -43,6 +46,8 @@ class Component:
   def metaitems(self) -> Iterable[tuple[str, Any]]:
     yield 'classname', type(self).__name__
     yield 'component_address', hex(self.component_address)
+    if self.persistkey:
+      yield 'persistkey', self.persistkey
 
   def refresh_if_needed(self) -> int:
     if self.refreshed_at < (now := millis()) - self.refresh_interval:
@@ -81,9 +86,11 @@ class Component:
 
 class DeviceComponent(Component):
 
-  def __init__(self, i2c: busio.I2C, address: int) -> None:
+  def __init__(self, i2c: busio.I2C|None, address: int) -> None:
+    i2c = i2c or board.I2C()
     self.device = I2CDevice(i2c, address)
     self.device_address = address
+    self.bus = i2c
 
   @property
   def component_address(self) -> int:
@@ -94,7 +101,8 @@ class DeviceComponent(Component):
     yield 'device_address', hex(self.device_address)
 
 try:
-  from app import App
   from typing import Any, Iterable
+
+  from app import App
 except ImportError:
   pass

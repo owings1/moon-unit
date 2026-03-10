@@ -1,16 +1,16 @@
 from __future__ import annotations
 
+import struct
+import time
 from collections import OrderedDict
-from digitalio import DigitalInOut, Direction
 
 import board
-import struct
 import busio
-import time
-import busio
+from digitalio import DigitalInOut, Direction
+from utils import Pkr, debug
 
-from utils import debug, Pkr
 from . import DeviceComponent
+
 
 class IMU6(DeviceComponent):
   PKR = Pkr()
@@ -40,7 +40,7 @@ class IMU6(DeviceComponent):
       self._obbus = i2c = busio.I2C(board.IMU_SCL, board.IMU_SDA)
     super().__init__(i2c, address)
     from adafruit_lsm6ds.lsm6ds3trc import LSM6DS3TRC
-    self.sensor = LSM6DS3TRC(i2c, address)
+    self.sensor = LSM6DS3TRC(self.bus, address)
     self.refresh_interval = refresh_interval
     self.packed = bytearray(self.PKR.size)
 
@@ -61,7 +61,7 @@ class IMU6(DeviceComponent):
       *self.sensor._raw_accel_data,
       *self.sensor._raw_gyro_data,
       *self.sensor._raw_temp_data)
-    return self.packed != a
+    return self.packed != a 
 
   def scale(self, fmt: str, value: int) -> float:
     if fmt == 'accel':
@@ -118,7 +118,8 @@ class IMU9(DeviceComponent):
   PERSIST_SLC = slice(ATTRMAP['offsets_accel'][2], ATTRMAP['offsets_accel'][2] + struct.calcsize('9h'))
 
   def __init__(
-    self, i2c: busio.I2C,
+    self,
+    i2c: busio.I2C|None = None,
     address: int = 0x29,
     *,
     refresh_interval: int = 200,
@@ -126,7 +127,7 @@ class IMU9(DeviceComponent):
   ) -> None:
     super().__init__(i2c, address)
     from adafruit_bno055 import BNO055_I2C
-    self.sensor = BNO055_I2C(i2c, address)
+    self.sensor = BNO055_I2C(self.bus, address)
     self.refresh_interval = refresh_interval
     self.packed = bytearray(self.PKR.size)
     if offsets:
@@ -181,7 +182,7 @@ class IMU9(DeviceComponent):
     setattr(self.sensor, actdef[1], value)
 
   def dump_persistent(self):
-    if self['calibrated']:
+    if (self['calflag'] & 0x3f) == 0x3f:
       return self.packed[self.PERSIST_SLC]
 
   def load_persistent(self, buf: bytes) -> None:

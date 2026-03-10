@@ -25,10 +25,9 @@ component_categories: dict[str, ModuleType] = dict(
   stowage=components.stowage)
 
 class App:
-  i2c: busio.I2C|None = None
-  spi: busio.SPI|None = None
   components: dict[int, Component]|None = None
   sdcard: sdcardio.SDCard|None = None
+  buses: list[busio.I2C|busio.SPI]|None = None
 
   def main(self) -> None:
     try:
@@ -62,10 +61,12 @@ class App:
 
   def init(self) -> None:
     self.deinit()
+    self.buses = []
     if settings.sd_enabled:
-      self.spi = board.SPI()
-      self.sdcard = sdcardio.SDCard(self.spi, as_pin(settings.sd_cs))
+      spi = board.SPI()
+      self.sdcard = sdcardio.SDCard(spi, as_pin(settings.sd_cs))
       storage.mount(storage.VfsFat(self.sdcard), settings.sd_mountpath)
+      self.buses.append(spi)
     self.components = OrderedDict()
     for name, defn in settings.components.items():
       if defn.get('disabled') or not defn.get('enabled', True):
@@ -74,20 +75,20 @@ class App:
       module = component_categories[defn['category']]
       cls: type[Component] = getattr(module, defn['classname'])
       options: dict = defn.get('options', {})
-      if cls is components.inertial.IMU6 and options.get('onboard_i2c'):
-        i2c = None
-      else:
-        i2c = self.i2c = board.I2C()
-      component = cls(i2c=i2c, **options)
+      component = cls(**options)
+      if component.bus and component.bus not in self.buses:
+        self.buses.append(component.bus)
       component.debug = defn.get('debug')
-      if component.debug is None:
-        component.debug = settings.debug
+      # if component.debug is None:
+      #   component.debug = settings.debug
       component.persist_id = defn.get('persist_id')
       self.add_component(component)
-    for component in self.components.values():
+    for component in self.components.values(): 
       component.app_ready(self)
 
   def add_component(self, component: Component):
+    if component.debug is None:
+      component.debug = settings.debug
     self.components[component.component_address] = component
     for subcomponent in component.subcomponents():
       self.add_component(subcomponent)
@@ -97,9 +98,6 @@ class App:
       for component in self.components.values():
         component.deinit()
     self.components = None
-    if self.i2c:
-      self.i2c.deinit()
-    self.i2c = None
     if self.sdcard:
       try:
         storage.umount(settings.sd_mountpath)
@@ -107,8 +105,9 @@ class App:
         pass
       self.sdcard.deinit()
     self.sdcard = None
-    if self.spi:
-      self.spi.deinit()
-    self.spi = None
+    if self.buses:
+      for bus in self.buses:
+        bus.deinit()
+    self.buses = None
 
 app = App()
