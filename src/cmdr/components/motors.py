@@ -18,7 +18,6 @@ LSHIFT_CATEGORY = 0x06
 LSHIFT_MOTORIDX = 0x04
 
 C1_MASK = 0x1 << LSHIFT_CATEGORY
-C2_MASK = 0x2 << LSHIFT_CATEGORY
 
 C1_STATE_FLAGS = C1_MASK | 0x00
 C1_SETTINGS_FLAGS = C1_MASK | 0x01
@@ -29,10 +28,9 @@ C1_ACCELERATION = C1_MASK | 0x04
 C1_ABS_MAX_SPEED = C1_MASK | 0x09
 C1_MAX_ACCELERATION = C1_MASK | 0x0a
 C1_TARGET_POSITION = C1_MASK | 0x0c
-
-C2_STOP = C2_MASK | 0x00
-C2_MOVE_CW = C2_MASK | 0x08
-C2_MOVE_ACW = C2_MASK | 0x09
+C1_STOP = C1_MASK | 0x0f
+C1_MOVE_CW = C1_MASK | 0x05
+C1_MOVE_ACW = C1_MASK | 0x06
 
 CODE_OK = 0x00
 CODE_MOTOR_BUSY = 0x1f
@@ -128,21 +126,22 @@ def mattr(pkr: Pkr, name: str, reg: int|None, fmt: str, writeable: bool):
 
 class Motor(Component):
   PKR = Pkr('<')
-  ATTRMAP: dict[str, MotorAttr] = OrderedDict()
-  ATTRMAP['state_flags'] = mattr(PKR, 'state_flags', C1_STATE_FLAGS, 'B', False)
-  ATTRMAP['settings_flags'] = mattr(PKR, 'settings_flags', C1_SETTINGS_FLAGS, 'B', True)
-  ATTRMAP['position'] = mattr(PKR, 'position', C1_POSITION, 'l', True)
-  ATTRMAP['max_speed'] = mattr(PKR, 'max_speed', C1_MAX_SPEED, 'H', True)
-  ATTRMAP['acceleration'] = mattr(PKR, 'acceleration', C1_ACCELERATION, 'H', True)
-  ATTRMAP['backing_steps'] = mattr(PKR, 'backing_steps', None, 'H', True)
-  ATTRMAP['max_steps'] = mattr(PKR, 'max_steps', None, 'L', True)
-  ATTRMAP['default_speed'] = mattr(PKR, 'default_speed', None, 'H', True)
-  ATTRMAP['homing_speed'] = mattr(PKR, 'homing_speed', None, 'H', True)
-  ATTRMAP['fixing_speed'] = mattr(PKR, 'fixing_speed', None, 'H', True)
-  ATTRMAP['abs_max_speed'] = mattr(PKR, 'abs_max_speed', C1_ABS_MAX_SPEED, 'H', True)
-  ATTRMAP['max_acceleration'] = mattr(PKR, 'max_acceleration', C1_MAX_ACCELERATION, 'H', True)
-  ATTRMAP['position_max'] = mattr(PKR, 'position_max', None, 'L', True)
-  ATTRMAP['target_position'] = mattr(PKR, 'target_position', C1_TARGET_POSITION, 'l', False)
+  ATTRMAP: dict[str, MotorAttr] = OrderedDict(
+    state_flags=mattr(PKR, 'state_flags', C1_STATE_FLAGS, 'B', False),
+    settings_flags=mattr(PKR, 'settings_flags', C1_SETTINGS_FLAGS, 'B', True),
+    position=mattr(PKR, 'position', C1_POSITION, 'l', True),
+    max_speed=mattr(PKR, 'max_speed', C1_MAX_SPEED, 'H', True),
+    acceleration=mattr(PKR, 'acceleration', C1_ACCELERATION, 'H', True),
+    backing_steps=mattr(PKR, 'backing_steps', None, 'H', True),
+    max_steps=mattr(PKR, 'max_steps', None, 'L', True),
+    default_speed=mattr(PKR, 'default_speed', None, 'H', True),
+    homing_speed=mattr(PKR, 'homing_speed', None, 'H', True),
+    fixing_speed=mattr(PKR, 'fixing_speed', None, 'H', True),
+    abs_max_speed=mattr(PKR, 'abs_max_speed', C1_ABS_MAX_SPEED, 'H', True),
+    max_acceleration=mattr(PKR, 'max_acceleration', C1_MAX_ACCELERATION, 'H', True),
+    position_max=mattr(PKR, 'position_max', None, 'L', True),
+    target_position=mattr(PKR, 'target_position', C1_TARGET_POSITION, 'l', False),
+  )
   FLAGMAP = OrderedDict((x[0], x) for x in (
     ('is_limit_cw', 'state_flags', 0x0, 0x1),
     ('is_limit_acw', 'state_flags', 0x1, 0x1),
@@ -153,18 +152,23 @@ class Motor(Component):
     ('limits_enabled', 'settings_flags', 0x0, 0x1),
   ))
   ACTMAP = OrderedDict((x[0], x) for x in (
-    ('stop', C2_STOP, ''),
+    ('stop', C1_STOP, ''),
     ('home', '_routine_home', ''),
     ('end', '_routine_end', ''),
     ('limits_on', '_act_limits_on', ''),
     ('limits_off', '_act_limits_off', ''),
     # ('move_to', C2_MOVE_TO, 'L'),
-    ('move_cw', C2_MOVE_CW, 'L'),
-    ('move_acw', C2_MOVE_ACW, 'L'),
+    ('move_cw', C1_MOVE_CW, 'L'),
+    ('move_acw', C1_MOVE_ACW, 'L'),
     # ('move_to_at_speed', C2_MOVE_TO_AT_SPEED, 2),
     ('move_cw_at_speed', '_routine_move_cw_at_speed', 'HL'),
     ('move_acw_at_speed', '_routine_move_acw_at_speed', 'HL'),
   ))
+  PERSIST_ATTRNAMES = tuple(ATTRMAP)[1:-1]
+  PERSIST_SLC = slice(ATTRMAP[PERSIST_ATTRNAMES[0]].start, ATTRMAP[PERSIST_ATTRNAMES[-1]].end)
+  PERSIST_FMT = PKR.bom + PKR.fmt[len(PKR.bom):][1:-1]
+  PERSIST_NS = 0x9100
+  PERSIST_VER = 0x01
   routine: MotorRoutine|None = None
 
   @property
@@ -204,7 +208,7 @@ class Motor(Component):
     a = bytes(self.packed)
     if self.routine:
       try:
-        self.routine.next()
+        next(self.routine)
       except StopIteration:
         self.routine = None
     for name in self.ATTRMAP:
@@ -264,6 +268,15 @@ class Motor(Component):
       device.write_then_readinto(bufw, bufr)
     return int.from_bytes(bufr)
 
+  def dump_persistent(self):
+    return self.packed[self.PERSIST_SLC]
+
+  def load_persistent(self, buf: bytes) -> None:
+    values = struct.unpack(self.PERSIST_FMT, buf)
+    if len(values) == len(self.PERSIST_ATTRNAMES):
+      for name, value in zip(self.PERSIST_ATTRNAMES, values):
+        self.write(name, value)
+
   def _act_limits_on(self, **kw):
     flagdef = self.FLAGMAP['limits_enabled']
     return self.write(flagdef[1], self[flagdef[1]] | (1 << flagdef[2]), **kw)
@@ -293,8 +306,11 @@ class MotorRoutine:
     self.it = it
     self.status_text = 'Initializing'
 
-  def next(self):
+  def __next__(self):
     return next(self.it)
+
+  def __iter__(self):
+    return self
 
   def cancel(self):
     pass
@@ -461,14 +477,6 @@ class MotorEndRoutine(MotorHomeEndBase):
         self.status_text = 'Write failed: position_max'
         return
     self.status_text = 'Finished'
-
-def check_long(value: int) -> None:
-  if not (isinstance(value, int) and value >= 0 and value.bit_length() <= 0x20):
-    raise ValueError(f'{value=}')
-
-def check_byte(value: int) -> None:
-  if not (isinstance(value, int) and value >= 0 and value.bit_length() <= 0x08):
-    raise ValueError(f'{value=}')
 
 try:
   from typing import Generator, Literal

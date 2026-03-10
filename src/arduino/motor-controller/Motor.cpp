@@ -15,6 +15,8 @@
 #define MOTOR_SLEEP_TIMEOUT_MS 2000
 #endif
 
+#define checkbit(flags, bit) ((flags >> bit) & 1)
+
 uint8_t _lastid = 0;
 
 const uint8_t LIMIT_SWITCHES_MASK = (1 << Motor::BitIsLimitCw) | (1 << Motor::BitIsLimitAcw);
@@ -29,8 +31,8 @@ Motor::Motor(Motor::Pins pins)
     state(_state),
     _stepper(AccelStepper(AccelStepper::FULL2WIRE, pins.step, pins.dir))
 {
-  _stepper.setMaxSpeed(_settings.values.maxSpeed);
-  _stepper.setAcceleration(_settings.values.acceleration);
+  _stepper.setMaxSpeed(settings.values.maxSpeed);
+  _stepper.setAcceleration(settings.values.acceleration);
 }
 
 void Motor::begin() {
@@ -48,9 +50,9 @@ boolean Motor::runIfNeeded() {
     _runActive();
     return true;
   }
-  if ((state.values.flags >> BitIsMoving) & 1) {
+  if (checkbit(state.values.flags, BitIsMoving)) {
     _updateIdle();
-  } else if ((state.values.flags >> BitIsActive) & 1) {
+  } else if (checkbit(state.values.flags, BitIsActive)) {
     _checkSleep();
   }
   return false;
@@ -58,7 +60,7 @@ boolean Motor::runIfNeeded() {
 
 boolean Motor::canMove(const int32_t direction) {
   // the direction is just a positive/negative direction reference.
-  if (!((settings.values.flags >> BitLimitsEnabled) & 1)) {
+  if (!checkbit(settings.values.flags, BitLimitsEnabled)) {
     return true;
   }
   return !((state.values.flags >> (direction > 0 ? BitIsLimitCw : BitIsLimitAcw)) & 1);
@@ -74,22 +76,26 @@ boolean Motor::move(const int32_t howMuch) {
 }
 
 boolean Motor::stop() {
-  return _stop(true);
+  return _stop();
 }
 
-void Motor::setPosition(int32_t value) {
+void Motor::setPosition(const int32_t value) {
   _stepper.setCurrentPosition(value);
   _state.values.pos = _stepper.currentPosition();
+  _state.values.targetPos = _stepper.targetPosition();
   _state.values.flags |= 1 << BitIsManualPos;
 }
 
-void Motor::setMaxSpeed(uint16_t value) {
+void Motor::setMaxSpeed(const uint16_t value) {
   _settings.values.maxSpeed = value > settings.values.absMaxSpeed ? settings.values.absMaxSpeed : value;
-  _stepper.setMaxSpeed(_settings.values.maxSpeed);
+  _stepper.setMaxSpeed(settings.values.maxSpeed);
 }
 
-void Motor::setAbsMaxSpeed(uint16_t value) {
+void Motor::setAbsMaxSpeed(const uint16_t value) {
   _settings.values.absMaxSpeed = value > SYS_MAX_SPEED ? SYS_MAX_SPEED : value;
+  if (settings.values.maxSpeed > settings.values.absMaxSpeed) {
+    setMaxSpeed(settings.values.absMaxSpeed);
+  }
 }
 
 void Motor::overrideMaxSpeed(uint16_t value) {
@@ -109,13 +115,16 @@ void Motor::restoreMaxSpeed() {
   }
 }
 
-void Motor::setAcceleration(uint16_t value) {
+void Motor::setAcceleration(const uint16_t value) {
   _settings.values.acceleration = value > settings.values.maxAcceleration ? settings.values.maxAcceleration : value;
   _stepper.setAcceleration(settings.values.acceleration);
 }
 
-void Motor::setMaxAcceleration(uint16_t value) {
+void Motor::setMaxAcceleration(const uint16_t value) {
   _settings.values.maxAcceleration = value > SYS_MAX_ACCELERATION ? SYS_MAX_ACCELERATION : value;
+  if (settings.values.acceleration > settings.values.maxAcceleration) {
+    setAcceleration(settings.values.maxAcceleration);
+  }
 }
 
 void Motor::overrideAcceleration(uint16_t value) {
@@ -141,7 +150,7 @@ void Motor::setSettingsFlags(const uint8_t value) {
 
 void Motor::readLimitSwitches() {
   _state.values.flags = (
-    (_state.values.flags & ~LIMIT_SWITCHES_MASK) |
+    (state.values.flags & ~LIMIT_SWITCHES_MASK) |
     ((digitalRead(pins.limit_cw) == LIMIT_TRIPPED) << BitIsLimitCw) |
     ((digitalRead(pins.limit_acw) == LIMIT_TRIPPED) << BitIsLimitAcw)
   );
@@ -153,12 +162,12 @@ void Motor::_runActive() {
     // this will move at most one step
     _stepper.run();
     if (!canMove(_stepper.distanceToGo())) {
-      _stop(false);
+      _stop();
     }
   }
   _state.values.lastActionTime = millis();
   _state.values.flags |= 1 << BitIsMoving;
-  if ((_state.values.flags >> BitIsManualPos) & 1) {
+  if (checkbit(state.values.flags, BitIsManualPos)) {
     _state.values.pos = _stepper.currentPosition();
     _state.values.targetPos = _stepper.targetPosition();
   }
@@ -173,8 +182,8 @@ void Motor::_updateIdle() {
   _checkSleep();
 }
 
-boolean Motor::_stop(const boolean force) {
-  if (((_state.values.flags >> BitIsStopping) & 1) || !((_state.values.flags >> BitIsMoving) & 1)) {
+boolean Motor::_stop() {
+  if (checkbit(state.values.flags, BitIsStopping) || !checkbit(state.values.flags, BitIsMoving)) {
     // skip duplicate or unnecessary action
     // D_println("ignoring stop");
     return false;
@@ -186,7 +195,7 @@ boolean Motor::_stop(const boolean force) {
 }
 
 void Motor::_enable() {
-  if (!((_state.values.flags >> BitIsActive) & 1)) {
+  if (!checkbit(state.values.flags, BitIsActive)) {
     digitalWrite(pins.enable, MOTOR_ON);
     _state.values.flags |= 1 << BitIsActive;
     _state.values.enabledAt = millis();
@@ -195,7 +204,7 @@ void Motor::_enable() {
 }
 
 void Motor::_disable() {
-  if ((_state.values.flags >> BitIsActive) & 1) {
+  if (checkbit(state.values.flags, BitIsActive)) {
     digitalWrite(pins.enable, 1 - MOTOR_ON);
     _state.values.flags &= ~(1 << BitIsActive);
     _state.values.enabledAt = 0;
@@ -203,7 +212,7 @@ void Motor::_disable() {
 }
 
 void Motor::_checkSleep() {
-  if (((_state.values.flags >> BitIsActive) & 1) && !((_state.values.flags >> BitIsMoving) & 1) && millis() - state.values.lastActionTime > MOTOR_SLEEP_TIMEOUT_MS) {
+  if (checkbit(state.values.flags, BitIsActive) && !checkbit(state.values.flags, BitIsMoving) && millis() - state.values.lastActionTime > MOTOR_SLEEP_TIMEOUT_MS) {
     _disable();
   }
 }

@@ -97,6 +97,8 @@ class Persister(Component):
 def mkdirp(vfs: storage.VfsFat, path: str) -> bool:
   if not path:
     raise ValueError(path)
+  if not path.startswith('/'):
+    raise ValueError(f'path not absolute: {path}')
   try:
     stat = vfs.stat(path)
   except OSError as err:
@@ -109,15 +111,14 @@ def mkdirp(vfs: storage.VfsFat, path: str) -> bool:
     err = Exception(f'{path} not a directory {stat=}')
     traceback.print_exception(err)
     return False
-  nodes = path.split('/')
-  nodes.reverse()
-  try:
-    cur = nodes.pop()
-    vfs.mkdir(cur)
-    for node in nodes:
-      cur += f'/{node}'
+  nodes = path[1:].split('/')
+  cur = ''
+  for node in nodes:
+    cur += f'/{node}'
+    try:
       vfs.mkdir(cur)
-  except OSError as err:
-    traceback.print_exception(err)
-    return False
+    except OSError as err:
+      if err.errno != 17:
+        traceback.print_exception(err)
+        return False
   return True

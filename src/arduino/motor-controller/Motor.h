@@ -86,13 +86,13 @@ public:
   boolean move(const int32_t howMuch);
   boolean stop();
 
-  void setPosition(int32_t value);
-  void setMaxSpeed(uint16_t value);
-  void setAbsMaxSpeed(uint16_t value);
+  void setPosition(const int32_t value);
+  void setMaxSpeed(const uint16_t value);
+  void setAbsMaxSpeed(const uint16_t value);
   void overrideMaxSpeed(uint16_t value);
   void restoreMaxSpeed();
-  void setAcceleration(uint16_t value);
-  void setMaxAcceleration(uint16_t value);
+  void setAcceleration(const uint16_t value);
+  void setMaxAcceleration(const uint16_t value);
   void overrideAcceleration(uint16_t value);
   void restoreAcceleration();
   void setSettingsFlags(const uint8_t value);
@@ -104,7 +104,7 @@ private:
   AccelStepper _stepper;
   void _runActive();
   void _updateIdle();
-  boolean _stop(const boolean force);
+  boolean _stop();
   void _enable();
   void _disable();
   void _checkSleep();
