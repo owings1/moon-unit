@@ -52,7 +52,8 @@ class Component:
 
   def refresh_if_needed(self) -> int:
     force_refresh, self.refresh_next_tick = self.refresh_next_tick, False
-    if force_refresh or self.refreshed_at < (now := millis()) - self.refresh_interval:
+    now = millis()
+    if force_refresh or self.refreshed_at < now - self.refresh_interval:
       change = self.refresh()
       self.refreshed_at = now
       if change:

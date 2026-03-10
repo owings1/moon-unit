@@ -19,7 +19,7 @@ LSHIFT_MOTORIDX = 0x04
 
 C1_MASK = 0x1 << LSHIFT_CATEGORY
 C2_MASK = 0x2 << LSHIFT_CATEGORY
-C3_MASK = 0x3 << LSHIFT_CATEGORY
+# C3_MASK = 0x3 << LSHIFT_CATEGORY
 
 C1_STATE_FLAGS = C1_MASK | 0x00
 C1_SETTINGS_FLAGS = C1_MASK | 0x01
@@ -39,19 +39,19 @@ C1_TARGET_POSITION = C1_MASK | 0x0c
 C2_STOP = C2_MASK | 0x00
 # C2_HOME = C2_MASK | 0x01
 # C2_END = C2_MASK | 0x02
-C2_LIMITS_ON = C2_MASK | 0x03
-C2_LIMITS_OFF = C2_MASK | 0x04
+# C2_LIMITS_ON = C2_MASK | 0x03
+# C2_LIMITS_OFF = C2_MASK | 0x04
 
-C2_MOVE_TO = C2_MASK | 0x07
+# C2_MOVE_TO = C2_MASK | 0x07
 C2_MOVE_CW = C2_MASK | 0x08
 C2_MOVE_ACW = C2_MASK | 0x09
 
-C2_MOVE_TO_AT_SPEED = C2_MASK | 0x0d
-C2_MOVE_CW_AT_SPEED = C2_MASK | 0x0e
-C2_MOVE_ACW_AT_SPEED = C2_MASK | 0x0f
+# C2_MOVE_TO_AT_SPEED = C2_MASK | 0x0d
+# C2_MOVE_CW_AT_SPEED = C2_MASK | 0x0e
+# C2_MOVE_ACW_AT_SPEED = C2_MASK | 0x0f
 
 # C3_STATE_FLAGS = C3_MASK | 0x00
-C3_STOP_ALL = C3_MASK | 0x01
+# C3_STOP_ALL = C3_MASK | 0x01
 # C3_HOME_ALL = C3_MASK | 0x02
 # C3_END_ALL = C3_MASK | 0x03
 # C3_LIMITS_ON_ALL = C3_MASK | 0x04
@@ -75,7 +75,7 @@ POS_NULL = 10_000_000
 
 class MotorController(DeviceComponent):
   ACTMAP = OrderedDict((x[0], x) for x in (
-    ('stop_all', C3_STOP_ALL, 0),
+    ('stop_all', '_act_stop_all', ''),
     # ('home_all', C3_HOME_ALL, 0),
     # ('end_all', C3_END_ALL, 0),
     # ('limits_on_all', C3_LIMITS_ON_ALL, 0),
@@ -85,6 +85,7 @@ class MotorController(DeviceComponent):
     # ('move_many_to_no_timing', C3_MOVE_MANY_TO_NO_TIMING, 'M'),
     # ('move_many_to_timing', C3_MOVE_MANY_TO_TIMING, 'M'),
   ))
+  routine: MotorControllerRoutine|None = None
 
   def __init__(
     self,
@@ -122,31 +123,43 @@ class MotorController(DeviceComponent):
     # self.moving = (self.packed[0] & 1) == 1
     # return a != self.packed
 
-  def write(self, name: str, flag: int|None = None, values: tuple[int, ...]|None = None) -> int:
+  def write(self, name: str, *v) -> int:
     actdef = self.ACTMAP[name]
-    reg = actdef[1]
-    if actdef[2] == 'M':
-      check_byte(flag)
-      if not 2 <= len(values) <= 4:
-        raise ValueError(f'{values=}')
-      bufw = bytearray(2 + 4 * len(values))
-      bufw[1] = flag
-      i = 2
-      for v in values:
-        check_long(v)
-        bufw[i:i+4] = v.to_bytes(4)
-        i += 4
-    else:
-      if flag is not None:
-        raise ValueError(f'{flag=}')
-      if values is not None:
-        raise ValueError(f'{values=}')
-      bufw = bytearray(1)
-    bufw[0] = reg
-    bufr = bytearray(1)
-    with self.device as device:
-      device.write_then_readinto(bufw, bufr)
-    return int.from_bytes(bufr)
+    if isinstance(actdef[1], str):
+      if actdef[2]:
+        v = struct.unpack(actdef[2], struct.pack(actdef[2], *v))
+      if actdef[1].startswith('_act'):
+        return getattr(self, actdef[1])(*v)
+    return CODE_UNKNOWN_COMMAND
+
+    # reg = actdef[1]
+    # if actdef[2] == 'M':
+    #   check_byte(flag)
+    #   if not 2 <= len(values) <= 4:
+    #     raise ValueError(f'{values=}')
+    #   bufw = bytearray(2 + 4 * len(values))
+    #   bufw[1] = flag
+    #   i = 2
+    #   for v in values:
+    #     check_long(v)
+    #     bufw[i:i+4] = v.to_bytes(4)
+    #     i += 4
+    # else:
+    #   if flag is not None:
+    #     raise ValueError(f'{flag=}')
+    #   if values is not None:
+    #     raise ValueError(f'{values=}')
+    #   bufw = bytearray(1)
+    # bufw[0] = reg
+    # bufr = bytearray(1)
+    # with self.device as device:
+    #   device.write_then_readinto(bufw, bufr)
+    # return int.from_bytes(bufr)
+
+  def _act_stop_all(self):
+    for m in self.motors:
+      m.write('stop')
+    return CODE_OK
 
   # def debug_lines(self) -> Generator[str]:
   #   yield from super().debug_lines()
@@ -155,6 +168,9 @@ class MotorController(DeviceComponent):
   #     for line in m.debug_lines():
   #       yield f'[M{m.id}] {line}'
   #     yield ''
+class MotorControllerRoutine:
+  ...
+
 class MotorAttr(namedtuple('MotorAttrBase', ('name', 'reg', 'start', 'end', 'fmt', 'writeable', 'islocal'))):
   name: str
   reg: int|None
@@ -180,8 +196,8 @@ def mattr(pkr: Pkr, name: str, reg: int|None, fmt: str, writeable: bool):
 class Motor(Component):
   PKR = Pkr('<')
   ATTRMAP: dict[str, MotorAttr] = OrderedDict()
-  ATTRMAP['state_flags'] = mattr(PKR, 'state_flags', C1_STATE_FLAGS, 'H', False)
-  ATTRMAP['settings_flags'] = mattr(PKR, 'settings_flags', C1_SETTINGS_FLAGS, 'B', False)
+  ATTRMAP['state_flags'] = mattr(PKR, 'state_flags', C1_STATE_FLAGS, 'B', False)
+  ATTRMAP['settings_flags'] = mattr(PKR, 'settings_flags', C1_SETTINGS_FLAGS, 'B', True)
   ATTRMAP['position'] = mattr(PKR, 'position', C1_POSITION, 'l', True)
   ATTRMAP['max_speed'] = mattr(PKR, 'max_speed', C1_MAX_SPEED, 'H', True)
   ATTRMAP['acceleration'] = mattr(PKR, 'acceleration', C1_ACCELERATION, 'H', True)
@@ -199,28 +215,22 @@ class Motor(Component):
     ('is_limit_acw', 'state_flags', 0x1, 0x1),
     ('is_active', 'state_flags', 0x2, 0x1),
     ('is_moving', 'state_flags', 0x3, 0x1),
-    # ('has_homed', 'state_flags', 0x4, 0x1),
-    # ('is_homing', 'state_flags', 0x5, 0x1),
-    # ('is_ending', 'state_flags', 0x6, 0x1),
-    # ('is_force_stop', 'state_flags', 0x7, 0x1),
-    ('is_stopping', 'state_flags', 0x8, 0x1),
-    # ('is_forwarding', 'state_flags', 0x9, 0x1),
-    # ('is_backing', 'state_flags', 0xa, 0x1),
-    ('is_manual_position', 'state_flags', 0xb, 0x1),
+    ('is_stopping', 'state_flags', 0x4, 0x1),
+    ('is_manual_position', 'state_flags', 0x5, 0x1),
     ('limits_enabled', 'settings_flags', 0x0, 0x1),
   ))
   ACTMAP = OrderedDict((x[0], x) for x in (
     ('stop', C2_STOP, ''),
     ('home', '_routine_home', ''),
     ('end', '_routine_end', ''),
-    ('limits_on', C2_LIMITS_ON, ''),
-    ('limits_off', C2_LIMITS_OFF, ''),
-    ('move_to', C2_MOVE_TO, 'L'),
+    ('limits_on', '_act_limits_on', ''),
+    ('limits_off', '_act_limits_off', ''),
+    # ('move_to', C2_MOVE_TO, 'L'),
     ('move_cw', C2_MOVE_CW, 'L'),
     ('move_acw', C2_MOVE_ACW, 'L'),
     # ('move_to_at_speed', C2_MOVE_TO_AT_SPEED, 2),
-    # ('move_cw_at_speed', C2_MOVE_CW_AT_SPEED, 2),
-    # ('move_acw_at_speed', C2_MOVE_ACW_AT_SPEED, 2),
+    ('move_cw_at_speed', '_routine_move_cw_at_speed', 'HL'),
+    ('move_acw_at_speed', '_routine_move_acw_at_speed', 'HL'),
   ))
   routine: MotorRoutine|None = None
 
@@ -281,11 +291,17 @@ class Motor(Component):
         in_start=attrdef.start,
         in_end=attrdef.end)
 
-  def write(self, name: str, *v) -> int:
+  def write(self, name: str, *v, unsafe: bool = False) -> int:
+    if not unsafe and self.routine:
+      if name == 'stop':
+        self.routine.cancel()
+        self.routine = None
+      else:
+        return CODE_MOTOR_BUSY
     if name in self.ATTRMAP:
       attrdef = self.ATTRMAP[name]
       if not attrdef.writeable:
-        raise ValueError(f'{name} is readonly')
+        return CODE_READONLY_ATTRIBUTE
       if attrdef.islocal:
         fmt = self.PKR.bom + attrdef.fmt
         struct.pack_into(fmt, self.packed, attrdef.start, *v)
@@ -304,7 +320,8 @@ class Motor(Component):
           self.refresh_next_tick = True
           return CODE_OK
         if actdef[1].startswith('_act'):
-          return getattr(self, actdef[1])(*v)
+          return getattr(self, actdef[1])(*v, unsafe=unsafe)
+        return CODE_UNKNOWN_COMMAND
       reg = actdef[1] | self.idmask
       fmt = '>B' + actdef[2]
     bufw = bytearray(struct.calcsize(fmt))
@@ -314,81 +331,37 @@ class Motor(Component):
       device.write_then_readinto(bufw, bufr)
     return int.from_bytes(bufr)
 
+  def _act_limits_on(self, **kw):
+    flagdef = self.FLAGMAP['limits_enabled']
+    return self.write(flagdef[1], self[flagdef[1]] | (1 << flagdef[2]), **kw)
+
+  def _act_limits_off(self, **kw):
+    flagdef = self.FLAGMAP['limits_enabled']
+    return self.write(flagdef[1], self[flagdef[1]] & ~(1 << flagdef[2]), **kw)
+
   def _routine_home(self):
     return MotorHomeRoutine(self)
-    # yield from self._routine_home_or_end(limitflag='is_limit_acw', movefwd='move_acw', moveback='move_cw')
-    # self.write('position', 0)
 
   def _routine_end(self):
     return MotorEndRoutine(self)
-    # yield from self._routine_home_or_end(limitflag='is_limit_cw', movefwd='move_cw', moveback='move_acw')
-    # if self['is_manual_position']:
-    #   self.read('position')
-    #   self.write('position_max', self['position'])
 
-  # def _routine_home_or_end(self, limitflag: str, movefwd: str, moveback: str):
+  def _routine_move_cw_at_speed(self, speed: int, steps: int):
+    return MotorMoveAtSpeed(self, 'move_cw', speed, steps)
 
-  #   def islimit() -> bool:
-  #     self.read('state_flags')
-  #     return self[limitflag]
-
-  #   def moving() -> bool:
-  #     self.read('state_flags')
-  #     return self['is_moving']
-
-  #   self.read('settings_flags')
-  #   if not self['limits_enabled']:
-  #     return
-
-  #   if moving():
-  #     if self.write('stop') != 0:
-  #       return
-  #     yield
-  #   while moving():
-  #     yield
-  #   self.read('max_acceleration')
-  #   old_max_speed = self.read('max_speed') or self['max_speed']
-  #   old_acceleration = self.read('acceleration') or self['acceleration']
-  #   try:
-  #     if self.write('acceleration', self['max_acceleration']) != 0:
-  #       return
-  #     if self.write('max_speed', self['homing_speed']) != 0:
-  #       return
-
-  #     while not islimit():
-  #       if self.write(movefwd, self['max_steps']) != 0:
-  #         return
-  #       yield
-  #       while moving():
-  #         yield
-  #     while islimit():
-  #       if self.write(moveback, self['backing_steps']) != 0:
-  #         return
-  #       yield
-  #       while moving():
-  #         yield
-  #     if self.write('max_speed', self['fixing_speed']) != 0:
-  #       return
-  #     while not islimit():
-  #       if self.write(movefwd, self['backing_steps'] * 2) != 0:
-  #         return
-  #       yield
-  #       while moving():
-  #         yield
-  #   finally:
-  #     self.write('max_speed', old_max_speed)
-  #     self.write('acceleration', old_acceleration)
+  def _routine_move_acw_at_speed(self, speed: int, steps: int):
+    return MotorMoveAtSpeed(self, 'move_acw', speed, steps)
 
 class MotorRoutine:
   status_text = ''
   error = False
 
-  def __init__(self, motor: Motor):
+  def __init__(self, motor: Motor, it: Generator[None]):
     self.motor = motor
+    self.it = it
     self.status_text = 'Initializing'
 
   def next(self):
-    raise StopIteration
+    return next(self.it)
 
   def cancel(self):
     pass
@@ -397,26 +370,59 @@ class MotorRoutine:
     self.motor.read('state_flags')
     return self.motor['is_moving']
 
+  def write(self, name: str, *v) -> int:
+    return self.motor.write(name, *v, unsafe=True)
+
+class MotorMoveAtSpeed(MotorRoutine):
+  old_max_speed = None
+
+  def __init__(self, motor: Motor, move: str, speed: int, steps: int):
+    self.move = move
+    self.speed = speed
+    self.steps = steps
+    super().__init__(motor, self.gen())
+
+  def gen(self):
+    if self.moving():
+      self.error = True
+      self.status_text = 'Motor busy'
+      return
+    m = self.motor
+    m.read('max_speed')
+    self.old_max_speed = m['max_speed']
+    try:
+      if self.write('max_speed', self.speed) != 0:
+        self.error = True
+        self.status_text = 'Write failed: max_speed'
+        return
+      if self.write(self.move, self.steps) != 0:
+        self.error = True
+        self.status_text = f'Write failed: {self.move}'
+        return
+      self.status_text = 'Moving'
+      yield
+      while self.moving():
+        yield
+    finally:
+      if self.old_max_speed:
+        self.write('max_speed', self.old_max_speed)
+
 class MotorHomeEndBase(MotorRoutine):
   limitflag: str
   movefwd: str
   moveback: str
+  old_max_speed = None
+  old_acceleration = None
 
   def __init__(self, motor: Motor):
-    super().__init__(motor)
-    self.old_max_speed = None
-    self.old_acceleration = None
-    self.it = self.gen()
+    super().__init__(motor, self.gen())
 
   def islimit(self) -> bool:
     self.motor.read('state_flags')
     return self.motor[self.limitflag]
 
-  def next(self):
-    return next(self.it)
-
   def cancel(self):
-    self.motor.write('stop')
+    self.write('stop')
     self.cleanup()
     self.error = True
     self.status_text = 'Canceled'
@@ -432,7 +438,7 @@ class MotorHomeEndBase(MotorRoutine):
 
     if self.moving():
       self.status_text = 'Stopping'
-      if m.write('stop') != 0:
+      if self.write('stop') != 0:
         self.error = True
         self.status_text = 'Stop failed'
         return
@@ -443,17 +449,17 @@ class MotorHomeEndBase(MotorRoutine):
     self.old_max_speed = m.read('max_speed') or m['max_speed']
     self.old_acceleration = m.read('acceleration') or m['acceleration']
     try:
-      if m.write('acceleration', m['max_acceleration']) != 0:
+      if self.write('acceleration', m['max_acceleration']) != 0:
         self.error = True
         self.status_text = 'Write failed: acceleration'
         return
-      if m.write('max_speed', m['homing_speed']) != 0:
+      if self.write('max_speed', m['homing_speed']) != 0:
         self.error = True
         self.status_text = 'Write failed: max_speed'
         return
 
       while not self.islimit():
-        if m.write(self.movefwd, m['max_steps']) != 0:
+        if self.write(self.movefwd, m['max_steps']) != 0:
           self.error = True
           self.status_text = f'Write failed: {self.movefwd}'
           return
@@ -462,7 +468,7 @@ class MotorHomeEndBase(MotorRoutine):
         while self.moving():
           yield
       while self.islimit():
-        if m.write(self.moveback, m['backing_steps']) != 0:
+        if self.write(self.moveback, m['backing_steps']) != 0:
           self.error = True
           self.status_text = f'Write failed: {self.moveback}'
           return
@@ -470,12 +476,12 @@ class MotorHomeEndBase(MotorRoutine):
         yield
         while self.moving():
           yield
-      if m.write('max_speed', m['fixing_speed']) != 0:
+      if self.write('max_speed', m['fixing_speed']) != 0:
         self.error = True
         self.status_text = 'Write failed: max_speed'
         return
       while not self.islimit():
-        if m.write(self.movefwd, m['backing_steps'] * 2) != 0:
+        if self.write(self.movefwd, m['backing_steps'] * 2) != 0:
           self.error = True
           self.status_text = f'Write failed: {self.movefwd}'
           return
@@ -491,11 +497,10 @@ class MotorHomeEndBase(MotorRoutine):
     pass
 
   def cleanup(self):
-    m = self.motor
     if self.old_max_speed:
-      m.write('max_speed', self.old_max_speed)
+      self.write('max_speed', self.old_max_speed)
     if self.old_acceleration:
-      m.write('acceleration', self.old_acceleration)
+      self.write('acceleration', self.old_acceleration)
 
 class MotorHomeRoutine(MotorHomeEndBase):
   limitflag: str = 'is_limit_acw'
@@ -503,7 +508,7 @@ class MotorHomeRoutine(MotorHomeEndBase):
   moveback: str = 'move_cw'
 
   def finish(self):
-    if self.motor.write('position', 0) != 0:
+    if self.write('position', 0) != 0:
       self.error = True
       self.status_text = 'Write failed: position'
       return
@@ -518,7 +523,7 @@ class MotorEndRoutine(MotorHomeEndBase):
     m = self.motor
     if m['is_manual_position']:
       m.read('position')
-      if m.write('position_max', self['position']) != 0:
+      if self.write('position_max', m['position']) != 0:
         self.error = True
         self.status_text = 'Write failed: position_max'
         return

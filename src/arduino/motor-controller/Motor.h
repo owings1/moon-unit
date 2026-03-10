@@ -22,9 +22,9 @@ public:
     BitIsMoving = 3,
     // flag to reset acceleration to oldAcceleration after motors are finished
     // running, for smooth stop on limits.  
-    BitIsStopping = 8,
+    BitIsStopping = 4,
     // pos was manually set
-    BitIsManualPos = 11,
+    BitIsManualPos = 5,
   } StateFlagBit;
 
   typedef enum {
@@ -53,7 +53,7 @@ public:
   };
 
   struct __attribute__((packed)) State {
-    volatile uint16_t flags;
+    volatile uint8_t flags;
     int32_t pos = POS_NULL;
     int32_t targetPos = POS_NULL;
     // for delaying after enabling motor
@@ -95,7 +95,8 @@ public:
   void setMaxAcceleration(uint16_t value);
   void overrideAcceleration(uint16_t value);
   void restoreAcceleration();
-  void setLimitSwitchEnablement(const boolean value);
+  void setSettingsFlags(const uint8_t value);
+  // void setLimitSwitchEnablement(const boolean value);
   void readLimitSwitches();
 
 private:

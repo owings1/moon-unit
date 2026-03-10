@@ -14,7 +14,7 @@
 #include <AccelStepper.h>
 #include <Wire.h>
 
-#define DEBUG 1
+#define DEBUG 0
 
 #if DEBUG
 #define D_SerialBegin(...) Serial.begin(__VA_ARGS__)
@@ -153,8 +153,27 @@ void receiveEvent(int howMany) {
     const byte motorReg = wireReg1 & 0xf;
     if (howMany > 1) {
       wireReg1 = 0x1;
-      if (motorReg >= 0x2 && motorReg <= 0xa) {
-        if (motorReg == 0x2) {
+      if (motorReg >= 0x1 && motorReg <= 0xa) {
+        if (motorReg == 0x1) {
+          if (howMany == 2) {
+            if (motorId > numMotors) {
+              wireRes1 = INVALID_MOTORID;
+              while (wire.available()) {
+                wire.read();
+              }
+              return;
+            }
+            const uint8_t value = wire.read();
+            wireRes1 = setMotorAttr(motors[motorId - 1], motorReg, value);
+            return;
+          } else {
+            wireRes1 = MALFORMED_COMMAND;
+            while (wire.available()) {
+              wire.read();
+            }
+            return;
+          }
+        } else if (motorReg == 0x2) {
           if (howMany == 5) {
             if (motorId > numMotors) {
               wireRes1 = INVALID_MOTORID;
@@ -211,7 +230,8 @@ void receiveEvent(int howMany) {
     const byte motorId = ((wireReg1 >> 0x4) & 0x3) + 1;
     // Remaining 4 bits are command/attribute
     const byte motorReg = wireReg1 & 0xf;
-    if (motorReg <= 0x6 && howMany > 1 || motorReg > 0x6 && motorReg <= 0xc && howMany != 5 || motorReg > 0xc && howMany != 9) {
+    // if (motorReg <= 0x6 && howMany > 1 || motorReg > 0x6 && motorReg <= 0xc && howMany != 5 || motorReg > 0xc && howMany != 9) {
+    if (motorReg <= 0x6 && howMany > 1 || motorReg > 0x6 && motorReg <= 0xc && howMany != 5) {
       while (wire.available()) {
         wire.read();
       }
@@ -231,63 +251,85 @@ void receiveEvent(int howMany) {
       wire.readBytes(buf, 4);
       wireRes1 = applyMotorReg(motors[motorId - 1], motorReg, unpackLong(buf));
     } else {
-      // Command with 2 long params
-      byte buf[4];
-      wire.readBytes(buf, 4);
-      const unsigned long p1 = unpackLong(buf);
-      wire.readBytes(buf, 4);
-      const unsigned long p2 = unpackLong(buf);
-      wireRes1 = applyMotorReg(motors[motorId - 1], motorReg, p1, p2);
+      wireRes1 = UNKNOWN_COMMAND;
+      // // Command with 2 long params
+      // byte buf[4];
+      // wire.readBytes(buf, 4);
+      // const unsigned long p1 = unpackLong(buf);
+      // wire.readBytes(buf, 4);
+      // const unsigned long p2 = unpackLong(buf);
+      // wireRes1 = applyMotorReg(motors[motorId - 1], motorReg, p1, p2);
     }
   } else if (category == 0x3) {
-    // Category 3: other
-    const byte otherReg = wireReg1 & ((1 << 0x6) - 1);
-    if (otherReg < 0x10) {
-      // Command with no params
-      if (howMany > 1) {
-        while (wire.available()) {
-          wire.read();
-        }
-        // wrong number of bytes
-        wireRes1 = MALFORMED_COMMAND;
-        return;
-      }
-      wireRes1 = applyOtherReg(otherReg);
-    } else if (otherReg < 0x20) {
-      wireRes1 = UNKNOWN_COMMAND;
-    } else if (otherReg < 0x30) {
-      if (otherReg < 0x24) {
-        // 1 byte param, followed by 2 to MAX_MOTORS long params
-        if (MAX_MOTORS < 2 || howMany != 10 && (MAX_MOTORS < 3 || howMany != 14) && (MAX_MOTORS < 4 || howMany != 18)) {
-          while (wire.available()) {
-            wire.read();
-          }
-          // wrong number of bytes
-          wireRes1 = MALFORMED_COMMAND;
-          return;
-        }
-        const byte flag = wire.read();
-        const byte numValues = (howMany - 2) / 4;
-        long values[MAX_MOTORS];
-        byte buf[4];
-        for (byte i = 0; i < numValues; ++i) {
-          wire.readBytes(buf, 4);
-          values[i] = (long)unpackLong(buf);
-        }
-        wireRes1 = applyOtherReg(otherReg, flag, values, numValues);
-      } else {
-        wireRes1 = UNKNOWN_COMMAND;
-      }
-    } else if (otherReg < 0x40) {
-      wireRes1 = UNKNOWN_COMMAND;
+    while (wire.available()) {
+      wire.read();
     }
+    wireRes1 = UNKNOWN_COMMAND;
+    return;
+    // // Category 3: other
+    // if (howMany > 1) {
+    //   // wrong number of bytes
+    //   wireRes1 = MALFORMED_COMMAND;
+    //   return;
+    // }
+    // const byte otherReg = wireReg1 & 0x3f;
+    // if (otherReg == 0x1) {
+    //   // Stop all motors
+    //   for (auto& m : motors) {
+    //     m.stop();
+    //   }
+    //   wireRes1 = OK;
+    // } else {
+    //   wireRes1 = UNKNOWN_COMMAND;
+    // }
+    // return;
+    // return OK;
+    // if (otherReg < 0x10) {
+    //   // Command with no params
+    //   if (howMany > 1) {
+    //     while (wire.available()) {
+    //       wire.read();
+    //     }
+    //     // wrong number of bytes
+    //     wireRes1 = MALFORMED_COMMAND;
+    //     return;
+    //   }
+    //   wireRes1 = applyOtherReg(otherReg);
+    // } else if (otherReg < 0x20) {
+    //   wireRes1 = UNKNOWN_COMMAND;
+    // } else if (otherReg < 0x30) {
+    //   if (otherReg < 0x24) {
+    //     // 1 byte param, followed by 2 to MAX_MOTORS long params
+    //     if (MAX_MOTORS < 2 || howMany != 10 && (MAX_MOTORS < 3 || howMany != 14) && (MAX_MOTORS < 4 || howMany != 18)) {
+    //       while (wire.available()) {
+    //         wire.read();
+    //       }
+    //       // wrong number of bytes
+    //       wireRes1 = MALFORMED_COMMAND;
+    //       return;
+    //     }
+    //     const byte flag = wire.read();
+    //     const byte numValues = (howMany - 2) / 4;
+    //     long values[MAX_MOTORS];
+    //     byte buf[4];
+    //     for (byte i = 0; i < numValues; ++i) {
+    //       wire.readBytes(buf, 4);
+    //       values[i] = (long)unpackLong(buf);
+    //     }
+    //     wireRes1 = applyOtherReg(otherReg, flag, values, numValues);
+    //   } else {
+    //     wireRes1 = UNKNOWN_COMMAND;
+    //   }
+    // } else if (otherReg < 0x40) {
+    //   wireRes1 = UNKNOWN_COMMAND;
+    // }
   }
 }
 
 void writeMotorReg(Stream& output, const Motor& m, const byte reg) {
   if (reg <= 0x1) {
     if (reg == 0x0) {
-      output.write((uint8_t*)&m.state.values.flags, 2);
+      output.write((uint8_t*)&m.state.values.flags, 1);
     } else if (reg == 0x1) {
       output.write((uint8_t*)&m.settings.values.flags, 1);
     }
@@ -317,6 +359,15 @@ void writeMotorReg(Stream& output, const Motor& m, const byte reg) {
     } else if (reg == 0xf) {
     }
   }
+}
+
+ResCode setMotorAttr(Motor& m, const byte reg, const uint8_t value) {
+  if (reg == 0x1) {
+    m.setSettingsFlags(value);
+  } else {
+    return UNKNOWN_COMMAND;
+  }
+  return OK;
 }
 
 ResCode setMotorAttr(Motor& m, const byte reg, const uint16_t value) {
@@ -360,18 +411,19 @@ ResCode applyMotorReg(Motor& m, const byte reg) {
       return COMMAND_IGNORED;
     }
   } else if (reg <= 0x4) {
-    if ((m.state.values.flags >> Motor::BitIsMoving) & 1) {
-      return MOTOR_BUSY;
-    }
-    if (reg == 0x1) {
-      return UNKNOWN_COMMAND;
-    } else if (reg == 0x2) {
-      return UNKNOWN_COMMAND;
-    } else if (reg == 0x3) {
-      m.setLimitSwitchEnablement(true);
-    } else if (reg == 0x4) {
-      m.setLimitSwitchEnablement(false);
-    }
+    return UNKNOWN_COMMAND;
+    // if ((m.state.values.flags >> Motor::BitIsMoving) & 1) {
+    //   return MOTOR_BUSY;
+    // }
+    // if (reg == 0x1) {
+    //   return UNKNOWN_COMMAND;
+    // } else if (reg == 0x2) {
+    //   return UNKNOWN_COMMAND;
+    // } else if (reg == 0x3) {
+    //   m.setLimitSwitchEnablement(true);
+    // } else if (reg == 0x4) {
+    //   m.setLimitSwitchEnablement(false);
+    // }
   } else if (reg == 0x5) {
     return UNKNOWN_COMMAND;
   } else if (reg == 0x6) {
@@ -385,9 +437,10 @@ ResCode applyMotorReg(Motor& m, const byte reg, const unsigned long value) {
     return MOTOR_BUSY;
   }
   if (reg == 0x7) {
-    if (m.state.values.pos == Motor::POS_NULL || !m.move(value - m.state.values.pos)) {
-      return COMMAND_IGNORED;
-    }
+    return UNKNOWN_COMMAND;
+    // if (m.state.values.pos == Motor::POS_NULL || !m.move(value - m.state.values.pos)) {
+    //   return COMMAND_IGNORED;
+    // }
   } else if (reg == 0x8) {
     if (!m.move(value)) {
       return COMMAND_IGNORED;
@@ -406,138 +459,147 @@ ResCode applyMotorReg(Motor& m, const byte reg, const unsigned long value) {
   return OK;
 }
 
-ResCode applyMotorReg(Motor& m, const byte reg, const unsigned long p1, const unsigned long p2) {
-  if ((m.state.values.flags >> Motor::BitIsMoving) & 1) {
-    return MOTOR_BUSY;
-  }
-  m.overrideMaxSpeed(p2);
-  boolean ret = false;
-  if (reg == 0xd) {
-    ret = m.state.values.pos != Motor::POS_NULL && m.move(p1 - m.state.values.pos);
-  } else if (reg == 0xe) {
-    ret = m.move(p1);
-  } else if (reg == 0xf) {
-    ret = m.move(-p1);
-  }
-  if (!ret) {
-    m.restoreMaxSpeed();
-    return COMMAND_IGNORED;
-  }
-  return OK;
-}
+// ResCode applyMotorReg(Motor& m, const byte reg, const unsigned long p1, const unsigned long p2) {
+//   if ((m.state.values.flags >> Motor::BitIsMoving) & 1) {
+//     return MOTOR_BUSY;
+//   }
+//   m.overrideMaxSpeed(p2);
+//   boolean ret = false;
+//   if (reg == 0xd) {
+//     ret = m.state.values.pos != Motor::POS_NULL && m.move(p1 - m.state.values.pos);
+//   } else if (reg == 0xe) {
+//     ret = m.move(p1);
+//   } else if (reg == 0xf) {
+//     ret = m.move(-p1);
+//   }
+//   if (!ret) {
+//     m.restoreMaxSpeed();
+//     return COMMAND_IGNORED;
+//   }
+//   return OK;
+// }
 
-ResCode applyOtherReg(const byte reg) {
-  if (reg == 0x0) {
-    return UNKNOWN_COMMAND;
-  } else if (reg == 0x1) {
-    // Stop all motors
-    for (auto& m : motors) {
-      m.stop();
-    }
-  } else if (reg <= 0x5) {
-    if (reg == 0x2) {
-      return UNKNOWN_COMMAND;
-    } else if (reg == 0x3) {
-      return UNKNOWN_COMMAND;
-    } else if (reg == 0x4) {
-      return UNKNOWN_COMMAND;
-    } else if (reg == 0x5) {
-      return UNKNOWN_COMMAND;
-    }
-  } else if (reg == 0x6) {
-    return UNKNOWN_COMMAND;
-  } else if (reg == 0x7) {
-    return UNKNOWN_COMMAND;
-  } else if (reg == 0x8) {
-    return UNKNOWN_COMMAND;
-  } else if (reg == 0x9) {
-    return UNKNOWN_COMMAND;
-  } else if (reg == 0xa) {
-    return UNKNOWN_COMMAND;
-  } else if (reg == 0xb) {
-    return UNKNOWN_COMMAND;
-  } else if (reg == 0xc) {
-    return UNKNOWN_COMMAND;
-  } else if (reg == 0xd) {
-    return UNKNOWN_COMMAND;
-  } else if (reg == 0xe) {
-    return UNKNOWN_COMMAND;
-  } else if (reg == 0xf) {
-    return UNKNOWN_COMMAND;
-  }
-  return OK;
-}
+// ResCode applyOtherReg(const byte reg) {
+//   if (reg == 0x1) {
+//     // Stop all motors
+//     for (auto& m : motors) {
+//       m.stop();
+//     }
+//   } else {
+//     return UNKNOWN_COMMAND;
+//   }
+//   return OK;
+//   // if (reg == 0x0) {
+//   //   return UNKNOWN_COMMAND;
+//   // } else if (reg == 0x1) {
+//   //   // Stop all motors
+//   //   for (auto& m : motors) {
+//   //     m.stop();
+//   //   }
+//   // } else if (reg <= 0x5) {
+//   //   if (reg == 0x2) {
+//   //     return UNKNOWN_COMMAND;
+//   //   } else if (reg == 0x3) {
+//   //     return UNKNOWN_COMMAND;
+//   //   } else if (reg == 0x4) {
+//   //     return UNKNOWN_COMMAND;
+//   //   } else if (reg == 0x5) {
+//   //     return UNKNOWN_COMMAND;
+//   //   }
+//   // } else if (reg == 0x6) {
+//   //   return UNKNOWN_COMMAND;
+//   // } else if (reg == 0x7) {
+//   //   return UNKNOWN_COMMAND;
+//   // } else if (reg == 0x8) {
+//   //   return UNKNOWN_COMMAND;
+//   // } else if (reg == 0x9) {
+//   //   return UNKNOWN_COMMAND;
+//   // } else if (reg == 0xa) {
+//   //   return UNKNOWN_COMMAND;
+//   // } else if (reg == 0xb) {
+//   //   return UNKNOWN_COMMAND;
+//   // } else if (reg == 0xc) {
+//   //   return UNKNOWN_COMMAND;
+//   // } else if (reg == 0xd) {
+//   //   return UNKNOWN_COMMAND;
+//   // } else if (reg == 0xe) {
+//   //   return UNKNOWN_COMMAND;
+//   // } else if (reg == 0xf) {
+//   //   return UNKNOWN_COMMAND;
+//   // }
+//   // return OK;
+// }
 
-ResCode applyOtherReg(const byte reg, const byte flag, long* values, const byte numValues) {
-  // first 4 flag bits select the motors
-  byte ids[MAX_MOTORS];
-  byte count = 0;
-  for (byte id = 1; id <= MAX_MOTORS; ++id) {
-    if (flag >> 3 + id & 1) {
-      ids[count++] = id;
-    }
-  }
-  if (count != numValues) {
-    // different number of motors selected than the number of values passed
-    return MALFORMED_COMMAND;
-  }
-  // ensure valid motor ids
-  for (byte i = 0; i < count; ++i) {
-    if (ids[i] > numMotors) {
-      return INVALID_MOTORID;
-    }
-  }
-  // ensure all motors are not busy
-  for (byte i = 0; i < count; ++i) {
-    auto& m = motors[ids[i] - 1];
-    if ((m.state.values.flags >> Motor::BitIsMoving) & 1) {
-      return MOTOR_BUSY;
-    }
-  }
-  if (reg == 0x20 || reg == 0x21) {
-    // move relative number of steps
-    // last 4 bits select direction for each motor (1 is ACW)
-    for (byte i = 0; i < count; ++i) {
-      if ((flag >> (ids[i] - 1)) & 1) {
-        values[i] *= -1;
-      }
-    }
-  } else {
-    // move to absolute position
-    for (byte i = 0; i < count; ++i) {
-      auto& m = motors[ids[i] - 1];
-      if (m.state.values.pos == Motor::POS_NULL) {
-        // not all motors have known position
-        return COMMAND_IGNORED;
-      }
-      values[i] -= m.state.values.pos;
-    }
-  }
-  if (reg == 0x21 || reg == 0x23) {
-    // calculate max time
-    float maxTime = 0;
-    for (byte i = 0; i < count; ++i) {
-      maxTime = max(maxTime, (float)abs(values[i]) / motors[ids[i] - 1].settings.values.maxSpeed);
-    }
-    // calculate max speeds
-    if (maxTime > 0) {
-      for (byte i = 0; i < count; ++i) {
-        const unsigned long maxSpeed = abs(values[i]) / maxTime;
-        if (maxSpeed > 0) {
-          motors[ids[i] - 1].overrideMaxSpeed(maxSpeed);
-        }
-      }
-    }
-  }
-  for (byte i = 0; i < count; ++i) {
-    auto& m = motors[ids[i] - 1];
-    long& howMuch = values[i];
-    if (howMuch != 0 && m.canMove(howMuch)) {
-      m.move(howMuch);
-    }
-  }
-  return OK;
-}
+// ResCode applyOtherReg(const byte reg, const byte flag, long* values, const byte numValues) {
+//   // first 4 flag bits select the motors
+//   byte ids[MAX_MOTORS];
+//   byte count = 0;
+//   for (byte id = 1; id <= MAX_MOTORS; ++id) {
+//     if (flag >> 3 + id & 1) {
+//       ids[count++] = id;
+//     }
+//   }
+//   if (count != numValues) {
+//     // different number of motors selected than the number of values passed
+//     return MALFORMED_COMMAND;
+//   }
+//   // ensure valid motor ids
+//   for (byte i = 0; i < count; ++i) {
+//     if (ids[i] > numMotors) {
+//       return INVALID_MOTORID;
+//     }
+//   }
+//   // ensure all motors are not busy
+//   for (byte i = 0; i < count; ++i) {
+//     auto& m = motors[ids[i] - 1];
+//     if ((m.state.values.flags >> Motor::BitIsMoving) & 1) {
+//       return MOTOR_BUSY;
+//     }
+//   }
+//   if (reg == 0x20 || reg == 0x21) {
+//     // move relative number of steps
+//     // last 4 bits select direction for each motor (1 is ACW)
+//     for (byte i = 0; i < count; ++i) {
+//       if ((flag >> (ids[i] - 1)) & 1) {
+//         values[i] *= -1;
+//       }
+//     }
+//   } else {
+//     // move to absolute position
+//     for (byte i = 0; i < count; ++i) {
+//       auto& m = motors[ids[i] - 1];
+//       if (m.state.values.pos == Motor::POS_NULL) {
+//         // not all motors have known position
+//         return COMMAND_IGNORED;
+//       }
+//       values[i] -= m.state.values.pos;
+//     }
+//   }
+//   if (reg == 0x21 || reg == 0x23) {
+//     // calculate max time
+//     float maxTime = 0;
+//     for (byte i = 0; i < count; ++i) {
+//       maxTime = max(maxTime, (float)abs(values[i]) / motors[ids[i] - 1].settings.values.maxSpeed);
+//     }
+//     // calculate max speeds
+//     if (maxTime > 0) {
+//       for (byte i = 0; i < count; ++i) {
+//         const unsigned long maxSpeed = abs(values[i]) / maxTime;
+//         if (maxSpeed > 0) {
+//           motors[ids[i] - 1].overrideMaxSpeed(maxSpeed);
+//         }
+//       }
+//     }
+//   }
+//   for (byte i = 0; i < count; ++i) {
+//     auto& m = motors[ids[i] - 1];
+//     long& howMuch = values[i];
+//     if (howMuch != 0 && m.canMove(howMuch)) {
+//       m.move(howMuch);
+//     }
+//   }
+//   return OK;
+// }
 
 // void packLong(const unsigned long value, byte* buf) {
 //   buf[0] = (byte)((value >> 0x18) & 0xff);

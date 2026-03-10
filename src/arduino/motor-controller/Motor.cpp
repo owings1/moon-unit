@@ -17,7 +17,8 @@
 
 uint8_t _lastid = 0;
 
-const uint16_t LIMIT_SWITCHES_MASK = (1 << Motor::BitIsLimitCw) | (1 << Motor::BitIsLimitAcw);
+const uint8_t LIMIT_SWITCHES_MASK = (1 << Motor::BitIsLimitCw) | (1 << Motor::BitIsLimitAcw);
+const uint8_t SETTINGS_FLAGS_MASK = (1 << Motor::BitLimitsEnabled);
 
 Motor::Motor(Motor::Pins pins)
   : _settings({}),
@@ -134,12 +135,16 @@ void Motor::restoreAcceleration() {
   }
 }
 
-void Motor::setLimitSwitchEnablement(const boolean value) {
-  auto& flags = _settings.values.flags;
-  if ((boolean)((flags >> BitLimitsEnabled) & 1) != value) {
-    flags = (flags & ~(1 << BitLimitsEnabled)) | (value << BitLimitsEnabled);
-  }
+void Motor::setSettingsFlags(const uint8_t value) {
+  _settings.values.flags = value & SETTINGS_FLAGS_MASK;
 }
+
+// void Motor::setLimitSwitchEnablement(const boolean value) {
+//   auto& flags = _settings.values.flags;
+//   if ((boolean)((flags >> BitLimitsEnabled) & 1) != value) {
+//     flags = (flags & ~(1 << BitLimitsEnabled)) | (value << BitLimitsEnabled);
+//   }
+// }
 
 void Motor::readLimitSwitches() {
   _state.values.flags = (
@@ -167,9 +172,10 @@ void Motor::_runActive() {
 }
 
 void Motor::_updateIdle() {
+  readLimitSwitches();
   restoreAcceleration();
   restoreMaxSpeed();
-  _state.values.flags &= ((1 << BitIsMoving) | (1 << BitIsStopping));
+  _state.values.flags &= ~((1 << BitIsMoving) | (1 << BitIsStopping));
   _state.values.targetPos = _state.values.pos;
   _checkSleep();
 }
