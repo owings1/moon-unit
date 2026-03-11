@@ -28,7 +28,7 @@ class Persister(Component):
     self.vfs = storage.getmount(self.root)
     if self.vfs.readonly and not self.readonly:
       raise Exception(f'readonly file system {root=}')
-    self.datamap: dict[tuple[int, int, int], bytearray] = OrderedDict()
+    self.datamap: dict[tuple[int, int, int], bytearray|bytes] = OrderedDict()
     self.dirty: set[tuple[int, int, int]] = set()
     self.peristables: list[Component] = []
 
@@ -93,6 +93,13 @@ class Persister(Component):
       traceback.print_exception(err)
       return False
     return True
+
+  def items(self):
+    return self.datamap.items()
+
+  def debugitems(self):
+    for k, v in self.items():
+      yield '/'.join(map(hex, k)), len(v)
 
 def mkdirp(vfs: storage.VfsFat, path: str) -> bool:
   if not path:

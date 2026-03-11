@@ -62,8 +62,8 @@ public:
     volatile uint32_t lastActionTime;
     // for temporarily overriding acceleration during stopping.
     volatile uint16_t oldAcceleration;
-    // for temporarily overriding max speed during timing.
-    volatile uint16_t oldMaxSpeed;
+    // // for temporarily overriding max speed during timing.
+    // volatile uint16_t oldMaxSpeed;
   };
 
   union StateUnion {
@@ -89,8 +89,6 @@ public:
   void setPosition(const int32_t value);
   void setMaxSpeed(const uint16_t value);
   void setAbsMaxSpeed(const uint16_t value);
-  void overrideMaxSpeed(uint16_t value);
-  void restoreMaxSpeed();
   void setAcceleration(const uint16_t value);
   void setMaxAcceleration(const uint16_t value);
   void overrideAcceleration(uint16_t value);

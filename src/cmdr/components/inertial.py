@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 import struct
 import time
 from collections import OrderedDict
@@ -89,17 +90,18 @@ class IMU9(DeviceComponent):
     ('mag', SCALE_MAG, PKR.size, PKR.add('3h')),
     ('gyro', SCALE_GYRO, PKR.size, PKR.add('3h')),
     ('euler', SCALE_EULER, PKR.size, PKR.add('3h')),
+    ('quat_euler_zyx', SCALE_EULER, PKR.size, PKR.add('3h')),
     ('quaternion', SCALE_QUAT, PKR.size, PKR.add('4h')),
     ('gravity', SCALE_GRAVITY, PKR.size, PKR.add('3h')),
     ('linearaccel', SCALE_ACCEL, PKR.size, PKR.add('3h')),
     ('offsets_accel', 1, PKR.size, PKR.add('3h')),
     ('offsets_mag', 1, PKR.size, PKR.add('3h')),
     ('offsets_gyro', 1, PKR.size, PKR.add('3h')),
+    ('mode', 1, PKR.size, PKR.add('B')),
     ('radius_accel', 1, PKR.size, PKR.add('h')),
     ('radius_mag', 1, PKR.size, PKR.add('h')),
     ('calflag', 1, PKR.size, PKR.add('B')),
     ('temperature', 1, PKR.size, PKR.add('b')),
-    ('mode', 1, PKR.size, PKR.add('B')),
   ))
   FLAGMAP = OrderedDict((x[0], x) for x in (
     ('cal_mag', 'calflag', 0x0),
@@ -112,10 +114,12 @@ class IMU9(DeviceComponent):
     ('offsets_accel', 'offsets_accelerometer', '3h'),
     ('offsets_mag', 'offsets_magnetometer', '3h'),
     ('offsets_gyro', 'offsets_gyroscope', '3h'),
+    ('mode', 'mode', 'B'),
   ))
   PERSIST_NS = 0x4939
-  PERSIST_VER = 0x01
-  PERSIST_SLC = slice(ATTRMAP['offsets_accel'][2], ATTRMAP['offsets_accel'][2] + struct.calcsize('9h'))
+  PERSIST_VER = 0x02
+  PERSIST_FMT = '9hB'
+  PERSIST_SLC = slice(ATTRMAP['offsets_accel'][2], ATTRMAP['offsets_accel'][2] + struct.calcsize(PERSIST_FMT))
 
   def __init__(
     self,
@@ -124,6 +128,7 @@ class IMU9(DeviceComponent):
     *,
     refresh_interval: int = 200,
     offsets: dict[str, tuple[int, int, int]]|None = None,
+    mode: int|None = None,
   ) -> None:
     super().__init__(i2c, address)
     from adafruit_bno055 import BNO055_I2C
@@ -133,6 +138,8 @@ class IMU9(DeviceComponent):
     if offsets:
       for name, value in offsets.items():
         self.write(f'offsets_{name}', value)
+    if mode is not None:
+      self.write('mode', mode)
 
   def __getitem__(self, name: str):
     if name in self.FLAGMAP:
@@ -154,6 +161,7 @@ class IMU9(DeviceComponent):
     sensor = self.sensor
     descale = self.descale
     cal = sensor.calibration_status
+    quat = sensor.quaternion
     struct.pack_into(
       self.PKR.fmt,
       self.packed,
@@ -162,42 +170,70 @@ class IMU9(DeviceComponent):
       *descale(self.SCALE_GYRO, *sensor.gyro),
       *descale(self.SCALE_MAG, *sensor.magnetic),
       *descale(self.SCALE_EULER, *sensor.euler),
-      *descale(self.SCALE_QUAT, *sensor.quaternion),
+      *descale(self.SCALE_EULER, *self.quat_to_euler_zyx(*quat)),
+      *descale(self.SCALE_QUAT, *quat),
       *descale(self.SCALE_GRAVITY, *sensor.gravity),
       *descale(self.SCALE_ACCEL, *sensor.linear_acceleration),
       *sensor.offsets_accelerometer,
       *sensor.offsets_magnetometer,
       *sensor.offsets_gyroscope,
+      sensor.mode,
       sensor.radius_accelerometer,
       sensor.radius_magnetometer,
       (cal[0] << 0x6) | (cal[1] << 0x4) | (cal[2] << 0x2) | (cal[3] << 0x0),
-      sensor.temperature,
-      sensor.mode,)
+      sensor.temperature)
     return self.packed != a
 
   def write(self, name: str, value) -> None:
     actdef = self.ACTMAP[name]
-    values = value if isinstance(value, tuple) else (value,)
-    struct.pack(actdef[2], *values)
+    if isinstance(value, tuple):
+      struct.pack(actdef[2], *value)
+    else:
+      struct.pack(actdef[2], value)
     setattr(self.sensor, actdef[1], value)
 
   def dump_persistent(self):
-    if (self['calflag'] & 0x3f) == 0x3f:
-      return self.packed[self.PERSIST_SLC]
+    return self.packed[self.PERSIST_SLC]
 
   def load_persistent(self, buf: bytes) -> None:
     sensor = self.sensor
-    values = struct.unpack('9h', buf)
+    values = struct.unpack(self.PERSIST_FMT, buf)
     sensor.offsets_accelerometer = values[:3]
     sensor.offsets_gyroscope = values[3:6]
-    sensor.offsets_magnetometer = values[6:]
+    sensor.offsets_magnetometer = values[6:9]
+    sensor.mode = values[9]
+
+  @staticmethod
+  def quat_to_euler_zyx(w: float, x: float, y: float, z: float) -> tuple[float, float, float]:
+    """
+    Source: https://automaticaddison.com/how-to-convert-a-quaternion-into-euler-angles-in-python/
+    Addison L. Sears-Collins
+    """
+    # Roll (x-axis rotation)
+    t0 = +2.0 * (w * x + y * z)
+    t1 = +1.0 - 2.0 * (x * x + y * y)
+    roll = math.atan2(t0, t1)
+
+    # Pitch (y-axis rotation)
+    t2 = +2.0 * (w * y - z * x)
+    t2 = +1.0 if t2 > +1.0 else t2
+    t2 = -1.0 if t2 < -1.0 else t2
+    pitch = math.asin(t2)
+
+    # Yaw (z-axis rotation)
+    t3 = +2.0 * (w * z + x * y)
+    t4 = +1.0 - 2.0 * (y * y + z * z)
+    yaw = math.atan2(t3, t4)
+
+    return tuple(abs(math.degrees(x)) for x in (yaw, pitch, roll))
 
   @staticmethod
   def descale(scale: int|float, *values: int|float|None):
     for value in values:
       if value is None:
         value = 0
-      value *= scale
-      if isinstance(value, float):
-        value = round(value)
+      if scale != 1:
+        value /= scale
+        if isinstance(value, float):
+          value = round(value)
       yield value

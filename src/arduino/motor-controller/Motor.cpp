@@ -98,23 +98,6 @@ void Motor::setAbsMaxSpeed(const uint16_t value) {
   }
 }
 
-void Motor::overrideMaxSpeed(uint16_t value) {
-  value = value > settings.values.absMaxSpeed ? settings.values.absMaxSpeed : value;
-  if (settings.values.maxSpeed != value) {
-    if (!state.values.oldMaxSpeed) {
-      _state.values.oldMaxSpeed = settings.values.maxSpeed;
-    }
-    setMaxSpeed(value);
-  }
-}
-
-void Motor::restoreMaxSpeed() {
-  if (state.values.oldMaxSpeed) {
-    setMaxSpeed(state.values.oldMaxSpeed);
-    _state.values.oldMaxSpeed = 0;
-  }
-}
-
 void Motor::setAcceleration(const uint16_t value) {
   _settings.values.acceleration = value > settings.values.maxAcceleration ? settings.values.maxAcceleration : value;
   _stepper.setAcceleration(settings.values.acceleration);
@@ -176,7 +159,6 @@ void Motor::_runActive() {
 void Motor::_updateIdle() {
   readLimitSwitches();
   restoreAcceleration();
-  restoreMaxSpeed();
   _state.values.flags &= ~((1 << BitIsMoving) | (1 << BitIsStopping));
   _state.values.targetPos = _state.values.pos;
   _checkSleep();

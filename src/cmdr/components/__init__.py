@@ -64,16 +64,16 @@ class Component:
   def refresh(self) -> bool:
     return False
 
-  def subcomponents(self) -> Iterable[Component]:
-    return ()
-
   def debug_lines(self) -> Iterable[str]:
     yield f'#######################################'
     for k, v in self.metaitems():
       yield f'# @{k} {v}'
     yield f'#######################################'
-    for k, v in self.items():
+    for k, v in self.debugitems():
       yield f'{k}={v}'
+
+  def debugitems(self) -> Iterable[tuple[str, Any]]:
+    yield from self.items()
 
   def deinit(self) -> None:
     pass
@@ -82,6 +82,9 @@ class Component:
     pass
 
   def dump_persistent(self) -> bytes|bytearray|None:
+    pass
+
+  def app_init(self, app: App) -> None:
     pass
 
   def app_ready(self, app: App) -> None:

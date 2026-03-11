@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 import time
-from collections import OrderedDict, deque
+from collections import OrderedDict, deque, namedtuple
 
 import board
 import busio
-from utils import millis
+import struct
+from utils import millis, debug, Pkr
 
 from . import DeviceComponent
 
@@ -34,17 +35,51 @@ INIT_CMDS = (
   PMTK_SET_NMEA_UPDATE_1HZ,
   PMTK_API_SET_FIX_CTL_1HZ)
 
+class GpsAttr(namedtuple('GpsAttr', ('name', 'baseobj', 'objattr', 'start', 'end', 'fmt', 'scale'))):
+  name: str
+  baseobj: str
+  objattr: str
+  start: int
+  end: int
+  fmt: str
+  scale: int|float
+
+def gattr(pkr: Pkr, name: str, baseobj: str, objattr: str, fmt: str, scale: int|float = 1):
+  start = pkr.size
+  pkr.add(fmt)
+  end = pkr.size
+  return GpsAttr(
+    name=name,
+    baseobj=baseobj,
+    objattr=objattr,
+    start=start,
+    end=end,
+    fmt=fmt,
+    scale=scale)
+
 class GPS(DeviceComponent):
+  PKR = Pkr('<')
+  SCALE_LAT = 1 / (2_147_483_000 / 90)
+  SCALE_LON = 1 / (2_147_483_000 / 180)
+  SCALE_DEG = 1 / (4_294_966_000 / 360)
+  SCALE_ALT = 1 / 10
+  ATTRMAP: dict[str, GpsAttr] = OrderedDict(
+    fix_quality=gattr(PKR, 'fix_quality', 'gtop', 'fix_quality', 'B'),
+    latitude=gattr(PKR, 'latitude', 'gtop', 'latitude', 'l', scale=SCALE_LAT),
+    longitude=gattr(PKR, 'longitude', 'gtop', 'longitude', 'l', scale=SCALE_LON),
+    track_angle=gattr(PKR, 'track_angle', 'gtop', 'track_angle_deg', 'L', scale=SCALE_DEG), # RMC
+    altitude=gattr(PKR, 'altitude', 'gtop', 'altitude_m', 'l', scale=SCALE_ALT),            # GGA
+    timestamp=gattr(PKR, 'timestamp', 'gtop', 'timestamp_utc', 'Q'),                        # RMC
+    wmm_declination=gattr(PKR, 'wmm_declination', 'wmmcalc', 'declination', 'l', scale=SCALE_DEG),
+    wmm_dip_angle=gattr(PKR, 'wmm_dip_angle', 'wmmcalc', 'dip_angle', 'l', scale=SCALE_DEG),
+    # wmm_intensity=gattr(PKR, 'wmm_intensity', 'wmmcalc', 'intensity', 'f'),
+    # wmm_horizontal_intensity=gattr(PKR, 'wmm_horizontal_intensity', 'wmmcalc', 'horizontal_intensity', 'f'),
+    # wmm_north_intensity=gattr(PKR, 'wmm_north_intensity', 'wmmcalc', 'north_intensity', 'f'),
+    # wmm_east_intensity=gattr(PKR, 'wmm_east_intensity', 'wmmcalc', 'east_intensity', 'f'),
+    # wmm_vertical_intensity=gattr(PKR, 'wmm_vertical_intensity', 'wmmcalc', 'vertical_intensity', 'f'),
+  )
+  CHANGED_SLC = slice(None, ATTRMAP['timestamp'].end)
   cmdwait = 1000
-  PACKSIZE = 25
-  ATTRMAP = OrderedDict((x[0], x) for x in (
-    ('fix_quality', 'fix_quality', 0, 1, 'b'),
-    ('latitude', 'latitude', 1, 5, 'd'),
-    ('longitude', 'longitude', 5, 9, 'd'),
-    ('track_angle', 'track_angle_deg', 9, 13, 'D'), # RMC
-    ('altitude', 'altitude_m', 13, 17, 'a'),        # GGA
-    ('timestamp', 'timestamp_utc', 17, 25, 't'),    # RMC
-  ))
 
   def __init__(
     self,
@@ -58,57 +93,50 @@ class GPS(DeviceComponent):
     self.device = self.gtop._i2c
     self.device_address = address
     self.refresh_interval = refresh_interval
-    self.packed = bytearray(self.PACKSIZE)
+    self.packed = bytearray(self.PKR.size)
     self.cmdtodo = deque(INIT_CMDS, len(INIT_CMDS))
+    from contrib.wmm import WMMv2
+    from contrib.wmmcof import wmm_cof
+    self.wmm = WMMv2(*wmm_cof())
+
+  @property
+  def wmmcalc(self):
+    return self.wmm.calculation
 
   def __getitem__(self, name: str) -> int|float|None:
     attrdef = self.ATTRMAP[name]
-    buf = self.packed[attrdef[2]:attrdef[3]]
-    value = unpack(attrdef[4], buf)
-    if not (value or name == 'fix_quality' or self.packed[0]):
-      return None
-    return value
+    raw = struct.unpack_from(self.PKR.bom+attrdef.fmt, self.packed, attrdef.start)
+    it = (x * attrdef.scale for x in raw)
+    if len(raw) == 1:
+      value = next(it)
+      if not (value or name == 'fix_quality' or self.packed[0]):
+        return None
+      return value
+    return tuple(it)
 
   def refresh_if_needed(self) -> int:
     return super().refresh_if_needed() or self.gtop.update() and 0
 
   def refresh(self) -> bool:
-    gtop = self.gtop
-    gtop.update()
+    self.gtop.update()
     if self.cmdtodo and self.refreshed_at < millis() - self.cmdwait:
-      gtop.send_command(self.cmdtodo.popleft())
+      self.gtop.send_command(self.cmdtodo.popleft())
       return False
-    a = bytes(self.packed[:17])
+    a = bytes(self.packed[self.CHANGED_SLC])
     for attrdef in self.ATTRMAP.values():
-      value = getattr(gtop, attrdef[1])
-      self.packed[attrdef[2]:attrdef[3]] = pack(attrdef[4], value)
-    return self.packed[:17] != a
-
-def pack(type: str, value: int|float|time.struct_time) -> bytes:
-  if type == 'd':
-    # decimal degrees -180 to 180
-    return round(((value or 0) + 180) * 10_000_000).to_bytes(4)
-  if type == 'D':
-    # decimal degrees 0 to 360
-    return round((value or 0) * 10_000_000).to_bytes(4)
-  if type == 'a':
-    # altitude meters +/-
-    return (round((value or 0) * 10) + 10_000_000).to_bytes(4)
-  if type == 'b':
-    return int(value or 0).to_bytes(1)
-  if type == 't':
-    return int(value and value.tm_year and time.mktime(value) or 0).to_bytes(8)
-  raise ValueError(f'{type=}')
-
-def unpack(type: str, buf: bytes) -> int|float:
-  if type == 'd':
-    return int.from_bytes(buf) / 10_000_000.0 - 180
-  if type == 'D':
-    return int.from_bytes(buf) / 10_000_000.0
-  if type == 'a':
-    return (int.from_bytes(buf) - 10_000_000) / 10.0
-  if type == 'b':
-    return int.from_bytes(buf)
-  if type == 't':
-    return int.from_bytes(buf)
-  raise ValueError(f'{type=}')
+      value = getattr(getattr(self, attrdef.baseobj), attrdef.objattr, 0) or 0
+      if attrdef.name == 'timestamp':
+        # This indicates we are done reading gtop attributes, and will
+        # proceed with wmm attributes, so now is an efficient time to
+        # refresh the wmm calculation without double-reading gtop values
+        # or delaying to the next refresh when values may be stale.
+        if isinstance(value, time.struct_time):
+          if self['fix_quality'] & 1 and value.tm_year:
+            year = float(f'{value.tm_year}.{value.tm_mon}')
+            altkm = self['altitude'] / 1000
+            self.wmm.observe(self['latitude'], self['longitude'], year, altkm)
+          value = value.tm_year and time.mktime(value)
+      if attrdef.scale != 1:
+        value = round(value / attrdef.scale)
+      struct.pack_into(self.PKR.bom+attrdef.fmt, self.packed, attrdef.start, value)
+    return  self.packed[self.CHANGED_SLC] != a

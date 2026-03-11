@@ -68,9 +68,10 @@ class App:
       storage.mount(storage.VfsFat(self.sdcard), settings.sd_mountpath)
       self.buses.append(spi)
     self.components = OrderedDict()
-    for name, defn in settings.components.items():
+    for defn in settings.components:
       if defn.get('disabled') or not defn.get('enabled', True):
         continue
+      name = defn['name']
       debug(f'Init component {name=}')
       module = component_categories[defn['category']]
       cls: type[Component] = getattr(module, defn['classname'])
@@ -79,10 +80,10 @@ class App:
       if component.bus and component.bus not in self.buses:
         self.buses.append(component.bus)
       component.debug = defn.get('debug')
-      # if component.debug is None:
-      #   component.debug = settings.debug
       component.persist_id = defn.get('persist_id')
       self.add_component(component)
+    for component in self.components.values(): 
+      component.app_init(self)
     for component in self.components.values(): 
       component.app_ready(self)
 
@@ -90,8 +91,6 @@ class App:
     if component.debug is None:
       component.debug = settings.debug
     self.components[component.component_address] = component
-    for subcomponent in component.subcomponents():
-      self.add_component(subcomponent)
 
   def deinit(self) -> None:
     if self.components:
