@@ -6,7 +6,7 @@ if [[ "$#" -ne 1 ]]; then
 fi
 dest="$(realpath "$1")"
 cd "$(dirname "$0")/../src/cmdr"
-mkdir -pv "$dest/components" "$dest/contrib"
+mkdir -pv "$dest/components" "$dest/contrib" "$dest/sensors"
 files=(
   app.py
   code.py
@@ -14,6 +14,7 @@ files=(
   utils.py
   components/*
   contrib/*
+  sensors/*
 )
 for file in "${files[@]}"; do
   if [[ -e "$dest/$file" ]] && [[ "$(md5sum "$file" | awk '{print $1}')" == "$(md5sum "$dest/$file" | awk '{print $1}')" ]] ; then
