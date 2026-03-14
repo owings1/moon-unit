@@ -112,8 +112,7 @@ enum MReg : uint8_t {
   MREG_ACCELERATION = 0x4,
   MREG_MOVE_CW = 0x5,
   MREG_MOVE_ACW = 0x6,
-  MREG_ABS_MAX_SPEED = 0x9,
-  MREG_MAX_ACCELERATION = 0xa,
+  MREG_SPEED = 0x7,
   MREG_TARGET_POSITION = 0xc,
   MREG_STOP = 0xf
 };
@@ -182,9 +181,7 @@ void receiveEvent(int howMany) {
       boolean isByteParamReg = motorReg == MREG_SETTINGS_FLAGS;
       boolean isShortParamReg = (
         motorReg == MREG_MAX_SPEED ||
-        motorReg == MREG_ABS_MAX_SPEED ||
-        motorReg == MREG_ACCELERATION ||
-        motorReg == MREG_MAX_ACCELERATION
+        motorReg == MREG_ACCELERATION
       );
       boolean isLongParamReg = (
         motorReg == MREG_POSITION ||
@@ -245,23 +242,46 @@ void receiveEvent(int howMany) {
 }
 
 void sendMotorAttr(Stream& output, const Motor& m, const uint8_t reg) {
-  if (reg == MREG_STATE_FLAGS) {
-    output.write((uint8_t*) &m.state.values.flags, 1);
-  } else if (reg == MREG_SETTINGS_FLAGS) {
-    output.write((uint8_t*) &m.settings.values.flags, 1);
-  } else if (reg == MREG_POSITION) {
-    output.write((uint8_t*) &m.state.values.pos, 4);
-  } else if (reg == MREG_MAX_SPEED) {
-    output.write((uint8_t*) &m.settings.values.maxSpeed, 2);
-  } else if (reg == MREG_ACCELERATION) {
-    output.write((uint8_t*) &m.settings.values.acceleration, 2);
-  } else if (reg == MREG_ABS_MAX_SPEED) {
-    output.write((uint8_t*) &m.settings.values.absMaxSpeed, 2);
-  } else if (reg == MREG_MAX_ACCELERATION) {
-    output.write((uint8_t*) &m.settings.values.maxAcceleration, 2);
-  } else if (reg == MREG_TARGET_POSITION) {
-    output.write((uint8_t*) &m.state.values.targetPos, 4);
+  switch (reg) {
+    case MREG_STATE_FLAGS:
+      output.write((uint8_t*) &m.state.values.flags, 1);
+      break;
+    case MREG_POSITION:
+      output.write((uint8_t*) &m.state.values.pos, 4);
+      break;
+    case MREG_TARGET_POSITION:
+      output.write((uint8_t*) &m.state.values.targetPos, 4);
+      break;
+    case MREG_SPEED:
+      output.write((uint8_t*) &m.state.values.speed, 2);
+      break;
+    case MREG_SETTINGS_FLAGS:
+      output.write((uint8_t*) &m.settings.values.flags, 1);
+      break;
+    case MREG_MAX_SPEED:
+      output.write((uint8_t*) &m.settings.values.maxSpeed, 2);
+      break;
+    case MREG_ACCELERATION:
+      output.write((uint8_t*) &m.settings.values.acceleration, 2);
+      break;
   }
+  // if (reg == MREG_STATE_FLAGS) {
+  //   output.write((uint8_t*) &m.state.values.flags, 1);
+  // } else if (reg == MREG_SETTINGS_FLAGS) {
+  //   output.write((uint8_t*) &m.settings.values.flags, 1);
+  // } else if (reg == MREG_POSITION) {
+  //   output.write((uint8_t*) &m.state.values.pos, 4);
+  // } else if (reg == MREG_MAX_SPEED) {
+  //   output.write((uint8_t*) &m.settings.values.maxSpeed, 2);
+  // } else if (reg == MREG_ACCELERATION) {
+  //   output.write((uint8_t*) &m.settings.values.acceleration, 2);
+  // } else if (reg == MREG_ABS_MAX_SPEED) {
+  //   output.write((uint8_t*) &m.settings.values.absMaxSpeed, 2);
+  // } else if (reg == MREG_MAX_ACCELERATION) {
+  //   output.write((uint8_t*) &m.settings.values.maxAcceleration, 2);
+  // } else if (reg == MREG_TARGET_POSITION) {
+  //   output.write((uint8_t*) &m.state.values.targetPos, 4);
+  // }
 }
 
 ResCode setMotorAttr(Motor& m, const uint8_t reg, const uint8_t value) {
@@ -278,10 +298,6 @@ ResCode setMotorAttr(Motor& m, const uint8_t reg, const uint16_t value) {
     m.setMaxSpeed(value);
   } else if (reg == MREG_ACCELERATION) {
     m.setAcceleration(value);
-  } else if (reg == MREG_ABS_MAX_SPEED) {
-    m.setAbsMaxSpeed(value);
-  } else if (reg == MREG_MAX_ACCELERATION) {
-    m.setMaxAcceleration(value);
   } else {
     return UNKNOWN_COMMAND;
   }

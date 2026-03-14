@@ -76,55 +76,39 @@ boolean Motor::move(const int32_t howMuch) {
 }
 
 boolean Motor::stop() {
-  return _stop();
+  if (checkbit(state.values.flags, BitIsStopping) || !checkbit(state.values.flags, BitIsMoving)) {
+    // skip duplicate or unnecessary action
+    // D_println("ignoring stop");
+    return false;
+  }
+  _state.values.flags |= 1 << BitIsStopping;
+  _stepper.setAcceleration(STOP_DECELERATION);
+  _stepper.stop();
+  return true;
 }
 
 void Motor::setPosition(const int32_t value) {
   _stepper.setCurrentPosition(value);
   _state.values.pos = _stepper.currentPosition();
   _state.values.targetPos = _stepper.targetPosition();
+  _state.values.speed = fabs(_stepper.speed());
   _state.values.flags |= 1 << BitIsManualPos;
 }
 
 void Motor::setMaxSpeed(const uint16_t value) {
-  _settings.values.maxSpeed = value > settings.values.absMaxSpeed ? settings.values.absMaxSpeed : value;
+  if (_settings.values.maxSpeed == value) {
+    return;
+  }
+  _settings.values.maxSpeed = value;
   _stepper.setMaxSpeed(settings.values.maxSpeed);
 }
 
-void Motor::setAbsMaxSpeed(const uint16_t value) {
-  _settings.values.absMaxSpeed = value > SYS_MAX_SPEED ? SYS_MAX_SPEED : value;
-  if (settings.values.maxSpeed > settings.values.absMaxSpeed) {
-    setMaxSpeed(settings.values.absMaxSpeed);
-  }
-}
-
 void Motor::setAcceleration(const uint16_t value) {
-  _settings.values.acceleration = value > settings.values.maxAcceleration ? settings.values.maxAcceleration : value;
+  if (_settings.values.acceleration == value) {
+    return;
+  }
+  _settings.values.acceleration = value;
   _stepper.setAcceleration(settings.values.acceleration);
-}
-
-void Motor::setMaxAcceleration(const uint16_t value) {
-  _settings.values.maxAcceleration = value > SYS_MAX_ACCELERATION ? SYS_MAX_ACCELERATION : value;
-  if (settings.values.acceleration > settings.values.maxAcceleration) {
-    setAcceleration(settings.values.maxAcceleration);
-  }
-}
-
-void Motor::overrideAcceleration(uint16_t value) {
-  value = value > settings.values.maxAcceleration ? settings.values.maxAcceleration : value;
-  if (settings.values.acceleration != value) {
-    if (!state.values.oldAcceleration) {
-      _state.values.oldAcceleration = settings.values.acceleration;
-    }
-    setAcceleration(value);
-  }
-}
-
-void Motor::restoreAcceleration() {
-  if (state.values.oldAcceleration) {
-    setAcceleration(state.values.oldAcceleration);
-    _state.values.oldAcceleration = 0;
-  }
 }
 
 void Motor::setSettingsFlags(const uint8_t value) {
@@ -145,35 +129,24 @@ void Motor::_runActive() {
     // this will move at most one step
     _stepper.run();
     if (!canMove(_stepper.distanceToGo())) {
-      _stop();
+      stop();
     }
   }
   _state.values.lastActionTime = millis();
   _state.values.flags |= 1 << BitIsMoving;
-  if (checkbit(state.values.flags, BitIsManualPos)) {
-    _state.values.pos = _stepper.currentPosition();
-    _state.values.targetPos = _stepper.targetPosition();
-  }
+  _state.values.pos = _stepper.currentPosition();
+  _state.values.targetPos = _stepper.targetPosition();
+  _state.values.speed = fabs(_stepper.speed());
 }
 
 void Motor::_updateIdle() {
   readLimitSwitches();
-  restoreAcceleration();
+  _stepper.setAcceleration(settings.values.acceleration);
   _state.values.flags &= ~((1 << BitIsMoving) | (1 << BitIsStopping));
-  _state.values.targetPos = _state.values.pos;
+  _state.values.pos = _stepper.currentPosition();
+  _state.values.targetPos = _stepper.targetPosition();
+  _state.values.speed = fabs(_stepper.speed());
   _checkSleep();
-}
-
-boolean Motor::_stop() {
-  if (checkbit(state.values.flags, BitIsStopping) || !checkbit(state.values.flags, BitIsMoving)) {
-    // skip duplicate or unnecessary action
-    // D_println("ignoring stop");
-    return false;
-  }
-  _state.values.flags |= 1 << BitIsStopping;
-  overrideAcceleration(settings.values.maxAcceleration);
-  _stepper.stop();
-  return true;
 }
 
 void Motor::_enable() {

@@ -9,9 +9,7 @@
 class Motor {
 
 public:
-  static const uint32_t POS_NULL = 10000000UL;
-  static const uint16_t SYS_MAX_SPEED = 0xffff;
-  static const uint16_t SYS_MAX_ACCELERATION = 0xffff;
+  static const uint16_t STOP_DECELERATION = 0xffff;
   typedef enum {
     // limit switch states
     BitIsLimitCw = 0,
@@ -42,9 +40,7 @@ public:
   struct __attribute__((packed)) Settings {
     volatile uint8_t flags = 0x0 | (1 << BitLimitsEnabled);
     volatile uint16_t maxSpeed = 2000;
-    volatile uint16_t absMaxSpeed = 5000;
     volatile uint16_t acceleration = 50000;
-    volatile uint16_t maxAcceleration = 50000;
   };
 
   union SettingsUnion {
@@ -54,16 +50,13 @@ public:
 
   struct __attribute__((packed)) State {
     volatile uint8_t flags;
-    int32_t pos = POS_NULL;
-    int32_t targetPos = POS_NULL;
+    int32_t pos;
+    int32_t targetPos;
+    uint16_t speed;
     // for delaying after enabling motor
     volatile uint32_t enabledAt;
     // for checking motor sleep
     volatile uint32_t lastActionTime;
-    // for temporarily overriding acceleration during stopping.
-    volatile uint16_t oldAcceleration;
-    // // for temporarily overriding max speed during timing.
-    // volatile uint16_t oldMaxSpeed;
   };
 
   union StateUnion {
@@ -88,11 +81,7 @@ public:
 
   void setPosition(const int32_t value);
   void setMaxSpeed(const uint16_t value);
-  void setAbsMaxSpeed(const uint16_t value);
   void setAcceleration(const uint16_t value);
-  void setMaxAcceleration(const uint16_t value);
-  void overrideAcceleration(uint16_t value);
-  void restoreAcceleration();
   void setSettingsFlags(const uint8_t value);
   void readLimitSwitches();
 
@@ -102,7 +91,6 @@ private:
   AccelStepper _stepper;
   void _runActive();
   void _updateIdle();
-  boolean _stop();
   void _enable();
   void _disable();
   void _checkSleep();
