@@ -8,10 +8,14 @@ from collections import OrderedDict
 import board
 import busio
 from digitalio import DigitalInOut, Direction
-from utils import Pkr, debug
+from utils import Pkr, ysleep
 
-from . import DeviceComponent
+from . import CompAttr, DeviceComponent
 
+try:
+  from typing import Generator
+except ImportError:
+  pass
 
 class IMU6(DeviceComponent):
   PKR = Pkr()
@@ -26,7 +30,13 @@ class IMU6(DeviceComponent):
   _obpwr: DigitalInOut|None = None
   _obbus: busio.I2C|None = None
 
-  def __init__(self, i2c: busio.I2C|None = None, address: int = 0x6a, *, onboard_i2c: bool = False, refresh_interval: int = 200) -> None:
+  def __init__(
+    self,
+    i2c: busio.I2C|None = None,
+    address: int = 0x6a,
+    onboard_i2c: bool = False,
+    refresh_interval: int = 200
+  ) -> None:
     if onboard_i2c and i2c is None:
       # From:
       # https://learn.adafruit.com/adafruit-lsm6ds3tr-c-6-dof-accel-gyro-imu/python-circuitpython
@@ -79,161 +89,280 @@ class IMU6(DeviceComponent):
       self._obpwr.value = False
       self._obpwr.deinit()
 
+class Imu9Attr(CompAttr):
+  src: str
+
 class IMU9(DeviceComponent):
-  PKR = Pkr()
+  PKR = Pkr('<')
   SCALE_ACCEL = SCALE_GRAVITY = 1 / 100
   SCALE_GYRO = 0.001090830782496456
   SCALE_MAG = SCALE_EULER = 1 / 16
   SCALE_QUAT = 1 / (1 << 14)
-  ATTRMAP = OrderedDict((x[0], x) for x in (
-    ('accel', SCALE_ACCEL, PKR.size, PKR.add('3h')),
-    ('mag', SCALE_MAG, PKR.size, PKR.add('3h')),
-    ('gyro', SCALE_GYRO, PKR.size, PKR.add('3h')),
-    ('euler', SCALE_EULER, PKR.size, PKR.add('3h')),
-    ('quat_euler_zyx', SCALE_EULER, PKR.size, PKR.add('3h')),
-    ('quaternion', SCALE_QUAT, PKR.size, PKR.add('4h')),
-    ('gravity', SCALE_GRAVITY, PKR.size, PKR.add('3h')),
-    ('linearaccel', SCALE_ACCEL, PKR.size, PKR.add('3h')),
-    ('offsets_accel', 1, PKR.size, PKR.add('3h')),
-    ('offsets_mag', 1, PKR.size, PKR.add('3h')),
-    ('offsets_gyro', 1, PKR.size, PKR.add('3h')),
-    ('mode', 1, PKR.size, PKR.add('B')),
-    ('radius_accel', 1, PKR.size, PKR.add('h')),
-    ('radius_mag', 1, PKR.size, PKR.add('h')),
-    ('calflag', 1, PKR.size, PKR.add('B')),
-    ('temperature', 1, PKR.size, PKR.add('b')),
+  ATTRMAP: dict[str, CompAttr] = CompAttr.makeattrs(PKR, OrderedDict(
+    calflag=dict(fmt='B'),
+    accel=dict(src='acceleration', fmt='3h', scale=SCALE_ACCEL),
+    mag=dict(src='magnetic', fmt='3h', scale=SCALE_MAG),
+    gyro=dict(fmt='3h', scale=SCALE_GYRO),
+    euler=dict(fmt='3h', scale=SCALE_EULER),
+    quaternion_euler_zyx=dict(fmt='3h', scale=SCALE_EULER),
+    quaternion=dict(fmt='4h', scale=SCALE_QUAT),
+    gravity=dict(fmt='3h', scale=SCALE_GRAVITY),
+    linearaccel=dict(src='linear_acceleration', fmt='3h', scale=SCALE_ACCEL),
+    temperature=dict(fmt='b'),
+    mode=dict(fmt='B', writeable=True),
+    # ---- these require switch to config mode with delay
+    offsets_accel=dict(src='offsets_accelerometer', fmt='3h', writeable=True),
+    offsets_mag=dict(src='offsets_magnetometer', fmt='3h', writeable=True),
+    offsets_gyro=dict(src='offsets_gyroscope', fmt='3h', writeable=True),
+    radius_accel=dict(src='radius_accelerometer', fmt='h'),
+    radius_mag=dict(src='radius_magnetometer', fmt='h'),
   ))
   FLAGMAP = OrderedDict((x[0], x) for x in (
-    ('cal_mag', 'calflag', 0x0),
-    ('cal_accel', 'calflag', 0x2),
-    ('cal_gyro', 'calflag', 0x4),
-    ('cal_sys', 'calflag', 0x6),
-    ('calibrated', 'calflag', 0x0),
+    ('cal_mag', 'calflag', 0x0, 0x3),
+    ('cal_accel', 'calflag', 0x2, 0x3),
+    ('cal_gyro', 'calflag', 0x4, 0x3),
+    ('cal_sys', 'calflag', 0x6, 0x3),
   ))
-  ACTMAP = OrderedDict((x[0], x) for x in (
-    ('offsets_accel', 'offsets_accelerometer', '3h'),
-    ('offsets_mag', 'offsets_magnetometer', '3h'),
-    ('offsets_gyro', 'offsets_gyroscope', '3h'),
-    ('mode', 'mode', 'B'),
-  ))
+  SLCINFO_DATA = CompAttr.sliceinfo(ATTRMAP, 0, -5)
+  SLCINFO_CONFIG = CompAttr.sliceinfo(ATTRMAP, -5, None)
+  SLCINFO_PERSIST = CompAttr.sliceinfo(ATTRMAP, -6, -2)
   PERSIST_NS = 0x4939
-  PERSIST_VER = 0x02
-  PERSIST_FMT = '9hB'
-  PERSIST_SLC = slice(ATTRMAP['offsets_accel'][2], ATTRMAP['offsets_accel'][2] + struct.calcsize(PERSIST_FMT))
+  PERSIST_VER = 0x03
+  MIN_REFRESH_INTERVAL = 90
+
+  @property
+  def refresh_interval(self) -> int:
+    return max(self.MIN_REFRESH_INTERVAL, self._refresh_interval)
+
+  @refresh_interval.setter
+  def refresh_interval(self, value: int) -> None:
+    self._refresh_interval = value
+
+  class RefreshState:
+    next_stage = 1
+    mode_restore = None
+    it = None
+    new_config = None
+    is_init = False
+
+    def ready(self):
+      if self.waiting():
+        try:
+          next(self.it)
+        except StopIteration:
+          return True
+      return False
+
+    def waiting(self):
+      return bool(self.next_stage and self.it)
 
   def __init__(
     self,
     i2c: busio.I2C|None = None,
     address: int = 0x29,
-    *,
     refresh_interval: int = 200,
-    offsets: dict[str, tuple[int, int, int]]|None = None,
-    mode: int|None = None,
+    **config,
   ) -> None:
     super().__init__(i2c, address)
-    from adafruit_bno055 import BNO055_I2C
-    self.sensor = BNO055_I2C(self.bus, address)
+    self.sensor = self.SensorCls(self.bus, address, defer_init=True)
     self.refresh_interval = refresh_interval
     self.packed = bytearray(self.PKR.size)
-    if offsets:
-      for name, value in offsets.items():
-        self.write(f'offsets_{name}', value)
-    if mode is not None:
-      self.write('mode', mode)
+    self.refresh_state = self.RefreshState()
+    self.refresh_state.it = self.sensor.yinit(**config)
 
   def __getitem__(self, name: str):
     if name in self.FLAGMAP:
       flagdef = self.FLAGMAP[name]
-      value = self[flagdef[1]] >> flagdef[2]
-      if name == 'calibrated':
-        return value == 0xff
-      else:
-        return value & 0x3
-    attrdef = self.ATTRMAP[name]
-    raw = struct.unpack_from(attrdef[3], self.packed, attrdef[2])
-    it = (x * attrdef[1] for x in raw)
-    if len(raw) == 1:
-      return next(it)
-    return tuple(it)
+      return (self[flagdef[1]] >> flagdef[2]) & flagdef[3]
+    return self.ATTRMAP[name].unpack_from(self.packed)
 
+  def refresh_if_needed(self) -> int:
+    if self.refresh_state.waiting():
+      if self.refresh_state.ready():
+        self.refresh_next_tick = True
+      else:
+        return 0
+    return super().refresh_if_needed()
+  
   def refresh(self) -> bool:
-    a = bytes(self.packed)
-    sensor = self.sensor
-    descale = self.descale
-    cal = sensor.calibration_status
-    quat = sensor.quaternion
-    struct.pack_into(
-      self.PKR.fmt,
-      self.packed,
-      0,
-      *descale(self.SCALE_ACCEL, *sensor.acceleration),
-      *descale(self.SCALE_GYRO, *sensor.gyro),
-      *descale(self.SCALE_MAG, *sensor.magnetic),
-      *descale(self.SCALE_EULER, *sensor.euler),
-      *descale(self.SCALE_EULER, *self.quat_to_euler_zyx(*quat)),
-      *descale(self.SCALE_QUAT, *quat),
-      *descale(self.SCALE_GRAVITY, *sensor.gravity),
-      *descale(self.SCALE_ACCEL, *sensor.linear_acceleration),
-      *sensor.offsets_accelerometer,
-      *sensor.offsets_magnetometer,
-      *sensor.offsets_gyroscope,
-      sensor.mode,
-      sensor.radius_accelerometer,
-      sensor.radius_magnetometer,
-      (cal[0] << 0x6) | (cal[1] << 0x4) | (cal[2] << 0x2) | (cal[3] << 0x0),
-      sensor.temperature)
-    return self.packed != a
+    state = self.refresh_state
+    if state.waiting() and not state.ready():
+      return False
+    stage = state.next_stage
+
+    if stage == 3:
+      is_first_data = not state.is_init
+      state.next_stage = 1
+      if state.new_config:
+        state.it = self.sensor.yconfig(**state.new_config)
+        state.new_config = None
+        # trigger first yield
+        state.ready()
+      else:
+        state.it = None
+        state.is_init = True
+      return is_first_data
+
+    if stage == 1:
+      slcinfo = self.SLCINFO_DATA
+      state.mode_restore = self.sensor.mode
+      next_mode = self.sensor.CONFIG_MODE
+    elif stage == 2:
+      slcinfo = self.SLCINFO_CONFIG
+      next_mode = state.mode_restore
+      state.mode_restore = None
+
+    a = self.packed[slcinfo.slc]
+    for attr in slcinfo.attrs:
+      value = getattr(self.sensor, attr.src or attr.name)
+      attr.pack_into(self.packed, value)
+
+    state.it = self.sensor.yset_mode(next_mode)
+    state.next_stage = stage + 1
+    # trigger first yield
+    state.ready()
+    return state.is_init and self.packed[slcinfo.slc] != a
 
   def write(self, name: str, value) -> None:
-    actdef = self.ACTMAP[name]
+    attrdef = self.ATTRMAP[name]
+    if not attrdef.writeable:
+      raise ValueError(f'{name} is readonly')
     if isinstance(value, tuple):
-      struct.pack(actdef[2], *value)
+      struct.pack(attrdef.fmt, *value)
     else:
-      struct.pack(actdef[2], value)
-    setattr(self.sensor, actdef[1], value)
+      struct.pack(attrdef.fmt, value)
+    setattr(self.sensor, attrdef.src, value)
 
   def dump_persistent(self):
-    return self.packed[self.PERSIST_SLC]
+    return self.packed[self.SLCINFO_PERSIST.slc]
 
   def load_persistent(self, buf: bytes) -> None:
-    sensor = self.sensor
-    values = struct.unpack(self.PERSIST_FMT, buf)
-    sensor.offsets_accelerometer = values[:3]
-    sensor.offsets_gyroscope = values[3:6]
-    sensor.offsets_magnetometer = values[6:9]
-    sensor.mode = values[9]
+    slcinfo = self.SLCINFO_PERSIST
+    self.refresh_state.new_config = {
+      attr.name: attr.unpack_from(buf, -slcinfo.slc.start)
+      for attr in slcinfo.attrs}
 
-  @staticmethod
-  def quat_to_euler_zyx(w: float, x: float, y: float, z: float) -> tuple[float, float, float]:
-    """
-    Source: https://automaticaddison.com/how-to-convert-a-quaternion-into-euler-angles-in-python/
-    Addison L. Sears-Collins
-    """
-    # Roll (x-axis rotation)
-    t0 = +2.0 * (w * x + y * z)
-    t1 = +1.0 - 2.0 * (x * x + y * y)
-    roll = math.atan2(t0, t1)
+  @classmethod
+  def SensorCls(cls, *args, **kw):
+    from adafruit_bno055 import BNO055_I2C as SensorBase
+    from adafruit_bno055 import _ReadOnlyUnaryStruct
+    from adafruit_bus_device.i2c_device import I2CDevice
 
-    # Pitch (y-axis rotation)
-    t2 = +2.0 * (w * y - z * x)
-    t2 = +1.0 if t2 > +1.0 else t2
-    t2 = -1.0 if t2 < -1.0 else t2
-    pitch = math.asin(t2)
+    PAGE_REGISTER = 0x07
+    CALIBRATION_REGISTER = 0x35
+    MODE_REGISTER = 0x3d
+    TRIGGER_REGISTER = 0x3f
 
-    # Yaw (z-axis rotation)
-    t3 = +2.0 * (w * z + x * y)
-    t4 = +1.0 - 2.0 * (y * y + z * z)
-    yaw = math.atan2(t3, t4)
+    class SensorCls(SensorBase):
+      CONFIG_MODE = 0x00
+      COMPASS_MODE = 0x09
+      NDOF_MODE = 0x0c
 
-    return tuple(abs(math.degrees(x)) for x in (yaw, pitch, roll))
+      def __init__(self, i2c: busio.I2C, address: int = 0x28, defer_init: bool = False) -> None:
+        if defer_init:
+          self.buffer = bytearray(2)
+          self.i2c_device = I2CDevice(i2c, address)
+        else:
+          super().__init__(i2c, address)
 
-  @staticmethod
-  def descale(scale: int|float, *values: int|float|None):
-    for value in values:
-      if value is None:
-        value = 0
-      if scale != 1:
-        value /= scale
-        if isinstance(value, float):
-          value = round(value)
-      yield value
+      @property
+      def mode(self):
+        return super().mode
+
+      @mode.setter
+      def mode(self, new_mode: int) -> None:
+        for _ in self.yset_mode(new_mode):
+          time.sleep(0.001)
+
+      def yset_mode(self, new_mode: int) -> Generator[None]:
+        if self.mode == new_mode:
+          return
+        if self.mode != self.CONFIG_MODE:
+          self._write_register(MODE_REGISTER, self.CONFIG_MODE)
+          yield from ysleep(0.019)
+        if new_mode != self.CONFIG_MODE:
+          self._write_register(MODE_REGISTER, new_mode)
+          yield from ysleep(0.07)
+
+      def yreset(self):
+        yield from self.yset_mode(self.CONFIG_MODE)
+        try:
+          # reset
+          self._write_register(TRIGGER_REGISTER, 0x20)
+        except OSError:
+          pass
+        yield from ysleep(0.7)
+        self.set_normal_mode()
+        self._write_register(PAGE_REGISTER, 0x00)
+        self._write_register(TRIGGER_REGISTER, 0x00)
+
+      def yconfig(self, mode: int|None = None, **config):
+        mode = mode or self.mode
+        if config:
+          yield from self.yset_mode(self.CONFIG_MODE)
+          for name, value in config.items():
+            setattr(self, name, value)
+        yield from self.yset_mode(mode)
+
+      def yinit(self, mode: int = NDOF_MODE, **config):
+        yield from self.yreset()
+        yield from self.yconfig(mode=mode, **config)
+
+      calflag = _ReadOnlyUnaryStruct(CALIBRATION_REGISTER, 'B')
+
+      @property
+      def quaternion_euler_zyx(self) -> tuple[float, float, float]:
+        """
+        Source: https://automaticaddison.com/how-to-convert-a-quaternion-into-euler-angles-in-python/
+        Addison L. Sears-Collins
+        """
+        w, x, y, z = self.quaternion
+        if w is None or x is None or y is None or z is None:
+          return 0.0, 0.0, 0.0
+        # Roll (x-axis rotation)
+        t0 = +2.0 * (w * x + y * z)
+        t1 = +1.0 - 2.0 * (x * x + y * y)
+        roll = math.atan2(t0, t1)
+
+        # Pitch (y-axis rotation)
+        t2 = +2.0 * (w * y - z * x)
+        t2 = +1.0 if t2 > +1.0 else t2
+        t2 = -1.0 if t2 < -1.0 else t2
+        pitch = math.asin(t2)
+
+        # Yaw (z-axis rotation)
+        t3 = +2.0 * (w * z + x * y)
+        t4 = +1.0 - 2.0 * (y * y + z * z)
+        yaw = math.atan2(t3, t4)
+
+        return tuple(abs(math.degrees(x)) for x in (yaw, pitch, roll))
+
+    cls.SensorCls = SensorCls
+    return SensorCls(*args, **kw)
+
+
+"""
+if True:
+  s._write_register(0x3d, 0x00)
+  time.sleep(0.019)
+  s._read_register(0x67)
+  s._write_register(0x3d, 0x09)
+  time.sleep(0.065)
+  s._read_register(0x34)
+
+if True:
+  s._write_register(0x3d, 0x09)
+  time.sleep(0.007)
+  s._read_register(0x34)
+
+if True:
+  s._write_register(0x3d, 0x00)
+  time.sleep(0.019)
+  s._read_register(0x67)
+  s._write_register(0x3d, 0x00)
+  time.sleep(0.019)
+  s._write_register(0x3d, 0x09)
+  time.sleep(0.04)
+  s._read_register(0x34)
+
+"""

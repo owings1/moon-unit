@@ -1,10 +1,19 @@
 from __future__ import annotations
 
+import struct
+from collections import OrderedDict, namedtuple
+
 import board
 import busio
 from adafruit_bus_device.i2c_device import I2CDevice
-from utils import millis
+from utils import Pkr, millis
 
+try:
+  from typing import Any, ClassVar, Iterable, Self
+
+  from app import App
+except ImportError:
+  pass
 
 class Component:
   ATTRMAP = {}
@@ -50,10 +59,18 @@ class Component:
     if self.persistkey:
       yield 'persistkey', self.persistkey
 
-  def refresh_if_needed(self) -> int:
-    force_refresh, self.refresh_next_tick = self.refresh_next_tick, False
+  def is_refresh_needed(self) -> bool:
+    if self.refresh_next_tick:
+      return True
     now = millis()
-    if force_refresh or self.refreshed_at < now - self.refresh_interval:
+    if self.refreshed_at < now - self.refresh_interval:
+      return True
+    return False
+  
+  def refresh_if_needed(self) -> int:
+    now = millis()
+    if self.is_refresh_needed():
+      self.refresh_next_tick = False
       change = self.refresh()
       self.refreshed_at = now
       if change:
@@ -106,9 +123,82 @@ class DeviceComponent(Component):
     yield from super().metaitems()
     yield 'device_address', hex(self.device_address)
 
-try:
-  from typing import Any, Iterable
+class CompAttr(
+  namedtuple(
+    'CompAttr', (
+      'name',
+      'src',
+      'start',
+      'end',
+      'fmt',
+      'bom',
+      'writeable',
+      'scale'))):
+  name: str
+  src: Any
+  start: int
+  end: int
+  fmt: str
+  bom: str
+  writeable: bool
+  scale: int|float
 
-  from app import App
-except ImportError:
-  pass
+  def descale(self, value: int|None|tuple[int|None, ...]) -> int|float|tuple[int|float, ...]:
+    if isinstance(value, tuple):
+      return tuple(map(self.descale, value))
+    if value is None:
+      value = 0
+    if self.scale != 1:
+      value = round(value / self.scale)
+    return value
+
+  def unpack_from(self, buf: bytearray, offset: int|None = None):
+    if offset is None:
+      offset = self.start
+    elif offset < 0:
+      offset += self.start
+    raw = struct.unpack_from(self.bom+self.fmt, buf, offset)
+    it = (x * self.scale for x in raw)
+    if len(raw) == 1:
+      return next(it)
+    return tuple(it)
+
+  def pack_into(self, buf: bytearray, value, offset: int|None = None):
+    if offset is None:
+      offset = self.start
+    elif offset < 0:
+      offset += self.start
+    value = self.descale(value)
+    if not isinstance(value, tuple):
+      value = (value,)
+    struct.pack_into(self.bom+self.fmt, buf, offset, *value)
+
+  defaults: ClassVar = dict(writeable=False, scale=1, src=None)
+
+  @classmethod
+  def prepdefn(cls, defn: dict[str, Any]):
+    defn.update(cls.defaults|defn)
+
+  @classmethod
+  def makeattrs(cls, pkr: Pkr, defns: dict[str, dict[str, Any]]):
+    defnmap: dict[str, Self] = OrderedDict()
+    for name, defn in defns.items():
+      defn['name'] = name
+      cls.prepdefn(defn)
+      start = pkr.size
+      pkr.add(defn['fmt'])
+      end = pkr.size
+      defnmap[name] = cls(start=start, end=end, bom=pkr.bom, **defn)
+    return defnmap
+
+  @classmethod
+  def sliceinfo(cls, attrmap: OrderedDict[str, Self], start, end):
+    attrs = tuple(attrmap.values())[start:end]
+    slc = slice(attrs[0].start, attrs[-1].end)
+    fmt = attrs[0].bom + ''.join(x.fmt for x in attrs)
+    return cls.SliceInfo(attrs, fmt, slc)
+
+  class SliceInfo(namedtuple('SliceInfo', ('attrs', 'fmt', 'slc'))):
+    attrs: tuple[CompAttr, ...]
+    fmt: str
+    slc: slice

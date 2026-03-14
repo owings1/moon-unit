@@ -26,6 +26,7 @@ component_categories: dict[str, ModuleType] = dict(
 
 class App:
   components: dict[int, Component]|None = None
+  addrs: dict[str, int] = None
   sdcard: sdcardio.SDCard|None = None
   buses: list[busio.I2C|busio.SPI]|None = None
 
@@ -59,7 +60,7 @@ class App:
             debug(line)
           debug()
 
-  def init(self) -> None:
+  def init(self, *names) -> None:
     self.deinit()
     self.buses = []
     if settings.sd_enabled:
@@ -68,10 +69,13 @@ class App:
       storage.mount(storage.VfsFat(self.sdcard), settings.sd_mountpath)
       self.buses.append(spi)
     self.components = OrderedDict()
+    self.addrs = OrderedDict()
     for defn in settings.components:
       if defn.get('disabled') or not defn.get('enabled', True):
         continue
       name = defn['name']
+      if names and name not in names:
+        continue
       debug(f'Init component {name=}')
       module = component_categories[defn['category']]
       cls: type[Component] = getattr(module, defn['classname'])
@@ -81,22 +85,34 @@ class App:
         self.buses.append(component.bus)
       component.debug = defn.get('debug')
       component.persist_id = defn.get('persist_id')
-      self.add_component(component)
+      self.add_component(component, name)
     for component in self.components.values(): 
       component.app_init(self)
     for component in self.components.values(): 
       component.app_ready(self)
 
-  def add_component(self, component: Component):
+  def get_component(self, ref: int|str) -> Component:
+    if isinstance(ref, str):
+      ref = self.addrs[ref]
+    return self.components[ref]
+
+  def add_component(self, component: Component, name: str):
+    if component.component_address in self.components:
+      raise ValueError(f'Duplicate address: {component.component_address}')
+    if not name:
+      raise ValueError(f'Invalid component name: {name}')
+    if name in self.addrs:
+      raise ValueError(f'Duplicate component name: {name}')
     if component.debug is None:
       component.debug = settings.debug
     self.components[component.component_address] = component
+    self.addrs[name] = component.component_address
 
   def deinit(self) -> None:
     if self.components:
       for component in self.components.values():
         component.deinit()
-    self.components = None
+    self.components = self.addrs = None
     if self.sdcard:
       try:
         storage.umount(settings.sd_mountpath)
