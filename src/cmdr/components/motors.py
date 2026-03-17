@@ -127,11 +127,11 @@ class Motor(DeviceComponent):
     for k, v in initial.items():
       self.write(k, v)
 
-  def __getitem__(self, name: str):
-    if name in self.FLAGMAP:
-      flagdef = self.FLAGMAP[name]
-      return (self[flagdef[1]] >> flagdef[2]) & flagdef[3]
-    return self.ATTRMAP[name].unpack_from(self.packed)
+  # def __getitem__(self, name: str):
+  #   if name in self.FLAGMAP:
+  #     flagdef = self.FLAGMAP[name]
+  #     return (self[flagdef[1]] >> flagdef[2]) & flagdef[3]
+  #   return self.ATTRMAP[name].unpack_from(self.packed)
 
   def refresh(self):
     a = bytes(self.packed)

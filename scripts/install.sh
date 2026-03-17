@@ -14,7 +14,7 @@ files=(
   utils.py
   components/*
   contrib/*
-  sensors/*
+  sensors/*.mpy
 )
 for file in "${files[@]}"; do
   if [[ -e "$dest/$file" ]] && [[ "$(md5sum "$file" | awk '{print $1}')" == "$(md5sum "$dest/$file" | awk '{print $1}')" ]] ; then

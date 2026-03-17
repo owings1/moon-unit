@@ -48,17 +48,19 @@ class IMU6(DeviceComponent):
     self.refresh_interval = refresh_interval
     self.packed = bytearray(self.PKR.size)
 
-  def __getitem__(self, name: str):
-    if name in self.FLAGMAP:
-      flagdef = self.FLAGMAP[name]
-      return (self[flagdef[1]] >> flagdef[2]) & flagdef[3]
-    return self.ATTRMAP[name].unpack_from(self.packed)
+  # def __getitem__(self, name: str):
+  #   if name in self.FLAGMAP:
+  #     flagdef = self.FLAGMAP[name]
+  #     return (self[flagdef[1]] >> flagdef[2]) & flagdef[3]
+  #   return self.ATTRMAP[name].unpack_from(self.packed)
 
   def refresh(self) -> bool:
-    a = bytes(self.packed)
+    change = False
     for attr in self.ATTRMAP.values():
+      prev = change or self[attr.name]
       attr.pack_into(self.packed, getattr(self.sensor, attr.name))
-    return self.packed != a
+      change = change or prev != self[attr.name]
+    return change
 
   def deinit(self):
     if self.onboard_i2c:
@@ -141,11 +143,11 @@ class IMU9(DeviceComponent):
     self.refresh_state: Imu9RefreshState = Imu9RefreshState()
     self.refresh_state.it = self.sensor.yinit(**config)
 
-  def __getitem__(self, name: str):
-    if name in self.FLAGMAP:
-      flagdef = self.FLAGMAP[name]
-      return (self[flagdef[1]] >> flagdef[2]) & flagdef[3]
-    return self.ATTRMAP[name].unpack_from(self.packed)
+  # def __getitem__(self, name: str):
+  #   if name in self.FLAGMAP:
+  #     flagdef = self.FLAGMAP[name]
+  #     return (self[flagdef[1]] >> flagdef[2]) & flagdef[3]
+  #   return self.ATTRMAP[name].unpack_from(self.packed)
 
   def refresh_if_needed(self) -> int:
     if self.refresh_state.waiting():
@@ -183,16 +185,19 @@ class IMU9(DeviceComponent):
       next_mode = state.mode_restore
       state.mode_restore = None
 
-    a = self.packed[slcinfo.slc]
+    # a = self.packed[slcinfo.slc]
+    change = False
     for attr in slcinfo.attrs:
+      prev = change or self[attr.name]
       value = getattr(self.sensor, attr.src or attr.name)
       attr.pack_into(self.packed, value)
+      change = change or prev != self[attr.name]
 
     state.it = self.sensor.yset_mode(next_mode)
     state.next_stage = stage + 1
     # trigger first yield
     state.ready()
-    return state.is_init and self.packed[slcinfo.slc] != a
+    return state.is_init and change
 
   def write(self, name: str, value) -> None:
     attrdef = self.ATTRMAP[name]

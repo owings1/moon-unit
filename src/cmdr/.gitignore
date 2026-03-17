@@ -1,2 +1,4 @@
 hmc5883l.py
 qmc5883l.py
+/sensors/*.mpy
+!/sensors/?mc5883l.mpy

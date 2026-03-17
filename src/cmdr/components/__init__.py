@@ -15,7 +15,7 @@ except ImportError:
   pass
 
 class Component:
-  ATTRMAP = {}
+  ATTRMAP: dict[str, CompAttr] = {}
   FLAGMAP = {}
   PERSIST_NS: int|None = None
   PERSIST_VER: int = 0x01
@@ -27,6 +27,7 @@ class Component:
   persistkey: tuple[int, int, int]|None = None
   debug: bool|None = None
   bus: busio.I2C|busio.SPI|None = None
+  packed: bytes|bytearray|None = None
 
   @property
   def persist_id(self) -> int|None:
@@ -44,7 +45,12 @@ class Component:
     return bool(self.persistkey)
 
   def __getitem__(self, name: str):
-    raise KeyError(name)
+    if name in self.FLAGMAP:
+      flagdef = self.FLAGMAP[name]
+      return (self[flagdef[1]] >> flagdef[2]) & flagdef[3]
+    if self.packed is None:
+      raise KeyError(name)
+    return self.ATTRMAP[name].unpack_from(self.packed)
 
   def items(self) -> Iterable[tuple[str, Any]]:
     return (
@@ -56,7 +62,7 @@ class Component:
     yield 'classname', type(self).__name__
     yield 'component_address', hex(self.component_address)
     if self.persistkey:
-      yield 'persistkey', self.persistkey
+      yield 'persistkey', tuple(map(hex, self.persistkey))
 
   def is_refresh_needed(self) -> bool:
     if self.refresh_next_tick:
