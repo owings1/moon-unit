@@ -3,6 +3,7 @@ from __future__ import annotations
 import time
 from collections import OrderedDict, deque
 
+from micropython import const
 import busio
 from utils import Pkr, debug, millis
 
@@ -15,19 +16,19 @@ from . import CompAttr, DeviceComponent
 #
 # http://www.hhhh.org/wiml/proj/nmeaxor.html
 
-PMTK_SET_NMEA_OUTPUT_GGAONLY = b'PMTK314,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0'
+PMTK_SET_NMEA_OUTPUT_GGAONLY = const(b'PMTK314,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0')
 'GPGGA only'
-PMTK_SET_NMEA_OUTPUT_RMCONLY = b'PMTK314,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0'
+PMTK_SET_NMEA_OUTPUT_RMCONLY = const(b'PMTK314,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0')
 'GPRMC only'
-PMTK_SET_NMEA_OUTPUT_RMCGGA = b'PMTK314,0,1,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0'
+PMTK_SET_NMEA_OUTPUT_RMCGGA = const(b'PMTK314,0,1,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0')
 'GPRMC + GPGGA'
-PMTK_SET_NMEA_OUTPUT_RMCGGAGSA = b'PMTK314,0,1,0,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0'
+PMTK_SET_NMEA_OUTPUT_RMCGGAGSA = const(b'PMTK314,0,1,0,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0')
 'GPRMC + GPGGA + GPGSA'
-PMTK_SET_NMEA_OUTPUT_ALLDATA = b'PMTK314,1,1,1,1,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0'
+PMTK_SET_NMEA_OUTPUT_ALLDATA = const(b'PMTK314,1,1,1,1,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0')
 'All data'
 
-PMTK_SET_NMEA_UPDATE_1HZ = b'PMTK220,1000'
-PMTK_API_SET_FIX_CTL_1HZ = b'PMTK300,1000,0,0,0,0'
+PMTK_SET_NMEA_UPDATE_1HZ = const(b'PMTK220,1000')
+PMTK_API_SET_FIX_CTL_1HZ = const(b'PMTK300,1000,0,0,0,0')
 
 INIT_CMDS = (
   PMTK_SET_NMEA_OUTPUT_RMCGGA,
@@ -125,7 +126,7 @@ class GPS(DeviceComponent):
 def decimyear(value: time.struct_time) -> float:
   return value.tm_year + value.tm_yday / (366 - bool(value.tm_year % 4))
 
-class Magnetometer(DeviceComponent):
+class MagnetometerHMC(DeviceComponent):
   PKR = Pkr('<')
   ATTRMAP: dict[str, CompAttr] = CompAttr.makeattrs(PKR, OrderedDict(
     flags=dict(fmt='B'),
@@ -135,8 +136,8 @@ class Magnetometer(DeviceComponent):
     scale=dict(fmt='3e'),
   ))
   FLAGMAP = OrderedDict((x[0], x) for x in (
-    ('overflow', 'flags', 0x6, 0x1),
-    ('calibrated', 'flags', 0x7, 0x1),
+    ('overflow', 'flags', 0x5, 0x1),
+    ('calibrated', 'flags', 0x6, 0x1),
   ))
 
   def __init__(
@@ -148,6 +149,45 @@ class Magnetometer(DeviceComponent):
     from hmc5883l import HMC5883L
     super().__init__(bus, address)
     self.sensor = HMC5883L(self.bus, address)
+    self.refresh_interval = refresh_interval
+    self.packed = bytearray(self.PKR.size)
+
+  def __getitem__(self, name: str):
+    if name in self.FLAGMAP:
+      flagdef = self.FLAGMAP[name]
+      return (self[flagdef[1]] >> flagdef[2]) & flagdef[3]
+    return self.ATTRMAP[name].unpack_from(self.packed)
+
+  def refresh(self) -> bool:
+    a = bytes(self.packed)
+    for attr in self.ATTRMAP.values():
+      attr.pack_into(self.packed, getattr(self.sensor, attr.name))
+    return self.packed != a
+
+class MagnetometerQMC(DeviceComponent):
+  PKR = Pkr('<')
+  ATTRMAP: dict[str, CompAttr] = CompAttr.makeattrs(PKR, OrderedDict(
+    flags=dict(fmt='B'),
+    magnetic=dict(fmt='3e'),
+    temperature=dict(fmt='H'),
+    gain=dict(fmt='H'),
+    offset=dict(fmt='3e'),
+    scale=dict(fmt='3e'),
+  ))
+  FLAGMAP = OrderedDict((x[0], x) for x in (
+    ('overflow', 'flags', 0x5, 0x1),
+    ('calibrated', 'flags', 0x6, 0x1),
+  ))
+
+  def __init__(
+    self,
+    bus: busio.I2C|None = None,
+    address: int = 0x0d,
+    refresh_interval: int = 1000
+  ) -> None:
+    from qmc5883l import QMC5883L
+    super().__init__(bus, address)
+    self.sensor = QMC5883L(self.bus, address)
     self.refresh_interval = refresh_interval
     self.packed = bytearray(self.PKR.size)
 

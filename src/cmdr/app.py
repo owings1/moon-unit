@@ -76,7 +76,7 @@ class App:
     if self.components:
       for component in self.components.values(): 
         component.app_init(self)
-      for component in self.components.values(): 
+      for component in self.components.values():
         component.app_ready(self)
 
   def get_component(self, ref: int|str) -> Component:

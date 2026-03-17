@@ -5,6 +5,7 @@ import traceback
 from collections import OrderedDict
 
 import busio
+from micropython import const
 from utils import Pkr
 
 from . import CompAttr, DeviceComponent
@@ -16,8 +17,8 @@ except ImportError:
 
 __all__ = ('Motor',)
 
-LSHIFT_PAGE = 0x06
-LSHIFT_MIDX = 0x04
+LSHIFT_PAGE = const(0x06)
+LSHIFT_MIDX = const(0x04)
 
 P1_MASK = 0x1 << LSHIFT_PAGE
 
@@ -32,17 +33,17 @@ M_SPEED = P1_MASK | 0x7
 M_TARGET_POSITION = P1_MASK | 0xc
 M_STOP = P1_MASK | 0xf
 
-CODE_OK = 0x00
-CODE_OTHER_ERROR = 0x07
-CODE_WRITE_FAILED = 0x0b
-CODE_MOTOR_BUSY = 0x1f
-CODE_CANCELED = 0x20
-CODE_MALFORMED_COMMAND = 0x28
-CODE_UNKNOWN_COMMAND = 0x2c
-CODE_INVALID_MOTORID = 0x2d
-CODE_COMMAND_IGNORED = 0x2e
-CODE_COMMAND_PARTIALLY_IGNORED = 0x2f
-CODE_READONLY_ATTRIBUTE = 0x30
+CODE_OK = const(0x00)
+CODE_OTHER_ERROR = const(0x07)
+CODE_WRITE_FAILED = const(0x0b)
+CODE_MOTOR_BUSY = const(0x1f)
+CODE_CANCELED = const(0x20)
+CODE_MALFORMED_COMMAND = const(0x28)
+CODE_UNKNOWN_COMMAND = const(0x2c)
+CODE_INVALID_MOTORID = const(0x2d)
+CODE_COMMAND_IGNORED = const(0x2e)
+CODE_COMMAND_PARTIALLY_IGNORED = const(0x2f)
+CODE_READONLY_ATTRIBUTE = const(0x30)
 
 class MotorAttr(CompAttr):
   src: int|None
@@ -91,8 +92,8 @@ class Motor(DeviceComponent):
     ('move_acw_at_speed', '_routine_move_acw_at_speed', 'HL'),
   ))
   SLCINFO_PERSIST = MotorAttr.sliceinfo(ATTRMAP, 3, None)
-  PERSIST_NS = 0x9100
-  PERSIST_VER = 0x04
+  PERSIST_NS = const(0x9100)
+  PERSIST_VER = const(0x04)
   init_defaults = OrderedDict(
     max_speed=0x7ff,
     default_speed=0x7ff,
@@ -119,11 +120,11 @@ class Motor(DeviceComponent):
     super().__init__(bus, address)
     self.refresh_interval = refresh_interval
     self.id = id
-    self.init_data = OrderedDict(self.init_defaults)
-    self.init_data.update(init_data)
+    initial = OrderedDict(self.init_defaults)
+    initial.update(init_data)
     self.packed = bytearray(self.PKR.size)
     self.idmask = self.id - 1 << LSHIFT_MIDX
-    for k, v in self.init_data.items():
+    for k, v in initial.items():
       self.write(k, v)
 
   def __getitem__(self, name: str):

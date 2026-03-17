@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import math
 import struct
 import time
 from collections import OrderedDict
@@ -8,23 +7,17 @@ from collections import OrderedDict
 import board
 import busio
 from digitalio import DigitalInOut, Direction
-from utils import Pkr, ysleep
+from micropython import const
+from utils import Pkr
 
 from . import CompAttr, DeviceComponent
 
-try:
-  from typing import Generator
-except ImportError:
-  pass
-
 class IMU6(DeviceComponent):
-  PKR = Pkr()
-  TEMPERATURE_SENSITIVITY = 256
-  TEMPERATURE_OFFSET = 25.0
-  ATTRMAP = OrderedDict((x[0], x) for x in (
-    ('accel', 'accel', PKR.size, PKR.add('3h')),
-    ('gyro', 'gyro', PKR.size, PKR.add('3h')),
-    ('temperature', 'temp', PKR.size, PKR.add('h')),
+  PKR = Pkr('<')
+  ATTRMAP: dict[str, CompAttr] = CompAttr.makeattrs(PKR, OrderedDict(
+    acceleration=dict(fmt='3e'),
+    gyro=dict(fmt='3e'),
+    temperature=dict(fmt='e'),
   ))
   onboard_i2c: bool = False
   _obpwr: DigitalInOut|None = None
@@ -56,32 +49,16 @@ class IMU6(DeviceComponent):
     self.packed = bytearray(self.PKR.size)
 
   def __getitem__(self, name: str):
-    attrdef = self.ATTRMAP[name]
-    raw = struct.unpack_from(attrdef[3], self.packed, attrdef[2])
-    it = (self.scale(attrdef[1], x) for x in raw)
-    if len(raw) == 1:
-      return next(it)
-    return tuple(it)
+    if name in self.FLAGMAP:
+      flagdef = self.FLAGMAP[name]
+      return (self[flagdef[1]] >> flagdef[2]) & flagdef[3]
+    return self.ATTRMAP[name].unpack_from(self.packed)
 
   def refresh(self) -> bool:
     a = bytes(self.packed)
-    struct.pack_into(
-      self.PKR.fmt,
-      self.packed,
-      0,
-      *self.sensor._raw_accel_data,
-      *self.sensor._raw_gyro_data,
-      *self.sensor._raw_temp_data)
-    return self.packed != a 
-
-  def scale(self, fmt: str, value: int) -> float:
-    if fmt == 'accel':
-      return self.sensor._scale_xl_data(value)
-    if fmt == 'gyro':
-      return self.sensor._scale_gyro_data(value)
-    if fmt == 'temp':
-      return value / self.TEMPERATURE_SENSITIVITY + self.TEMPERATURE_OFFSET
-    raise ValueError(f'{fmt}')
+    for attr in self.ATTRMAP.values():
+      attr.pack_into(self.packed, getattr(self.sensor, attr.name))
+    return self.packed != a
 
   def deinit(self):
     if self.onboard_i2c:
@@ -89,33 +66,43 @@ class IMU6(DeviceComponent):
       self._obpwr.value = False
       self._obpwr.deinit()
 
-class Imu9Attr(CompAttr):
-  src: str
+class Imu9RefreshState:
+  next_stage = 1
+  mode_restore = None
+  it = None
+  new_config = None
+  is_init = False
+
+  def ready(self):
+    if self.waiting():
+      try:
+        next(self.it)
+      except StopIteration:
+        return True
+    return False
+
+  def waiting(self):
+    return bool(self.next_stage and self.it)
 
 class IMU9(DeviceComponent):
   PKR = Pkr('<')
-  SCALE_ACCEL = SCALE_GRAVITY = 1 / 100
-  SCALE_GYRO = 0.001090830782496456
-  SCALE_MAG = SCALE_EULER = 1 / 16
-  SCALE_QUAT = 1 / (1 << 14)
   ATTRMAP: dict[str, CompAttr] = CompAttr.makeattrs(PKR, OrderedDict(
     calflag=dict(fmt='B'),
-    accel=dict(src='acceleration', fmt='3h', scale=SCALE_ACCEL),
-    mag=dict(src='magnetic', fmt='3h', scale=SCALE_MAG),
-    gyro=dict(fmt='3h', scale=SCALE_GYRO),
-    euler=dict(fmt='3h', scale=SCALE_EULER),
-    quaternion_euler_zyx=dict(fmt='3h', scale=SCALE_EULER),
-    quaternion=dict(fmt='4h', scale=SCALE_QUAT),
-    gravity=dict(fmt='3h', scale=SCALE_GRAVITY),
-    linearaccel=dict(src='linear_acceleration', fmt='3h', scale=SCALE_ACCEL),
+    acceleration=dict(fmt='3e'),
+    magnetic=dict(fmt='3e'),
+    gyro=dict(fmt='3e'),
+    euler=dict(fmt='3e'),
+    quaternion=dict(fmt='4e'),
+    gravity=dict(fmt='3e'),
+    linear_acceleration=dict(fmt='3e'),
     temperature=dict(fmt='b'),
     mode=dict(fmt='B', writeable=True),
     # ---- these require switch to config mode with delay
-    offsets_accel=dict(src='offsets_accelerometer', fmt='3h', writeable=True),
-    offsets_mag=dict(src='offsets_magnetometer', fmt='3h', writeable=True),
-    offsets_gyro=dict(src='offsets_gyroscope', fmt='3h', writeable=True),
-    radius_accel=dict(src='radius_accelerometer', fmt='h'),
-    radius_mag=dict(src='radius_magnetometer', fmt='h'),
+    offsets_accelerometer=dict(fmt='3h', writeable=True),
+    offsets_magnetometer=dict(fmt='3h', writeable=True),
+    offsets_gyroscope=dict(fmt='3h', writeable=True),
+    radius_accelerometer=dict(fmt='h'),
+    radius_magnetometer=dict(fmt='h'),
   ))
   FLAGMAP = OrderedDict((x[0], x) for x in (
     ('cal_mag', 'calflag', 0x0, 0x3),
@@ -126,9 +113,10 @@ class IMU9(DeviceComponent):
   SLCINFO_DATA = CompAttr.sliceinfo(ATTRMAP, 0, -5)
   SLCINFO_CONFIG = CompAttr.sliceinfo(ATTRMAP, -5, None)
   SLCINFO_PERSIST = CompAttr.sliceinfo(ATTRMAP, -6, -2)
-  PERSIST_NS = 0x4939
-  PERSIST_VER = 0x03
-  MIN_REFRESH_INTERVAL = 90
+  PERSIST_NS = const(0x4939)
+  PERSIST_VER = const(0x03)
+  MIN_REFRESH_INTERVAL = const(90)
+  CONFIG_MODE = const(0x00)
 
   @property
   def refresh_interval(self) -> int:
@@ -138,24 +126,6 @@ class IMU9(DeviceComponent):
   def refresh_interval(self, value: int) -> None:
     self._refresh_interval = value
 
-  class RefreshState:
-    next_stage = 1
-    mode_restore = None
-    it = None
-    new_config = None
-    is_init = False
-
-    def ready(self):
-      if self.waiting():
-        try:
-          next(self.it)
-        except StopIteration:
-          return True
-      return False
-
-    def waiting(self):
-      return bool(self.next_stage and self.it)
-
   def __init__(
     self,
     bus: busio.I2C|None = None,
@@ -163,11 +133,12 @@ class IMU9(DeviceComponent):
     refresh_interval: int = 200,
     **config,
   ) -> None:
+    from sensors.bno055 import BNO055
     super().__init__(bus, address)
-    self.sensor = self.SensorCls(self.bus, address, defer_init=True)
+    self.sensor = BNO055(self.bus, address, defer_init=True)
     self.refresh_interval = refresh_interval
     self.packed = bytearray(self.PKR.size)
-    self.refresh_state = self.RefreshState()
+    self.refresh_state: Imu9RefreshState = Imu9RefreshState()
     self.refresh_state.it = self.sensor.yinit(**config)
 
   def __getitem__(self, name: str):
@@ -206,7 +177,7 @@ class IMU9(DeviceComponent):
     if stage == 1:
       slcinfo = self.SLCINFO_DATA
       state.mode_restore = self.sensor.mode
-      next_mode = self.sensor.CONFIG_MODE
+      next_mode = self.CONFIG_MODE
     elif stage == 2:
       slcinfo = self.SLCINFO_CONFIG
       next_mode = state.mode_restore
@@ -242,113 +213,16 @@ class IMU9(DeviceComponent):
       attr.name: attr.unpack_from(buf, -slcinfo.slc.start)
       for attr in slcinfo.attrs}
 
-  @classmethod
-  def SensorCls(cls, *args, **kw):
-    from adafruit_bno055 import BNO055_I2C as SensorBase
-    from adafruit_bno055 import _ReadOnlyUnaryStruct
-    from adafruit_bus_device.i2c_device import I2CDevice
-
-    PAGE_REGISTER = 0x07
-    CALIBRATION_REGISTER = 0x35
-    MODE_REGISTER = 0x3d
-    TRIGGER_REGISTER = 0x3f
-
-    class SensorCls(SensorBase):
-      CONFIG_MODE = 0x00
-      COMPASS_MODE = 0x09
-      NDOF_MODE = 0x0c
-
-      def __init__(self, i2c: busio.I2C, address: int = 0x28, defer_init: bool = False) -> None:
-        if defer_init:
-          self.buffer = bytearray(2)
-          self.i2c_device = I2CDevice(i2c, address)
-        else:
-          super().__init__(i2c, address)
-
-      @property
-      def mode(self):
-        return super().mode
-
-      @mode.setter
-      def mode(self, new_mode: int) -> None:
-        for _ in self.yset_mode(new_mode):
-          time.sleep(0.001)
-
-      def yset_mode(self, new_mode: int) -> Generator[None]:
-        if self.mode == new_mode:
-          return
-        if self.mode != self.CONFIG_MODE:
-          self._write_register(MODE_REGISTER, self.CONFIG_MODE)
-          yield from ysleep(0.019)
-        if new_mode != self.CONFIG_MODE:
-          self._write_register(MODE_REGISTER, new_mode)
-          yield from ysleep(0.07)
-
-      def yreset(self):
-        yield from self.yset_mode(self.CONFIG_MODE)
-        try:
-          # reset
-          self._write_register(TRIGGER_REGISTER, 0x20)
-        except OSError:
-          pass
-        yield from ysleep(0.7)
-        self.set_normal_mode()
-        self._write_register(PAGE_REGISTER, 0x00)
-        self._write_register(TRIGGER_REGISTER, 0x00)
-
-      def yconfig(self, mode: int|None = None, **config):
-        mode = mode or self.mode
-        if config:
-          yield from self.yset_mode(self.CONFIG_MODE)
-          for name, value in config.items():
-            setattr(self, name, value)
-        yield from self.yset_mode(mode)
-
-      def yinit(self, mode: int = NDOF_MODE, **config):
-        yield from self.yreset()
-        yield from self.yconfig(mode=mode, **config)
-
-      calflag = _ReadOnlyUnaryStruct(CALIBRATION_REGISTER, 'B')
-
-      @property
-      def quaternion_euler_zyx(self) -> tuple[float, float, float]:
-        """
-        Source: https://automaticaddison.com/how-to-convert-a-quaternion-into-euler-angles-in-python/
-        Addison L. Sears-Collins
-        """
-        w, x, y, z = self.quaternion
-        if w is None or x is None or y is None or z is None:
-          return 0.0, 0.0, 0.0
-        # Roll (x-axis rotation)
-        t0 = +2.0 * (w * x + y * z)
-        t1 = +1.0 - 2.0 * (x * x + y * y)
-        roll = math.atan2(t0, t1)
-
-        # Pitch (y-axis rotation)
-        t2 = +2.0 * (w * y - z * x)
-        t2 = +1.0 if t2 > +1.0 else t2
-        t2 = -1.0 if t2 < -1.0 else t2
-        pitch = math.asin(t2)
-
-        # Yaw (z-axis rotation)
-        t3 = +2.0 * (w * z + x * y)
-        t4 = +1.0 - 2.0 * (y * y + z * z)
-        yaw = math.atan2(t3, t4)
-
-        return tuple(abs(math.degrees(x)) for x in (yaw, pitch, roll))
-
-    cls.SensorCls = SensorCls
-    return SensorCls(*args, **kw)
 
 
 """
-if True:
+def t(x):
   s._write_register(0x3d, 0x00)
   time.sleep(0.019)
   s._read_register(0x67)
   s._write_register(0x3d, 0x09)
-  time.sleep(0.065)
-  s._read_register(0x34)
+  time.sleep(x)
+  return s._read_register(0x34)
 
 if True:
   s._write_register(0x3d, 0x09)
