@@ -109,14 +109,14 @@ class Motor(DeviceComponent):
   def __init__(
     self,
     id: int, 
-    i2c: busio.I2C|None = None,
+    bus: busio.I2C|None = None,
     address: int = 0x9,
     refresh_interval: int = 500,
     **init_data
   ) -> None:
     if not 1 <= id <= 4:
       raise ValueError(f'{id=}')
-    super().__init__(i2c, address)
+    super().__init__(bus, address)
     self.refresh_interval = refresh_interval
     self.id = id
     self.init_data = OrderedDict(self.init_defaults)

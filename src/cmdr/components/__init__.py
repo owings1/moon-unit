@@ -1,11 +1,10 @@
 from __future__ import annotations
 
 import struct
-from collections import OrderedDict, namedtuple
+from collections import namedtuple
 
 import board
 import busio
-from adafruit_bus_device.i2c_device import I2CDevice
 from utils import Pkr, millis
 
 try:
@@ -109,11 +108,12 @@ class Component:
 
 class DeviceComponent(Component):
 
-  def __init__(self, i2c: busio.I2C|None, address: int) -> None:
-    i2c = i2c or board.I2C()
-    self.device = I2CDevice(i2c, address)
+  def __init__(self, bus: busio.I2C|None, address: int) -> None:
+    from adafruit_bus_device.i2c_device import I2CDevice
+    bus = bus or board.I2C()
+    self.device = I2CDevice(bus, address)
     self.device_address = address
-    self.bus = i2c
+    self.bus = bus
 
   @property
   def component_address(self) -> int:
@@ -181,6 +181,7 @@ class CompAttr(
 
   @classmethod
   def makeattrs(cls, pkr: Pkr, defns: dict[str, dict[str, Any]]):
+    from collections import OrderedDict
     defnmap: dict[str, Self] = OrderedDict()
     for name, defn in defns.items():
       defn['name'] = name
@@ -192,7 +193,7 @@ class CompAttr(
     return defnmap
 
   @classmethod
-  def sliceinfo(cls, attrmap: OrderedDict[str, Self], start, end):
+  def sliceinfo(cls, attrmap: dict[str, Self], start, end):
     attrs = tuple(attrmap.values())[start:end]
     slc = slice(attrs[0].start, attrs[-1].end)
     fmt = attrs[0].bom + ''.join(x.fmt for x in attrs)
@@ -202,3 +203,4 @@ class CompAttr(
     attrs: tuple[CompAttr, ...]
     fmt: str
     slc: slice
+

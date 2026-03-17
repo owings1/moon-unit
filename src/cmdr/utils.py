@@ -31,7 +31,7 @@ def ysleep(secs: float):
     yield
 
 def init_settings(defaults: MT, settings: ModuleType) -> MT:
-  for name in defaults.__dict__:
+  for name in dir(defaults):
     if not hasattr(settings, name):
       setattr(settings, name, getattr(defaults, name))
   return settings

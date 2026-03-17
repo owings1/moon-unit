@@ -60,7 +60,7 @@ class GPS(DeviceComponent):
 
   def __init__(
     self,
-    i2c: busio.I2C|None = None,
+    bus: busio.I2C|None = None,
     address: int = 0x10,
     refresh_interval: int = 1000,
     refresh_interval_nofix: int|None = None,
@@ -68,7 +68,7 @@ class GPS(DeviceComponent):
     read_timeout: float = 0.05,
   ) -> None:
     from adafruit_gps import GPS_GtopI2C
-    super().__init__(i2c, address)
+    super().__init__(bus, address)
     self.sensor = GPS_GtopI2C(
       self.bus,
       address=address,
@@ -128,30 +128,36 @@ def decimyear(value: time.struct_time) -> float:
 class Magnetometer(DeviceComponent):
   PKR = Pkr('<')
   ATTRMAP: dict[str, CompAttr] = CompAttr.makeattrs(PKR, OrderedDict(
-    ctrl1_flags=dict(fmt='B'),
-    ctrl2_flags=dict(fmt='B'),
-    magnetic_ut=dict(fmt='3e'),
-    temperature=dict(fmt='H'),
+    flags=dict(fmt='B'),
+    magnetic=dict(fmt='3e'),
+    gain=dict(fmt='H'),
+    offset=dict(fmt='3e'),
+    scale=dict(fmt='3e'),
+  ))
+  FLAGMAP = OrderedDict((x[0], x) for x in (
+    ('overflow', 'flags', 0x6, 0x1),
+    ('calibrated', 'flags', 0x7, 0x1),
   ))
 
   def __init__(
     self,
-    i2c: busio.I2C|None = None,
-    address: int = 0x0d,
+    bus: busio.I2C|None = None,
+    address: int = 0x1e,
     refresh_interval: int = 1000
   ) -> None:
-    from sensors.qmc5883l import QMC5883L
-    super().__init__(i2c, address)
-    self.sensor = QMC5883L(self.bus, address)
+    from hmc5883l import HMC5883L
+    super().__init__(bus, address)
+    self.sensor = HMC5883L(self.bus, address)
     self.refresh_interval = refresh_interval
     self.packed = bytearray(self.PKR.size)
 
   def __getitem__(self, name: str):
+    if name in self.FLAGMAP:
+      flagdef = self.FLAGMAP[name]
+      return (self[flagdef[1]] >> flagdef[2]) & flagdef[3]
     return self.ATTRMAP[name].unpack_from(self.packed)
 
   def refresh(self) -> bool:
-    if not self.sensor.data_ready or self.sensor.data_overflow:
-      return False
     a = bytes(self.packed)
     for attr in self.ATTRMAP.values():
       attr.pack_into(self.packed, getattr(self.sensor, attr.name))

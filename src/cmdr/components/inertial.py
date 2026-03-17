@@ -32,12 +32,12 @@ class IMU6(DeviceComponent):
 
   def __init__(
     self,
-    i2c: busio.I2C|None = None,
+    bus: busio.I2C|None = None,
     address: int = 0x6a,
     onboard_i2c: bool = False,
     refresh_interval: int = 200
   ) -> None:
-    if onboard_i2c and i2c is None:
+    if onboard_i2c and bus is None:
       # From:
       # https://learn.adafruit.com/adafruit-lsm6ds3tr-c-6-dof-accel-gyro-imu/python-circuitpython
       # Copyright (c) 2020 Bryan Siepert for Adafruit Industries. MIT License
@@ -48,8 +48,8 @@ class IMU6(DeviceComponent):
       self._obpwr.direction = Direction.OUTPUT
       self._obpwr.value = True
       time.sleep(0.1)
-      self._obbus = i2c = busio.I2C(board.IMU_SCL, board.IMU_SDA)
-    super().__init__(i2c, address)
+      self._obbus = bus = busio.I2C(board.IMU_SCL, board.IMU_SDA)
+    super().__init__(bus, address)
     from adafruit_lsm6ds.lsm6ds3trc import LSM6DS3TRC
     self.sensor = LSM6DS3TRC(self.bus, address)
     self.refresh_interval = refresh_interval
@@ -158,12 +158,12 @@ class IMU9(DeviceComponent):
 
   def __init__(
     self,
-    i2c: busio.I2C|None = None,
+    bus: busio.I2C|None = None,
     address: int = 0x29,
     refresh_interval: int = 200,
     **config,
   ) -> None:
-    super().__init__(i2c, address)
+    super().__init__(bus, address)
     self.sensor = self.SensorCls(self.bus, address, defer_init=True)
     self.refresh_interval = refresh_interval
     self.packed = bytearray(self.PKR.size)

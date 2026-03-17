@@ -5,7 +5,6 @@ import struct
 import traceback
 from collections import OrderedDict
 
-import busio
 import storage
 
 from . import Component
