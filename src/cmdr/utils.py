@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 import struct
-import time
 import board
+import supervisor
 from microcontroller import Pin
 
 
@@ -23,7 +23,7 @@ def as_pin(pin: str|Pin) -> Pin:
   return pin
 
 def millis() -> int:
-  return time.monotonic_ns() // 1_000_000
+  return supervisor.ticks_ms()
 
 def ysleep(secs: float):
   at = millis() + secs * 1000

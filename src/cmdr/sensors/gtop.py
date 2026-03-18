@@ -35,7 +35,8 @@ INIT_CMDS = const((
   PMTK_SET_NMEA_OUTPUT_RMCGGA,
   PMTK_SET_NMEA_UPDATE_1HZ,
   PMTK_API_SET_FIX_CTL_1HZ))
-_INIT_WAITMS = const(1000)
+_CMD_WAITMS = const(1000)
+_UPDATE_MINMS = const(1000)
 
 class Gtop(SensorBase):
 
@@ -49,9 +50,10 @@ class Gtop(SensorBase):
     from contrib.wmm import WMMv2
     from contrib.wmmcof import wmm_cof
     super().__init__(bus, address=address, debug=debug, timeout=timeout)
-    self._initit = iter(INIT_CMDS)
-    self.send_command(next(self._initit))
-    self._lastinitat = supervisor.ticks_ms()
+    self._cmdit = iter(INIT_CMDS)
+    self.send_command(next(self._cmdit))
+    self._lastcmdat = supervisor.ticks_ms()
+    self._lastresultat = 0
     self.wmm = WMMv2(*wmm_cof())
 
   @property
@@ -71,25 +73,36 @@ class Gtop(SensorBase):
       return calc.dip_angle
 
   def update(self):
-    result = super().update()
-    if self._initit:
-      if supervisor.ticks_ms() - self._lastinitat < _INIT_WAITMS:
+    if self._cmdit:
+      if supervisor.ticks_ms() - self._lastcmdat < _CMD_WAITMS:
         return False
       try:
-        cmd = next(self._initit)
+        cmd = next(self._cmdit)
       except StopIteration:
-        self._initit = None
-        del self._lastinitat
+        self._cmdit = None
+        del self._lastcmdat
       else:
         self.send_command(cmd)
-        self._lastinitat = supervisor.ticks_ms()
+        self._lastcmdat = supervisor.ticks_ms()
         return False
-    if result and self.fix_quality & 1:
-      if self.timestamp_utc and self.timestamp_utc.tm_year:
-        decyear = decimyear(self.timestamp_utc)
-        altkm = (self.altitude_m or 0) / 1000
-        self.wmm.observe(self.latitude, self.longitude, decyear, altkm)
+    if supervisor.ticks_ms() - self._lastresultat < _UPDATE_MINMS:
+      return False
+    result = super().update()
+    if result:
+      self._lastresultat = supervisor.ticks_ms()
+      if self.fix_quality & 1:
+        if self.timestamp_utc and self.timestamp_utc.tm_year:
+          decyear = decimyear(self.timestamp_utc)
+          altkm = (self.altitude_m or 0) / 1000
+          self.wmm.observe(self.latitude, self.longitude, decyear, altkm)
     return result
+
+  def _update_timestamp_utc(self, time_utc: str, date: str|None = None) -> None:
+    try:
+      super()._update_timestamp_utc(time_utc, date)
+    except ValueError:
+      print(f'{time_utc=} {date=}')
+      raise
 
 def decimyear(value: time.struct_time) -> float:
   return value.tm_year + value.tm_yday / (366 - bool(value.tm_year % 4))

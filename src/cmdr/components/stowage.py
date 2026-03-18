@@ -32,7 +32,7 @@ class Persister(Component):
     self.peristables: list[Component] = []
 
   def app_ready(self, app):
-    for component in app.components.values():
+    for component in app.components:
       if component is not self and component.persistable:
         self.peristables.append(component)
         key = component.persistkey

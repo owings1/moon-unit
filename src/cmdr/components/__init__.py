@@ -44,6 +44,11 @@ class Component:
   def persistable(self) -> bool:
     return bool(self.persistkey)
 
+  @property
+  def app(self) -> App:
+    from app import app
+    return app
+
   def __getitem__(self, name: str):
     if name in self.FLAGMAP:
       flagdef = self.FLAGMAP[name]
@@ -104,9 +109,6 @@ class Component:
     pass
 
   def dump_persistent(self) -> bytes|bytearray|None:
-    pass
-
-  def app_init(self, app: App) -> None:
     pass
 
   def app_ready(self, app: App) -> None:

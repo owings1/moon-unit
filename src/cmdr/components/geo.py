@@ -20,6 +20,9 @@ class GPS(DeviceComponent):
     wmm_declination=dict(fmt='f'),
     wmm_dip_angle=dict(fmt='f'),
   ))
+  SLCINFO_PERSIST = CompAttr.sliceinfo(ATTRMAP, -2, -1)
+  PERSIST_NS = 0x2360
+  PERSIST_VER = 0x01
 
   def __init__(
     self,
@@ -54,9 +57,22 @@ class GPS(DeviceComponent):
       change = change or attr.name != 'timestamp' and prev != self[attr.name]
     if self['fix_quality']:
       self.refresh_interval = self.refresh_interval_fix
+      if self.sensor.wmm_declination is not None:
+        self.app.system_data['gps:wmm_declination'] = self.sensor.wmm_declination
     else:
       self.refresh_interval = self.refresh_interval_nofix
     return change
+
+  def dump_persistent(self):
+    if self['fix_quality'] and self['wmm_declination']:
+      return self.packed[self.SLCINFO_PERSIST.slc]
+
+  def load_persistent(self, buf):
+    slcinfo = self.SLCINFO_PERSIST
+    attr = slcinfo.attrs[0]
+    value = attr.unpack_from(buf, -slcinfo.slc.start)
+    if value and not self[attr.name] and not self.app.system_data.get(f'gps:{attr.name}'):
+      self.app.system_data[f'gps:{attr.name}'] = value
 
 class MagnetometerHMC(DeviceComponent):
   PKR = Pkr('<')
@@ -92,6 +108,10 @@ class MagnetometerHMC(DeviceComponent):
       change = change or prev != self[attr.name]
     return change
 
+  @property
+  def declination_degrees(self) -> float:
+    return self.app.system_data.get('gps:wmm_declination', 0.0)
+
 class MagnetometerQMC(DeviceComponent):
   PKR = Pkr('<')
   ATTRMAP: dict[str, CompAttr] = CompAttr.makeattrs(PKR, OrderedDict(
@@ -126,3 +146,7 @@ class MagnetometerQMC(DeviceComponent):
       attr.pack_into(self.packed, getattr(self.sensor, attr.name))
       change = change or prev != self[attr.name]
     return change
+
+  @property
+  def declination_degrees(self) -> float:
+    return self.app.system_data.get('gps:wmm_declination', 0.0)

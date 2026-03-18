@@ -2,15 +2,16 @@ from __future__ import annotations
 
 import struct
 import time
-from collections import OrderedDict
+from collections import OrderedDict, namedtuple
+import math
 
 import board
 import busio
 from digitalio import DigitalInOut, Direction
 from micropython import const
-from utils import Pkr
+from utils import Pkr, debug
 
-from . import CompAttr, DeviceComponent
+from . import CompAttr, DeviceComponent, Component
 
 class IMU6(DeviceComponent):
   PKR = Pkr('<')
@@ -48,12 +49,6 @@ class IMU6(DeviceComponent):
     self.refresh_interval = refresh_interval
     self.packed = bytearray(self.PKR.size)
 
-  # def __getitem__(self, name: str):
-  #   if name in self.FLAGMAP:
-  #     flagdef = self.FLAGMAP[name]
-  #     return (self[flagdef[1]] >> flagdef[2]) & flagdef[3]
-  #   return self.ATTRMAP[name].unpack_from(self.packed)
-
   def refresh(self) -> bool:
     change = False
     for attr in self.ATTRMAP.values():
@@ -74,6 +69,7 @@ class Imu9RefreshState:
   it = None
   new_config = None
   is_init = False
+  last_was_change = False
 
   def ready(self):
     if self.waiting():
@@ -94,7 +90,10 @@ class IMU9(DeviceComponent):
     magnetic=dict(fmt='3e'),
     gyro=dict(fmt='3e'),
     euler=dict(fmt='3e'),
+    declination_degrees=dict(fmt='e', src='self'),
+    # euler_heading=dict(fmt='f', src='self'),
     quaternion=dict(fmt='4e'),
+    heading=dict(fmt='f', src='self'),
     gravity=dict(fmt='3e'),
     linear_acceleration=dict(fmt='3e'),
     temperature=dict(fmt='b'),
@@ -103,8 +102,8 @@ class IMU9(DeviceComponent):
     offsets_accelerometer=dict(fmt='3h', writeable=True),
     offsets_magnetometer=dict(fmt='3h', writeable=True),
     offsets_gyroscope=dict(fmt='3h', writeable=True),
-    radius_accelerometer=dict(fmt='h'),
-    radius_magnetometer=dict(fmt='h'),
+    radius_accelerometer=dict(fmt='h', writeable=True),
+    radius_magnetometer=dict(fmt='h', writeable=True),
   ))
   FLAGMAP = OrderedDict((x[0], x) for x in (
     ('cal_mag', 'calflag', 0x0, 0x3),
@@ -114,11 +113,11 @@ class IMU9(DeviceComponent):
   ))
   SLCINFO_DATA = CompAttr.sliceinfo(ATTRMAP, 0, -5)
   SLCINFO_CONFIG = CompAttr.sliceinfo(ATTRMAP, -5, None)
-  SLCINFO_PERSIST = CompAttr.sliceinfo(ATTRMAP, -6, -2)
-  PERSIST_NS = const(0x4939)
-  PERSIST_VER = const(0x03)
-  MIN_REFRESH_INTERVAL = const(90)
-  CONFIG_MODE = const(0x00)
+  SLCINFO_PERSIST = CompAttr.sliceinfo(ATTRMAP, -6, None)
+  PERSIST_NS = 0x4939
+  PERSIST_VER = 0x04
+  MIN_REFRESH_INTERVAL = 90
+  CONFIG_MODE = 0x00
 
   @property
   def refresh_interval(self) -> int:
@@ -143,19 +142,10 @@ class IMU9(DeviceComponent):
     self.refresh_state: Imu9RefreshState = Imu9RefreshState()
     self.refresh_state.it = self.sensor.yinit(**config)
 
-  # def __getitem__(self, name: str):
-  #   if name in self.FLAGMAP:
-  #     flagdef = self.FLAGMAP[name]
-  #     return (self[flagdef[1]] >> flagdef[2]) & flagdef[3]
-  #   return self.ATTRMAP[name].unpack_from(self.packed)
-
-  def refresh_if_needed(self) -> int:
+  def is_refresh_needed(self):
     if self.refresh_state.waiting():
-      if self.refresh_state.ready():
-        self.refresh_next_tick = True
-      else:
-        return 0
-    return super().refresh_if_needed()
+      return self.refresh_state.ready()
+    return super().is_refresh_needed()
   
   def refresh(self) -> bool:
     state = self.refresh_state
@@ -174,6 +164,7 @@ class IMU9(DeviceComponent):
       else:
         state.it = None
         state.is_init = True
+      state.last_was_change = False
       return is_first_data
 
     if stage == 1:
@@ -185,11 +176,13 @@ class IMU9(DeviceComponent):
       next_mode = state.mode_restore
       state.mode_restore = None
 
-    # a = self.packed[slcinfo.slc]
     change = False
     for attr in slcinfo.attrs:
       prev = change or self[attr.name]
-      value = getattr(self.sensor, attr.src or attr.name)
+      if attr.src == 'self':
+        value = getattr(self, attr.name)
+      else:
+        value = getattr(self.sensor, attr.name)
       attr.pack_into(self.packed, value)
       change = change or prev != self[attr.name]
 
@@ -197,7 +190,12 @@ class IMU9(DeviceComponent):
     state.next_stage = stage + 1
     # trigger first yield
     state.ready()
-    return state.is_init and change
+
+    # Only return True for change once per cycle to reduce unnecessary load
+    if stage == 1:
+      state.last_was_change = change
+      return False
+    return state.is_init and (change or state.last_was_change)
 
   def write(self, name: str, value) -> None:
     attrdef = self.ATTRMAP[name]
@@ -218,7 +216,115 @@ class IMU9(DeviceComponent):
       attr.name: attr.unpack_from(buf, -slcinfo.slc.start)
       for attr in slcinfo.attrs}
 
+  @property
+  def heading(self):
+    return self.quaternion_heading
 
+  @property
+  def quaternion_heading(self) -> float:
+    w, x, y, z = self['quaternion']
+    t3 = 2.0 * (w * z + x * y)
+    t4 = 1.0 - 2.0 * (y * y + z * z)
+    mag_heading = math.degrees(math.atan2(t3, t4))
+    mag_heading *= -1
+    mag_heading = (mag_heading + 360) % 360
+    return (mag_heading + self.declination_degrees) % 360
+
+  @property
+  def euler_heading(self):
+    return (self['euler'][0] + self.declination_degrees) % 360
+
+  @property
+  def declination_degrees(self) -> float:
+    return self.app.system_data.get('gps:wmm_declination', 0.0)
+
+class Imu9Pair(namedtuple('Imu9Pair', ('a', 'b'))):
+  a: IMU9
+  b: IMU9
+
+class IMU9OrthoPair(Component):
+  PKR = Pkr('<')
+  ATTRMAP: dict[str, CompAttr] = CompAttr.makeattrs(PKR, OrderedDict(
+    a_calflag=dict(fmt='B'),
+    a_quaternion=dict(fmt='4e'),
+    a_heading=dict(fmt='f'),
+    b_calflag=dict(fmt='B'),
+    b_quaternion=dict(fmt='4e'),
+    b_heading=dict(fmt='f'),
+    delta=dict(fmt='f'),
+    calibrated_offset=dict(fmt='f', writeable=True),
+    heading=dict(fmt='f'),
+    declination_degrees=dict(fmt='e'),
+  ))
+  FLAGMAP = OrderedDict((x[0], x) for x in (
+    ('a_cal_mag', 'a_calflag', 0x0, 0x3),
+    ('a_cal_accel', 'a_calflag', 0x2, 0x3),
+    ('a_cal_gyro', 'a_calflag', 0x4, 0x3),
+    ('a_cal_sys', 'a_calflag', 0x6, 0x3),
+    ('b_cal_mag', 'b_calflag', 0x0, 0x3),
+    ('b_cal_accel', 'b_calflag', 0x2, 0x3),
+    ('b_cal_gyro', 'b_calflag', 0x4, 0x3),
+    ('b_cal_sys', 'b_calflag', 0x6, 0x3),
+  ))
+
+  def __init__(
+    self,
+    a_address: int = 0x2800,
+    b_address: int = 0x2900,
+    calibrated_offset: float = 90.0,
+    address: int = 0x1260,
+    refresh_interval: int = 200,
+  ) -> None:
+    self.packed = bytearray(self.PKR.size)
+    self._addrs = a_address, b_address
+    self.component_address = address
+    self.refresh_interval = refresh_interval
+    self.write('calibrated_offset', calibrated_offset)
+
+  def app_ready(self, app):
+    self.pair = Imu9Pair(
+      app.get_component(self._addrs[0]),
+      app.get_component(self._addrs[1]))
+    del self._addrs
+
+  def refresh(self) -> bool:
+    change = False
+    for attr in self.ATTRMAP.values():
+      if attr.writeable:
+        continue
+      prev = change or self[attr.name]
+      if attr.name.startswith('a_'):
+        value = self.pair.a[attr.name[2:]]
+      elif attr.name.startswith('b_'):
+        value = self.pair.b[attr.name[2:]]
+      else:
+        value = getattr(self, attr.name)
+      attr.pack_into(self.packed, value)
+      change = change or prev != self[attr.name]
+    return change
+
+  def write(self, name: str, *v) -> None:
+    attr = self.ATTRMAP[name]
+    if not attr.writeable:
+      raise ValueError(f'{name} is read-only')
+    attr.pack_into(self.packed, v)
+
+  @property
+  def heading(self) -> float:
+    adj_b = (self['b_heading'] + self['calibrated_offset']) % 360
+    rad_a = math.radians(self['a_heading'])
+    rad_b = math.radians(adj_b)
+    avg_x = (math.cos(rad_a) + math.cos(rad_b)) / 2
+    avg_y = (math.sin(rad_a) + math.sin(rad_b)) / 2
+    return math.degrees(math.atan2(avg_y, avg_x)) % 360
+
+  @property
+  def delta(self) -> float:
+    return (self['a_heading'] - self['b_heading']) % 360
+
+  @property
+  def declination_degrees(self) -> float:
+    return self.app.system_data.get('gps:wmm_declination', 0.0)
 
 """
 def t(x):

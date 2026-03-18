@@ -2,17 +2,21 @@ from __future__ import annotations
 
 import board
 import busio
+import gc
 from utils import as_pin, debug, settings, millis
 
 try:
   import sdcardio
   from components import Component
+  from typing import Any
 except ImportError:
   pass
 
 class App:
-  components: dict[int, Component]|None = None
-  addrs: dict[str, int] = None
+  system_data: dict[str, Any]|None = None
+  components: tuple[Component, ...]|None = None
+  addr_to_indx: dict[int, int]|None = None
+  name_to_addr: dict[str, int] = None
   sdcard: sdcardio.SDCard|None = None
   buses: list[busio.I2C|busio.SPI]|None = None
 
@@ -38,18 +42,21 @@ class App:
       print(f'Stopping from Ctrl-C')
 
   def loop(self) -> None:
-    if not self.components:
-      return
-    for component in self.components.values():
+    for component in self.components:
       if component.refresh_if_needed() == 2:
         if component.debug:
           debug()
           for line in component.debug_lines():
             debug(line)
           debug()
+    gc.collect()
 
   def init(self, *names) -> None:
     self.deinit()
+    self.system_data = {}
+    self.name_to_addr = {}
+    self.addr_to_indx = {}
+    components = []
     self.buses = []
     if settings.sd_enabled:
       import sdcardio
@@ -61,52 +68,46 @@ class App:
     for defn in settings.components:
       if defn.get('disabled') or not defn.get('enabled', True):
         continue
-      name = defn['name']
-      if names and name not in names:
+      if names and defn['name'] not in names:
         continue
-      debug(f'Init component {name=}')
-      cls = get_component_class(defn['category'], defn['classname'])
-      options: dict = defn.get('options', {})
-      component: Component = cls(**options)
-      if component.bus and component.bus not in self.buses:
-        self.buses.append(component.bus)
-      component.debug = defn.get('debug')
-      component.persist_id = defn.get('persist_id')
-      self.add_component(component, name)
-    if self.components:
-      for component in self.components.values(): 
-        component.app_init(self)
-      for component in self.components.values():
-        component.app_ready(self)
+      component = self.init_component(**defn)
+      self.addr_to_indx[component.component_address] = len(components)
+      components.append(component)
+      gc.collect()
+    self.components = tuple(components)
+    del components
+    gc.collect()
+    for component in self.components:
+      component.app_ready(self)
+    gc.collect()
 
-  def get_component(self, ref: int|str) -> Component:
-    if self.components is None:
-      raise KeyError(ref)
-    if isinstance(ref, str):
-      ref = self.addrs[ref]
-    return self.components[ref]
-
-  def add_component(self, component: Component, name: str):
-    if self.components is None:
-      from collections import OrderedDict
-      self.components = OrderedDict()
-      self.addrs = OrderedDict()
-    if component.component_address in self.components:
-      raise ValueError(f'Duplicate address: {component.component_address}')
+  def init_component(self, **defn):
+    name = defn['name']
+    debug(f'Init component {name=}')
+    cls = get_component_class(defn['category'], defn['classname'])
+    options: dict = defn.get('options', {})
+    component: Component = cls(**options)
+    component.debug = defn.get('debug', settings.debug)
+    component.persist_id = defn.get('persist_id')
+    address = component.component_address
+    if address in self.addr_to_indx:
+      raise ValueError(f'Duplicate address: {address}')
     if not name:
       raise ValueError(f'Invalid component name: {name}')
-    if name in self.addrs:
+    if name in self.name_to_addr:
       raise ValueError(f'Duplicate component name: {name}')
-    if component.debug is None:
-      component.debug = settings.debug
-    self.components[component.component_address] = component
-    self.addrs[name] = component.component_address
+    self.name_to_addr[name] = address
+    return component
+
+  def get_component(self, ref: int|str) -> Component:
+    if isinstance(ref, str):
+      ref = self.name_to_addr[ref]
+    return self.components[self.addr_to_indx[ref]]
 
   def deinit(self) -> None:
     if self.components:
-      for component in self.components.values():
+      for component in self.components:
         component.deinit()
-    self.components = self.addrs = None
     if self.sdcard:
       import storage
       try:
@@ -118,7 +119,13 @@ class App:
     if self.buses:
       for bus in self.buses:
         bus.deinit()
+    if self.components:
+      for component in self.components:
+        if component.bus:
+          component.bus.deinit()
+    self.components = self.name_to_addr = self.addr_to_indx = None
     self.buses = None
+    self.system_data = None
 
 def get_component_class(category: str, classname: str) -> type[Component]:
   if category == 'motors':
