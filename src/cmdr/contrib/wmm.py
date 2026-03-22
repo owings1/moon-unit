@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import math
+import time
 from collections import namedtuple
 
 try:
@@ -210,7 +211,7 @@ class WMMv2:
     self.k[1][1] = 0.0
     self.otime = self.oalt = self.olat = self.olon = -1000.0
 
-  def observe(self, fLat: float, fLon: float, year: float, altitude: float = 0) -> Calculation:
+  def observe(self, fLat: float, fLon: float, year: float|time.struct_time|tuple[int, ...], altitude: float = 0) -> Calculation:
     """
     Calculate geomagnetic field components at a specified location and time.
     
@@ -240,6 +241,8 @@ class WMMv2:
     The function uses caching to avoid redundant calculations when called repeatedly
     with the same latitude, longitude, or altitude.
     """
+    if isinstance(year, tuple):
+      year = decimyear(year)
     self.glat = fLat
     self.glon = fLon
     self.alt = altitude
@@ -401,3 +404,17 @@ class WMMv2:
       east_intensity=self.by,
       vertical_intensity=self.bz)
     return self.calculation
+
+def decimyear(t: time.struct_time|tuple[int, ...]) -> float:
+  """
+  Convert time struct to year with fractional component
+  """
+  t = time.struct_time(t)
+  # A year is a leap year if divisible by 4, but not 100 (unless also by 400)
+  # Simple check for our GPS lifespan:
+  is_leap = (t.tm_year % 4 == 0) and (t.tm_year % 100 != 0 or t.tm_year % 400 == 0)
+  days_in_year = 366 if is_leap else 365
+  # Use (yday - 1) so Jan 1st 00:00:00 is exactly 2025.0
+  # Add fractional day (hours/mins/secs) for higher precision if needed
+  fractional_day = (t.tm_yday - 1) + (t.tm_hour / 24.0) + (t.tm_min / 1440.0)
+  return t.tm_year + (fractional_day / days_in_year)
