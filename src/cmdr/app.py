@@ -3,7 +3,9 @@ from __future__ import annotations
 import board
 import busio
 import gc
-from utils import as_pin, debug, settings, millis
+import utils
+from supervisor import ticks_ms
+from utils import as_pin, settings
 
 try:
   import sdcardio
@@ -32,23 +34,18 @@ class App:
       self.deinit()
 
   def iloop(self, duration_ms: int|None = None):
-    stop_at = duration_ms and millis() + duration_ms
+    stop_at = duration_ms and ticks_ms() + duration_ms
     try:
       while True:
         self.loop()
-        if stop_at and millis() >= stop_at:
+        if stop_at and ticks_ms() >= stop_at:
           break
     except KeyboardInterrupt:
       print(f'Stopping from Ctrl-C')
 
   def loop(self) -> None:
     for component in self.components:
-      if component.refresh_if_needed() == 2:
-        if component.debug:
-          debug()
-          for line in component.debug_lines():
-            debug(line)
-          debug()
+      component.run()
     gc.collect()
 
   def init(self, *names) -> None:
@@ -66,7 +63,8 @@ class App:
       storage.mount(storage.VfsFat(self.sdcard), settings.sd_mountpath)
       self.buses.append(spi)
     for defn in settings.components:
-      if defn.get('disabled') or not defn.get('enabled', True):
+      defn = dict(defn)
+      if defn.pop('disabled', None) or not defn.pop('enabled', True):
         continue
       if names and defn['name'] not in names:
         continue
@@ -78,17 +76,28 @@ class App:
     del components
     gc.collect()
     for component in self.components:
-      component.app_ready(self)
+      component.setup(self)
     gc.collect()
 
-  def init_component(self, **defn):
-    name = defn['name']
-    debug(f'Init component {name=}')
-    cls = get_component_class(defn['category'], defn['classname'])
-    options: dict = defn.get('options', {})
+  def init_component(
+    self,
+    *,
+    name: str,
+    category: str,
+    classname: str,
+    debug: bool|None = None,
+    persist_id: int|None = None,
+    options: dict[str, Any]|None = None,
+  ):
+    if debug is None:
+      debug = settings.debug
+    if options is None:
+      options = {}
+    utils.debug(f'Init component {name=}')
+    cls = get_component_class(category, classname)
     component: Component = cls(**options)
-    component.debug = defn.get('debug', settings.debug)
-    component.persist_id = defn.get('persist_id')
+    component.debug = debug
+    component.persist_id = persist_id
     address = component.component_address
     if address in self.addr_to_indx:
       raise ValueError(f'Duplicate address: {address}')

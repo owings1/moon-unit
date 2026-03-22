@@ -281,7 +281,7 @@ class IMU9OrthoPair(Component):
     self.refresh_interval = refresh_interval
     self.write('calibrated_offset', calibrated_offset)
 
-  def app_ready(self, app):
+  def setup(self, app):
     self.pair = Imu9Pair(
       app.get_component(self._addrs[0]),
       app.get_component(self._addrs[1]))

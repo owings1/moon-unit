@@ -31,7 +31,7 @@ class Persister(Component):
     self.dirty: set[tuple[int, int, int]] = set()
     self.peristables: list[Component] = []
 
-  def app_ready(self, app):
+  def setup(self, app):
     for component in app.components:
       if component is not self and component.persistable:
         self.peristables.append(component)

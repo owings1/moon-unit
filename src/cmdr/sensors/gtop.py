@@ -17,6 +17,34 @@ except ImportError:
 #
 # http://www.hhhh.org/wiml/proj/nmeaxor.html
 
+"""
+Packet Type: 314 PMTK_API_SET_NMEA_OUTPUT
+0 NMEA_SEN_GLL, // GPGLL interval - Geographic Position - Latitude longitude
+1 NMEA_SEN_RMC, // GPRMC interval - Recommended Minimum Specific GNSS Sentence
+2 NMEA_SEN_VTG, // GPVTG interval - Course over Ground and Ground Speed
+3 NMEA_SEN_GGA, // GPGGA interval - GPS Fix Data
+4 NMEA_SEN_GSA, // GPGSA interval - GNSS DOPS and Active Satellites
+5 NMEA_SEN_GSV, // GPGSV interval - GNSS Satellites in View
+6 //Reserved
+7 //Reserved
+13 //Reserved
+14 //Reserved
+15 //Reserved
+16 //Reserved
+17 //Reserved
+18 NMEA_SEN_MCHN, // PMTKCHN interval - GPS channel status
+
+Supported Frequency Setting
+0 - Disabled or not supported sentence
+1 - Output once every one position fix
+2 - Output once every two position fixes
+3 - Output once every three position fixes
+4 - Output once every four position fixes
+5 - Output once every five position fixes
+
+PMTK314,0,1,0,1,5,5,0,0,0,0,0,0,0,0,0,0,0,0,0
+"""
+
 PMTK_SET_NMEA_OUTPUT_RMCGGA = const(b'PMTK314,0,1,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0')
 'GPRMC + GPGGA'
 # PMTK_SET_NMEA_OUTPUT_GGAONLY = const(b'PMTK314,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0')

@@ -2,10 +2,10 @@ from __future__ import annotations
 
 import struct
 from collections import namedtuple
-
 import board
 import busio
-from utils import Pkr, millis
+from utils import Pkr, debug
+from supervisor import ticks_ms
 
 try:
   from typing import Any, ClassVar, Iterable, Self
@@ -22,7 +22,6 @@ class Component:
   component_address: int
   refresh_interval = 1000
   refreshed_at = 0
-  refresh_next_tick = False
   changed_at = 0
   persistkey: tuple[int, int, int]|None = None
   debug: bool|None = None
@@ -49,6 +48,25 @@ class Component:
     from app import app
     return app
 
+  def run(self) -> None:
+    if self.is_refresh_needed():
+      change = self.refresh()
+      now = ticks_ms()
+      self.refreshed_at = now
+      if change:
+        self.changed_at = now
+        if self.debug:
+          debug()
+          for line in self.debug_lines():
+            debug(line)
+          debug()
+
+  def is_refresh_needed(self) -> bool:
+    now = ticks_ms()
+    if self.refreshed_at < now - self.refresh_interval:
+      return True
+    return False
+
   def __getitem__(self, name: str):
     if name in self.FLAGMAP:
       flagdef = self.FLAGMAP[name]
@@ -68,25 +86,6 @@ class Component:
     yield 'component_address', hex(self.component_address)
     if self.persistkey:
       yield 'persistkey', tuple(map(hex, self.persistkey))
-
-  def is_refresh_needed(self) -> bool:
-    if self.refresh_next_tick:
-      return True
-    now = millis()
-    if self.refreshed_at < now - self.refresh_interval:
-      return True
-    return False
-  
-  def refresh_if_needed(self) -> int:
-    now = millis()
-    if self.is_refresh_needed():
-      self.refresh_next_tick = False
-      change = self.refresh()
-      self.refreshed_at = now
-      if change:
-        self.changed_at = now
-      return 1 + change
-    return 0
   
   def refresh(self) -> bool:
     return False
@@ -111,7 +110,7 @@ class Component:
   def dump_persistent(self) -> bytes|bytearray|None:
     pass
 
-  def app_ready(self, app: App) -> None:
+  def setup(self, app: App) -> None:
     pass
 
 class DeviceComponent(Component):
