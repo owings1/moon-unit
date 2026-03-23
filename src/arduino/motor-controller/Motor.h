@@ -9,7 +9,7 @@
 class Motor {
 
 public:
-  static const uint16_t STOP_DECELERATION = 0xffff;
+  static const uint16_t STOP_DECELERATION = 0xFFFF;
   typedef enum {
     // limit switch states
     BitIsLimitCw = 0,
@@ -18,8 +18,6 @@ public:
     BitIsActive = 2,
     // is the motor moving
     BitIsMoving = 3,
-    // flag to reset acceleration to oldAcceleration after motors are finished
-    // running, for smooth stop on limits.  
     BitIsStopping = 4,
     // pos was manually set
     BitIsManualPos = 5,
@@ -30,65 +28,46 @@ public:
   } SettingsFlagBit;
 
   struct Pins {
-    uint8_t dir;
-    uint8_t step;
-    uint8_t enable;
-    uint8_t limit_cw;
-    uint8_t limit_acw;
+    uint8_t enable = 0;
+    uint8_t limit_cw = 0;
+    uint8_t limit_acw = 0;
   };
 
-  struct __attribute__((packed)) Settings {
-    volatile uint8_t flags = 0x0 | (1 << BitLimitsEnabled);
-    volatile uint16_t maxSpeed = 2000;
-    volatile uint16_t acceleration = 50000;
-  };
-
-  union SettingsUnion {
-    Settings values = {};
-    byte buf[sizeof(Settings)];
-  };
-
-  struct __attribute__((packed)) State {
-    volatile uint8_t flags;
-    int32_t pos;
-    int32_t targetPos;
-    uint16_t speed;
-    // for delaying after enabling motor
-    volatile uint32_t enabledAt;
-    // for checking motor sleep
-    volatile uint32_t lastActionTime;
-  };
-
-  union StateUnion {
-    State values = {};
-    byte buf[sizeof(State)];
-  };
-
-  Motor(Motor::Pins pins);
+  Motor(AccelStepper stepper, Motor::Pins pins);
 
   const uint8_t id;
   const Motor::Pins pins;
-  const Motor::SettingsUnion &settings;
-  const Motor::StateUnion &state;
+  const volatile uint8_t &stateFlags;
+  const volatile uint8_t &settingsFlags;
 
   void begin();
 
-  boolean runIfNeeded();
+  bool run();
+  bool move(const int32_t howMuch);
+  bool stop();
 
-  boolean canMove(const int32_t direction);
-  boolean move(const int32_t howMuch);
-  boolean stop();
-
-  void setPosition(const int32_t value);
+  void setCurrentPosition(const int32_t value);
   void setMaxSpeed(const uint16_t value);
   void setAcceleration(const uint16_t value);
   void setSettingsFlags(const uint8_t value);
   void readLimitSwitches();
+  int32_t currentPosition();
+  int32_t targetPosition();
+  uint16_t maxSpeed();
+  uint16_t acceleration();
+  uint16_t speed();
+protected:
+  // for delaying after enabling motor
+  volatile uint32_t enabledAt;
+  // for checking motor sleep
+  volatile uint32_t lastActionTime;
+  bool canMove(const int32_t direction);
+  AccelStepper stepper;
 
 private:
-  Motor::SettingsUnion _settings;
-  Motor::StateUnion _state;
-  AccelStepper _stepper;
+  volatile uint8_t _stateFlags;
+  volatile uint8_t _settingsFlags;
+  volatile uint16_t _accelerationSaved;
   void _runActive();
   void _updateIdle();
   void _enable();
