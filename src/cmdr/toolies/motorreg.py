@@ -6,11 +6,11 @@ from components.motors import Motor
 def generate_cpp_masks():
   write_regs = []
   busy_regs = []
-
+  busyok = {'stop', 'script_clear', 'script_index'}
   # 1. Inspect ATTRMAP (Attributes/Telemetry)
   for name, attr in Motor.ATTRMAP.items():
     # Only process motor-space registers (non-negative src) that are writeable
-    if attr.src is not None and attr.src >= 0 and attr.writeable:
+    if attr.src is not None and attr.src >= 0 and attr.src < 0x38 and attr.writeable:
       byte_len = struct.calcsize(attr.fmt)
       reg_info = (attr.name, attr.src, byte_len)
       write_regs.append(reg_info)
@@ -36,7 +36,7 @@ def generate_cpp_masks():
       write_regs.append(reg_info)
       
       # Actions like 'move' are busy-protected, but 'stop' is NOT
-      if name != 'stop':
+      if name not in busyok:
         busy_regs.append(reg_info)
 
   def build_mask(regs):
@@ -50,8 +50,8 @@ def generate_cpp_masks():
   b_mask = build_mask(busy_regs)
 
   print(f"// Automatically Generated from {Motor.__name__}")
-  print(f"const uint64_t MOTOR_WRITE_MASK = 0x{w_mask:012X}ULL;")
-  print(f"const uint64_t MOTOR_BUSY_MASK  = 0x{b_mask:012X}ULL;")
+  print(f"static const uint64_t MOTOR_WRITE_MASK = 0x{w_mask:012X}ULL;")
+  print(f"static const uint64_t MOTOR_BUSY_MASK  = 0x{b_mask:012X}ULL;")
   
   print("\n// Writeable Registry Audit:")
   for name, start, length in sorted(write_regs, key=lambda x: x[1]):

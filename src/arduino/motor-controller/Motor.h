@@ -23,6 +23,7 @@ public:
     BitIsStopping = 4,
     // pos was manually set
     BitIsManualPos = 5,
+    BitIsScriptActive = 6,
   } StateFlagBit;
 
   typedef enum {
@@ -42,9 +43,11 @@ public:
   bool move(const int32_t) override;
   bool stop() override;
   bool busy() override;
+  bool scriptActive() override;
 
   void setCurrentPosition(const int32_t) override;
   void setSettingsFlags(const uint8_t) override;
+  void setScriptActive(const bool) override;
   uint8_t getStateFlags() override;
 
   void begin();
@@ -52,8 +55,8 @@ public:
   bool run();
 
 protected:
-  const uint8_t LIMIT_SWITCHES_MASK = (1 << BitIsLimitCw) | (1 << BitIsLimitAcw);
-  const uint8_t SETTINGS_FLAGS_MASK = (1 << BitLimitsEnabled);
+  static const uint8_t LIMIT_SWITCHES_MASK = (1 << BitIsLimitCw) | (1 << BitIsLimitAcw);
+  static const uint8_t SETTINGS_FLAGS_MASK = (1 << BitLimitsEnabled);
   // for delaying after enabling motor
   volatile uint32_t enabledAt;
   // for checking motor sleep

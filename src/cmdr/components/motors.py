@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import struct
 import traceback
-from collections import OrderedDict
+from collections import OrderedDict, deque
 
 import busio
 from micropython import const
@@ -17,6 +17,7 @@ except ImportError:
 
 __all__ = ('Motor',)
 
+PAGE_REGISTER = const(0x04)
 CODE_OK = const(0x00)
 CODE_OTHER_ERROR = const(0x07)
 CODE_WRITE_FAILED = const(0x0B)
@@ -32,12 +33,28 @@ CODE_UNSET = const(0xFF)
 class MotorAttr(CompAttr):
   src: int|None
 
+  def regptr(self, motor: Motor):
+    if self.src is None:
+      return
+    if self.src < 0:
+      return -1 * self.src
+    return self.src + motor.regoffset
+
+  def pagebuf(self, motor: Motor):
+    if self.src is None:
+      return
+    if self.name == 'script':
+      return motor.script_pagebuf
+    return motor.pagebuf
+
 class Motor(DeviceComponent):
   PKR = Pkr('<')
   ATTRMAP: dict[str, MotorAttr] = MotorAttr.makeattrs(PKR, OrderedDict(
     # --- Negative src indicates global device register
     boot_id=dict(src=-0x02, fmt='H'),
     state_flags=dict(src=0x00, fmt='B'),
+    script_index=dict(src=0x01, fmt='B', writeable=True),
+    script_repcode=dict(src=0x02, fmt='B'),
     target_position=dict(src=0x08, fmt='l'),
     speed=dict(src=0x0C, fmt='f'),
     # --- writeable & persisted attributes
@@ -51,6 +68,8 @@ class Motor(DeviceComponent):
     acceleration=dict(src=0x18, fmt='f', writeable=True),
     backing_steps=dict(fmt='L', writeable=True),
     msteps_per_degree=dict(fmt='L', writeable=True),
+    # --- not persisted
+    script=dict(fmt='248B', src=-0x08, writeable=True),
   ))
   FLAGMAP = OrderedDict((x[0], x) for x in (
     ('is_limit_cw', 'state_flags', 0x0, 0x1),
@@ -59,6 +78,7 @@ class Motor(DeviceComponent):
     ('is_moving', 'state_flags', 0x3, 0x1),
     ('is_stopping', 'state_flags', 0x4, 0x1),
     ('is_manual_position', 'state_flags', 0x5, 0x1),
+    ('is_script_active', 'state_flags', 0x6, 0x1),
     ('limits_enabled', 'settings_flags', 0x0, 0x1),
   ))
   ACTMAP = OrderedDict((x[0], x) for x in (
@@ -72,9 +92,10 @@ class Motor(DeviceComponent):
     # ('move_to', '_act_move_to', 'l'),
     ('move_at_speed', '_routine_move_at_speed', 'fl'),
     ('move_to_at_speed', '_routine_move_to_at_speed', 'fl'),
+    ('script_clear', 0x21, 'x'),
+    ('script_exec', 0x22, 'x'),
   ))
-  PAGE_REGISTER = 0x04
-  SLCINFO_PERSIST = MotorAttr.sliceinfo(ATTRMAP, 4, None)
+  SLCINFO_PERSIST = MotorAttr.sliceinfo(ATTRMAP, 6, 6+10)
   PERSIST_NS = 0x9100
   PERSIST_VER = 0x07
   init_defaults = OrderedDict(
@@ -107,9 +128,11 @@ class Motor(DeviceComponent):
     initial = OrderedDict(self.init_defaults)
     initial.update(init_data)
     self.packed = bytearray(self.PKR.size)
-    self.page = (self.id - 1) // 2
-    self.pagebuf = struct.pack('<2B', self.PAGE_REGISTER, self.page)
     self.regoffset = (0x78 * ((self.id - 1) % 2)) + 0x08
+    self.page = (self.id - 1) // 2
+    self.pagebuf = struct.pack(b'<2B', PAGE_REGISTER, self.page)
+    self.script_page = 0x10 + (self.id - 1)
+    self.script_pagebuf = struct.pack(b'<2B', PAGE_REGISTER, self.script_page)
     self.rbuf = bytearray(2)
     for k, v in initial.items():
       self.write(k, v, fail=True)
@@ -131,17 +154,10 @@ class Motor(DeviceComponent):
 
   def read(self, name: str) -> None:
     attr = self.ATTRMAP[name]
-    if attr.src < 0:
-      # Negative src indicates global device register
-      wbuf = (-attr.src).to_bytes(1, 'little')
-    else:
-      reg = attr.src + self.regoffset
-      wbuf = reg.to_bytes(1, 'little')
-      
     with self.device as device:
-      device.write(self.pagebuf)
+      device.write(attr.pagebuf(self))
       device.write_then_readinto(
-        wbuf,
+        attr.regptr(self).to_bytes(1, 'little'),
         self.packed,
         in_start=attr.start,
         in_end=attr.end)
@@ -156,16 +172,24 @@ class Motor(DeviceComponent):
           code = CODE_MOTOR_BUSY
           break
       if name in self.ATTRMAP:
-        attrdef = self.ATTRMAP[name]
-        if not attrdef.writeable:
+        attr = self.ATTRMAP[name]
+        if not attr.writeable:
           code = CODE_READONLY_ATTRIBUTE
           break
-        if attrdef.src is None:
-          attrdef.pack_into(self.packed, v)
+        if attr.src is None:
+          attr.pack_into(self.packed, v)
           code = CODE_OK
           break
-        reg = attrdef.src + self.regoffset
-        fmt = '<B' + attrdef.fmt
+        reg = attr.regptr(self)
+        pagebuf = attr.pagebuf(self)
+        if name == 'script' and len(v) == 1 and isinstance(v[0], (bytes, bytearray)):
+          bufw = bytearray(1)
+          bufw.extend(v[0])
+        else:
+          fmt = '<B' + attr.fmt
+          bufw = bytearray(struct.calcsize(fmt))
+          attr.pack_into(bufw, v, 1)
+        bufw[0] = reg
       else:
         actdef = self.ACTMAP[name]
         if isinstance(actdef[1], str):
@@ -186,9 +210,10 @@ class Motor(DeviceComponent):
           break
         reg = actdef[1] + self.regoffset
         fmt = '<B' + actdef[2]
-      bufw = struct.pack(fmt, reg, *v)
+        pagebuf = self.pagebuf
+        bufw = struct.pack(fmt, reg, *v)
       with self.device as device:
-        device.write(self.pagebuf)
+        device.write(pagebuf)
         device.write(bufw)
         # Read response code
         device.write_then_readinto(self.rbuf, self.rbuf, out_end=1, in_start=1)
@@ -213,6 +238,15 @@ class Motor(DeviceComponent):
     values = struct.unpack(slcinfo.fmt, buf)
     for attr, value in zip(slcinfo.attrs, values):
       self.write(attr.name, value, fail=fail)
+
+  def debug_format_item(self, k: str, v: Any) -> str:
+    if k == 'script':
+      sq = deque((), 16)
+      for x in range(15):
+        it = (f'{hex(v[x*16+i])[2:]:0>2}' for i in range(15))
+        sq.append(' '.join(it))
+      return f'{k}=(\n{'\n'.join(sq)}\n)'
+    return super().debug_format_item(k, v)
 
   def _act_limits_on(self, **kw):
     flagdef = self.FLAGMAP['limits_enabled']

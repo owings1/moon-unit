@@ -96,7 +96,10 @@ class Component:
       yield f'# @{k} {v}'
     yield f'#######################################'
     for k, v in self.debugitems():
-      yield f'{k}={v}'
+      yield self.debug_format_item(k, v)
+
+  def debug_format_item(self, k: str, v: Any) -> str:
+    return f'{k}={v}'
 
   def debugitems(self) -> Iterable[tuple[str, Any]]:
     yield from self.items()

@@ -78,6 +78,9 @@ bool Motor::busy() {
   return checkbit(stateFlags, BitIsMoving);
 }
 
+bool Motor::scriptActive() {
+  return checkbit(stateFlags, BitIsScriptActive);
+}
 void Motor::setCurrentPosition(const int32_t value) {
   stepper.setCurrentPosition(value);
   stateFlags |= 1 << BitIsManualPos;
@@ -85,6 +88,14 @@ void Motor::setCurrentPosition(const int32_t value) {
 
 void Motor::setSettingsFlags(const uint8_t value) {
   settingsFlags = value & SETTINGS_FLAGS_MASK;
+}
+
+void Motor::setScriptActive(const bool value) {
+  if (value) {
+    stateFlags |= 1 << BitIsScriptActive;
+  } else {
+    stateFlags &= ~(1 << BitIsScriptActive);
+  }
 }
 
 void Motor::readLimitSwitches() {
