@@ -153,10 +153,12 @@ class GPS:
   status_flags = PackedField(b'B', 0x3D)
   '[0:A/V, 1:M/A, 2:2D/3D, 3:DRDY]'
   update_counter = PackedField(b'H', 0x3E)
-  total_mess_num = PackedField(b'B', 0x40)
-  "Number of messages"
-  mess_num = PackedField(b'B', 0x41)
-  "Message number"
+  # total_mess_num = PackedField(b'B', 0x40)
+  # "Number of messages"
+  # mess_num = PackedField(b'B', 0x41)
+  # "Message number"
+  gsv_msg_cycle = PackedField(b'B', 0x41)
+  "GSV Message Cycle Total (0-3) / Current (4-7)"
   # 0x42 - 0x65 Sat Table
   checksum = PackedField(b'H', _CHECKSUM_IDX)
   "Data block CRC-16 checksum"
@@ -183,8 +185,8 @@ class GPS:
   61  | 0x3D |  1   |  B      | status_flags     | [0:A/V, 1:M/A, 2-3:3D, 4:DRDY]
   62  | 0x3E |  2   |  H      | update_counter   | Data-Ready Latch (Increments)
   ----+------+------+---------+------------------+------------------------------------
-  64  | 0x40 |  1   |  B      | total_mess_num   | GSV Message Cycle Total
-  65  | 0x41 |  1   |  B      | mess_num         | GSV Message Cycle Current
+  64  | 0x40 |  1   |  B      |                  | [TBD]
+  65  | 0x41 |  1   |  B      | gsv_msg_cycle    | GSV Message [0-3: Total, 4-7: Current]
   66  | 0x42 |  36  | 2BbHB*6 | Sat Table        | 6 Slots (CID, PRN, Elev, Azim, SNR)
   102 | 0x66 |  2   |  H      | checksum         | CRC-16-CCITT over 0x00-0x66
   ====================================================================================
@@ -302,6 +304,26 @@ class GPS:
     passing it the same data"""
     return self.fix_quality_3d >= 2
 
+  @property
+  def gsv_msg_total(self):
+    return self.gsv_msg_cycle & 0x0F
+
+  @gsv_msg_total.setter
+  def gsv_msg_total(self, value):
+    # Clear lower 4 bits, then set new value
+    clean_val = (value or 0) & 0x0F
+    self.gsv_msg_cycle = (self.gsv_msg_cycle & 0xF0) | clean_val
+
+  @property
+  def gsv_msg_current(self):
+    return (self.gsv_msg_cycle >> 4) & 0x0F
+
+  @gsv_msg_current.setter
+  def gsv_msg_current(self, value):
+    # Clear upper 4 bits, then set new value (shifted)
+    clean_val = ((value or 0) & 0x0F) << 4
+    self.gsv_msg_cycle = (self.gsv_msg_cycle & 0x0F) | clean_val
+
   def __init__(
     self,
     uart: UART,
@@ -366,6 +388,7 @@ class GPS:
     if result:
       self._update_wmm()
       self._mark_updated()
+      print(f'_mode_indicator={self._mode_indicator}')
     return result
 
   def _mark_updated(self) -> None:
@@ -649,9 +672,9 @@ class GPS:
     _parse_data_into(st, data, data, length)
     talker = str(talker, "ascii")
     # Number of messages
-    self.total_mess_num = data[0]
+    self.gsv_msg_total = data[0]
     # Message number
-    self.mess_num = data[1]
+    self.gsv_msg_current = data[1]
     # Number of satellites in view
     self.satellites = data[2]
     sat_tup = data[3:]
@@ -678,7 +701,7 @@ class GPS:
     for value in satlist:
       self._sats.append(value)
 
-    if self.mess_num == self.total_mess_num:
+    if self.gsv_msg_current == self.gsv_msg_total:
       # Last part of GSV message
       if len(self._sats) == self.satellites:
         # Transfer received satellites to self.sats

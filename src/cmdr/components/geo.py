@@ -102,8 +102,8 @@ class GPS2(DeviceComponent):
     vert_intensity=dict(fmt='f'),
     status_flags=dict(fmt='B'),
     update_counter=dict(fmt='H'),
-    total_mess_num=dict(fmt='B'),
-    mess_num=dict(fmt='B'),
+    tbd_0x40=dict(fmt='B'),
+    gsv_msg_cycle=dict(fmt='B'),
     sat01=dict(fmt='2BbHB'),
     sat02=dict(fmt='2BbHB'),
     sat03=dict(fmt='2BbHB'),
@@ -215,10 +215,10 @@ class GPSTarget(Component):
     sda: str|Pin|None = None,
     tx: str|Pin|None = None,
     rx: str|Pin|None = None,
+    receiver_buffer_size: int = 0x200,
     sensor_debug: bool = False,
     pin_desired: str|Pin = 'D0',
     pin_available: str|Pin = 'D1',
-    # uart_timeout_ms: int = 10,
     cmd_interval_ms: int = 10_000,
     refresh_interval: int = 100,
   ) -> None:
@@ -233,8 +233,7 @@ class GPSTarget(Component):
     self.sensor_uart: busio.UART = busio.UART(
       as_pin(tx or board.TX),
       as_pin(rx or board.RX),
-      receiver_buffer_size=512)
-    # self.sensor_uart.timeout = uart_timeout_ms / 1000.0
+      receiver_buffer_size=receiver_buffer_size)
     self.refresh_interval = refresh_interval
     self.sensor = GPS(
       self.sensor_uart,

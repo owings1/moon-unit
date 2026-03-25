@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import math
 import time
+from array import array
 from collections import namedtuple
 
 try:
@@ -10,7 +11,37 @@ except ImportError:
   pass
 
 """
-Adapted for CircuitPython from PyWMM:
+WMM Declination Calculation, Adapted for CircuitPython from PyWMM.
+
+- Consolidated API
+- Removed dependencies on numpy
+- Calculation result class
+
+* Author: Doug Owings (Adaptation code, see below for original algorithm author.)
+* License: MIT License
+
+Copyright (C) 2026 Doug Owings. All rights reserved.
+
+Permission is hereby granted, free of charge, to any person obtaining
+a copy of this software and associated documentation files (the
+"Software"), to deal in the Software without restriction, including
+without limitation the rights to use, copy, modify, merge, publish,
+distribute, sublicense, and/or sell copies of the Software, and to
+permit persons to whom the Software is furnished to do so, subject to
+the following conditions:
+
+The above copyright notice and this permission notice shall be
+included in all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE
+LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
+OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
+WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+----------------------------------------
+Original code, including all math & algorithm implementation from PyWMM:
 
 https://github.com/dougc95/pywmm
 
@@ -107,11 +138,6 @@ class WMMv2:
     """
     Initialize the WMMv2 model.
     """
-    try:
-      import ulab.numpy as np
-    except ModuleNotFoundError:
-      import numpy as np # type: ignore
-
     self.maxdeg = 12
     self.maxord = self.maxdeg
     self.defaultDate = epoch + 2.5
@@ -140,18 +166,19 @@ class WMMv2:
     self.b4 = self.b2 * self.b2 # b to the fourth power
     self.c4 = self.a4 - self.b4 # c to the fourth power
 
+    _r13 = range(13)
     # Allocate arrays for spherical harmonic coefficients and calculations
-    self.c    = [[0.0 for _ in range(13)] for _ in range(13)]  # Main field coefficients
-    self.cd   = [[0.0 for _ in range(13)] for _ in range(13)]  # Secular variation coefficients
-    self.tc   = [[0.0 for _ in range(13)] for _ in range(13)]  # Time-adjusted coefficients
-    self.dp   = [[0.0 for _ in range(13)] for _ in range(13)]  # Legendre derivative function
-    self.snorm = np.zeros(169)  # Schmidt normalization factors (13x13 = 169 entries)
-    self.sp   = np.zeros(13)    # sin(m*phi) (longitude)
-    self.cp   = np.zeros(13)    # cos(m*phi) (longitude)
-    self.fn   = np.zeros(13)    # n+1 factors
-    self.fm   = np.zeros(13)    # m factors
-    self.pp   = np.zeros(13)    # Associated Legendre polynomial values
-    self.k    = [[0.0 for _ in range(13)] for _ in range(13)]  # Recursion coefficients
+    self.c    = [[0.0 for _ in _r13] for _ in _r13]  # Main field coefficients
+    self.cd   = [[0.0 for _ in _r13] for _ in _r13]  # Secular variation coefficients
+    self.tc   = [[0.0 for _ in _r13] for _ in _r13]  # Time-adjusted coefficients
+    self.dp   = [[0.0 for _ in _r13] for _ in _r13]  # Legendre derivative function
+    self.snorm = array('f', (0 for _ in range(169)))  # Schmidt normalization factors (13x13 = 169 entries)
+    self.sp   = array('f', (0 for _ in _r13))    # sin(m*phi) (longitude)
+    self.cp   = array('f', self.sp)    # cos(m*phi) (longitude)
+    self.fn   = array('f', self.sp)    # n+1 factors
+    self.fm   = array('f', self.sp)    # m factors
+    self.pp   = array('f', self.sp)    # Associated Legendre polynomial values
+    self.k    = [[0.0 for _ in _r13] for _ in _r13]  # Recursion coefficients
 
     # Variables for geodetic-to-spherical conversion
     self.ct = 0.0  # cos(theta)
