@@ -17,33 +17,17 @@ except ImportError:
 
 __all__ = ('Motor',)
 
-LSHIFT_PAGE = const(0x06)
-LSHIFT_MIDX = const(0x04)
-
-P1_MASK = 0x1 << LSHIFT_PAGE
-
-M_STATE_FLAGS = P1_MASK | 0x0
-M_SETTINGS_FLAGS = P1_MASK | 0x1
-M_POSITION = P1_MASK | 0x2
-M_MAX_SPEED = P1_MASK | 0x3
-M_ACCELERATION = P1_MASK | 0x4
-M_MOVE_CW = P1_MASK | 0x5
-M_MOVE_ACW = P1_MASK | 0x6
-M_SPEED = P1_MASK | 0x7
-M_TARGET_POSITION = P1_MASK | 0xc
-M_STOP = P1_MASK | 0xf
-
 CODE_OK = const(0x00)
 CODE_OTHER_ERROR = const(0x07)
-CODE_WRITE_FAILED = const(0x0b)
-CODE_MOTOR_BUSY = const(0x1f)
+CODE_WRITE_FAILED = const(0x0B)
+CODE_MOTOR_BUSY = const(0x1F)
 CODE_CANCELED = const(0x20)
-CODE_MALFORMED_COMMAND = const(0x28)
-CODE_UNKNOWN_COMMAND = const(0x2c)
-CODE_INVALID_MOTORID = const(0x2d)
-CODE_COMMAND_IGNORED = const(0x2e)
-CODE_COMMAND_PARTIALLY_IGNORED = const(0x2f)
+CODE_UNKNOWN_COMMAND = const(0x2C)
+CODE_INVALID_MOTORID = const(0x2D)
+CODE_COMMAND_IGNORED = const(0x2E)
+CODE_COMMAND_PARTIALLY_IGNORED = const(0x2F)
 CODE_READONLY_ATTRIBUTE = const(0x30)
+CODE_UNSET = const(0xFF)
 
 class MotorAttr(CompAttr):
   src: int|None
@@ -51,19 +35,21 @@ class MotorAttr(CompAttr):
 class Motor(DeviceComponent):
   PKR = Pkr('<')
   ATTRMAP: dict[str, MotorAttr] = MotorAttr.makeattrs(PKR, OrderedDict(
-    state_flags=dict(src=M_STATE_FLAGS, fmt='B'),
-    target_position=dict(src=M_TARGET_POSITION, fmt='l'),
-    speed=dict(src=M_SPEED, fmt='h'),
+    # --- Negative src indicates global device register
+    boot_id=dict(src=-0x02, fmt='H'),
+    state_flags=dict(src=0x00, fmt='B'),
+    target_position=dict(src=0x08, fmt='l'),
+    speed=dict(src=0x0C, fmt='f'),
     # --- writeable & persisted attributes
-    position=dict(src=M_POSITION, fmt='l', writeable=True),
+    position=dict(src=0x04, fmt='l', writeable=True),
     position_max=dict(fmt='L', writeable=True),
-    settings_flags=dict(src=M_SETTINGS_FLAGS, fmt='B', writeable=True),
-    max_speed=dict(src=M_MAX_SPEED, fmt='H', writeable=True),
-    default_speed=dict(fmt='H', writeable=True),
-    homing_speed=dict(fmt='H', writeable=True),
-    fixing_speed=dict(fmt='H', writeable=True),
-    acceleration=dict(src=M_ACCELERATION, fmt='H', writeable=True),
-    backing_steps=dict(fmt='H', writeable=True),
+    settings_flags=dict(src=0x10, fmt='B', writeable=True),
+    max_speed=dict(src=0x14, fmt='f', writeable=True),
+    default_speed=dict(fmt='f', writeable=True),
+    homing_speed=dict(fmt='f', writeable=True),
+    fixing_speed=dict(fmt='f', writeable=True),
+    acceleration=dict(src=0x18, fmt='f', writeable=True),
+    backing_steps=dict(fmt='L', writeable=True),
     msteps_per_degree=dict(fmt='L', writeable=True),
   ))
   FLAGMAP = OrderedDict((x[0], x) for x in (
@@ -76,25 +62,23 @@ class Motor(DeviceComponent):
     ('limits_enabled', 'settings_flags', 0x0, 0x1),
   ))
   ACTMAP = OrderedDict((x[0], x) for x in (
-    ('stop', M_STOP, ''),
+    ('stop', 0x20, 'x'),
     ('home', '_routine_home', ''),
     ('end', '_routine_end', ''),
     ('home_end', '_routine_home_end', ''),
     ('limits_on', '_act_limits_on', ''),
     ('limits_off', '_act_limits_off', ''),
-    # ('move_to', C2_MOVE_TO, 'L'),
-    ('move', '_act_move', 'l'),
-    ('move_cw', M_MOVE_CW, 'L'),
-    ('move_acw', M_MOVE_ACW, 'L'),
-    # ('move_to_at_speed', C2_MOVE_TO_AT_SPEED, 2),
-    ('move_at_speed', '_routine_move_at_speed', 'Hl'),
-    ('move_cw_at_speed', '_routine_move_cw_at_speed', 'HL'),
-    ('move_acw_at_speed', '_routine_move_acw_at_speed', 'HL'),
+    ('move', 0x1C, 'l'),
+    # ('move_to', '_act_move_to', 'l'),
+    ('move_at_speed', '_routine_move_at_speed', 'fl'),
+    ('move_to_at_speed', '_routine_move_to_at_speed', 'fl'),
   ))
-  SLCINFO_PERSIST = MotorAttr.sliceinfo(ATTRMAP, 3, None)
-  PERSIST_NS = const(0x9100)
-  PERSIST_VER = const(0x04)
+  PAGE_REGISTER = 0x04
+  SLCINFO_PERSIST = MotorAttr.sliceinfo(ATTRMAP, 4, None)
+  PERSIST_NS = 0x9100
+  PERSIST_VER = 0x07
   init_defaults = OrderedDict(
+    settings_flags=0x01,
     max_speed=0x7ff,
     default_speed=0x7ff,
     homing_speed=0xfff,
@@ -111,7 +95,7 @@ class Motor(DeviceComponent):
     self,
     id: int, 
     bus: busio.I2C|None = None,
-    address: int = 0x9,
+    address: int = 0x09,
     refresh_interval: int = 500,
     **init_data
   ) -> None:
@@ -123,11 +107,17 @@ class Motor(DeviceComponent):
     initial = OrderedDict(self.init_defaults)
     initial.update(init_data)
     self.packed = bytearray(self.PKR.size)
-    self.idmask = self.id - 1 << LSHIFT_MIDX
+    self.page = (self.id - 1) // 2
+    self.pagebuf = struct.pack('<2B', self.PAGE_REGISTER, self.page)
+    self.regoffset = (0x78 * ((self.id - 1) % 2)) + 0x08
+    self.rbuf = bytearray(2)
     for k, v in initial.items():
-      self.write(k, v)
+      self.write(k, v, fail=True)
+    self.read('boot_id')
+    self.last_boot_id = self['boot_id']
 
   def refresh(self):
+    self.check_boot_id()
     a = bytes(self.packed)
     if self.routine:
       try:
@@ -141,65 +131,88 @@ class Motor(DeviceComponent):
 
   def read(self, name: str) -> None:
     attr = self.ATTRMAP[name]
-    reg = attr.src | self.idmask
+    if attr.src < 0:
+      # Negative src indicates global device register
+      wbuf = (-attr.src).to_bytes(1, 'little')
+    else:
+      reg = attr.src + self.regoffset
+      wbuf = reg.to_bytes(1, 'little')
+      
     with self.device as device:
+      device.write(self.pagebuf)
       device.write_then_readinto(
-        reg.to_bytes(1),
+        wbuf,
         self.packed,
-        out_end=1,
         in_start=attr.start,
         in_end=attr.end)
 
-  def write(self, name: str, *v, unsafe: bool = False) -> int:
-    if not unsafe and self.routine:
-      if name == 'stop':
-        self.routine.cancel()
-        self.routine = None
+  def write(self, name: str, *v, unsafe: bool = False, fail: bool = False) -> int:
+    code = CODE_OK
+    for _ in range(1):
+      if not unsafe and self.routine:
+        if name == 'stop':
+          self.routine = self.routine.cancel()
+        else:
+          code = CODE_MOTOR_BUSY
+          break
+      if name in self.ATTRMAP:
+        attrdef = self.ATTRMAP[name]
+        if not attrdef.writeable:
+          code = CODE_READONLY_ATTRIBUTE
+          break
+        if attrdef.src is None:
+          attrdef.pack_into(self.packed, v)
+          code = CODE_OK
+          break
+        reg = attrdef.src + self.regoffset
+        fmt = '<B' + attrdef.fmt
       else:
-        return CODE_MOTOR_BUSY
-    if name in self.ATTRMAP:
-      attrdef = self.ATTRMAP[name]
-      if not attrdef.writeable:
-        return CODE_READONLY_ATTRIBUTE
-      if attrdef.src is None:
-        attrdef.pack_into(self.packed, v)
-        return CODE_OK
-      reg = attrdef.src | self.idmask
-      fmt = '>B' + attrdef.fmt
-    else:
-      actdef = self.ACTMAP[name]
-      if isinstance(actdef[1], str):
-        if actdef[2]:
-          v = struct.unpack(actdef[2], struct.pack(actdef[2], *v))
-        if actdef[1].startswith('_routine'):
-          if self.routine:
-            return CODE_COMMAND_IGNORED
-          self.routine = getattr(self, actdef[1])(*v)
-          self.refresh_next_tick = True
-          return CODE_OK
-        if actdef[1].startswith('_act'):
-          return getattr(self, actdef[1])(*v, unsafe=unsafe)
-        return CODE_UNKNOWN_COMMAND
-      reg = actdef[1] | self.idmask
-      fmt = '>B' + actdef[2]
-    bufw = struct.pack(fmt, reg, *v)
-    bufr = bytearray(1)
-    with self.device as device:
-      device.write_then_readinto(bufw, bufr)
-    return int.from_bytes(bufr)
+        actdef = self.ACTMAP[name]
+        if isinstance(actdef[1], str):
+          if actdef[2]:
+            v = struct.unpack(actdef[2], struct.pack(actdef[2], *v))
+          if actdef[1].startswith('_routine'):
+            if self.routine:
+              code = CODE_COMMAND_IGNORED
+              break
+            self.routine = getattr(self, actdef[1])(*v)
+            next(self.routine)
+            code = CODE_OK
+            break
+          if actdef[1].startswith('_act'):
+            code = getattr(self, actdef[1])(*v, unsafe=unsafe)
+            break
+          code = CODE_UNKNOWN_COMMAND
+          break
+        reg = actdef[1] + self.regoffset
+        fmt = '<B' + actdef[2]
+      bufw = struct.pack(fmt, reg, *v)
+      with self.device as device:
+        device.write(self.pagebuf)
+        device.write(bufw)
+        # Read response code
+        device.write_then_readinto(self.rbuf, self.rbuf, out_end=1, in_start=1)
+      code = self.rbuf[1]
+      break
+    if fail and code != CODE_OK:
+      raise WriteFailed(f'Write Failed {name=} code={hex(code)}')
+    return code
+
+  def check_boot_id(self):
+    self.read('boot_id')
+    if self['boot_id'] != self.last_boot_id:
+      print(f'Warning: boot_id changed, restoring state')
+      self.load_persistent(self.dump_persistent())
+      self.last_boot_id = self['boot_id']
 
   def dump_persistent(self):
     return self.packed[self.SLCINFO_PERSIST.slc]
 
-  def load_persistent(self, buf: bytes) -> None:
+  def load_persistent(self, buf: bytes, *, fail: bool = True) -> None:
     slcinfo = self.SLCINFO_PERSIST
     values = struct.unpack(slcinfo.fmt, buf)
     for attr, value in zip(slcinfo.attrs, values):
-      self.write(attr.name, value)
-
-  def _act_move(self, steps: int, **kw):
-    name = 'move_acw' if steps < 0 else 'move_cw'
-    return self.write(name, abs(steps), **kw)
+      self.write(attr.name, value, fail=fail)
 
   def _act_limits_on(self, **kw):
     flagdef = self.FLAGMAP['limits_enabled']
@@ -218,15 +231,11 @@ class Motor(DeviceComponent):
   def _routine_home_end(self):
     return MotorChainRoutine(self, (self._routine_home(), self._routine_end()))
 
-  def _routine_move_at_speed(self, speed: int, steps: int):
-    move = 'move_acw' if steps < 0 else 'move_cw'
-    return MotorMoveAtSpeed(self, move, speed, abs(steps))
+  def _routine_move_at_speed(self, speed: float, steps: int):
+    return MotorMoveAtSpeed(self, speed, steps, absolute=False)
 
-  def _routine_move_cw_at_speed(self, speed: int, steps: int):
-    return MotorMoveAtSpeed(self, 'move_cw', speed, steps)
-
-  def _routine_move_acw_at_speed(self, speed: int, steps: int):
-    return MotorMoveAtSpeed(self, 'move_acw', speed, steps)
+  def _routine_move_to_at_speed(self, speed: float, position: int):
+    return MotorMoveAtSpeed(self, speed, position, absolute=True)
 
 class RoutineError(Exception):
   errcode = CODE_OTHER_ERROR
@@ -263,29 +272,38 @@ class MotorRoutine:
       raise
     except Exception as err:
       self.error = err
+      try:
+        self.write('stop', check=False)
+        self.write('stop', check=False)
+        self.write('stop', check=False)
+      except:
+        pass
       traceback.print_exception(err)
       if isinstance(err, RoutineError):
         self.errcode = err.errcode
-        self.status_text = f'Error: {err.errtext}'
+        self.status_text = f'Error: {self.errcode and hex(self.errcode)} {err.errtext}'
       else:
         self.errcode = CODE_OTHER_ERROR
-        self.status_text = f'Error: {err:!r}'
+        self.status_text = f'Error: {err!r}'
       self.cleanup()
 
   def __iter__(self):
     return self
 
   def cancel(self):
-    self.error = RoutineError(code=CODE_CANCELED)
+    self.error = RoutineError(None, CODE_CANCELED)
     self.errcode = CODE_CANCELED
     self.canceled = True
     self.status_text = 'Canceling'
     self.it = iter(())
-    try:
-      if self.moving():
-        self.write('stop')
-    finally:
-      self.cleanup()
+    if self.moving():
+      self.write('stop')
+      self.status_text = 'Canceling (cleanup)'
+      def defered():
+        while self.moving():
+          yield
+        self.cleanup()
+      return defered()
     self.status_text = 'Canceled'
 
   def cleanup(self):
@@ -301,36 +319,41 @@ class MotorRoutine:
   def write(self, name: str, *v, check: bool = True) -> int:
     code = self.motor.write(name, *v, unsafe=True)
     if check and code != CODE_OK:
-      raise WriteFailed(name)
+      raise WriteFailed(f'{name=} {hex(code)}')
     return CODE_OK
 
   def ymove(self, *args, **kw):
-    self.write(*args, **kw)
+    self.write('move', *args, **kw)
     yield
     while self.moving():
       yield
 
 class MotorMoveAtSpeed(MotorRoutine):
 
-  def __init__(self, motor: Motor, move: str, speed: int, steps: int):
-    self.move = move
+  def __init__(self, motor: Motor, speed: float, target: int, absolute: bool = False):
     self.speed = speed
-    self.steps = steps
+    self.target = target
+    self.absolute = absolute
     super().__init__(motor, self.gen())
 
   def gen(self):
     if self.moving():
-      raise RoutineError(code=CODE_MOTOR_BUSY)
+      raise RoutineError(None, CODE_MOTOR_BUSY)
     m = self.motor
+    if self.absolute:
+      m.read('position')
+      steps = self.target - m['position']
+    else:
+      steps = self.target
     self.overrides['max_speed'] = m['max_speed']
     self.write('max_speed', self.speed)
     self.status_text = 'Moving'
-    yield from self.ymove(self.move, self.steps)
+    yield from self.ymove(steps)
 
 class MotorHomeEndBase(MotorRoutine):
   limitflag: str
-  movefwd: str
-  moveback: str
+  movefwd: int
+  moveback: int
 
   def __init__(self, motor: Motor):
     super().__init__(motor, self.gen())
@@ -345,21 +368,21 @@ class MotorHomeEndBase(MotorRoutine):
     if not m['limits_enabled']:
       raise RoutineError('Limits disabled')
     if self.moving():
-      raise RoutineError(code=CODE_MOTOR_BUSY)
+      raise RoutineError(None, CODE_MOTOR_BUSY)
     self.overrides['max_speed'] = m['max_speed']
     self.write('max_speed', m['homing_speed'])
     if not self.islimit():
       self.status_text = 'Moving'
-      yield from self.ymove(self.movefwd, 0x7fffffff)
+      yield from self.ymove(self.movefwd * 0x7fffffff)
     if not self.islimit():
       raise RoutineError('Cannot reach limit')
     while self.islimit():
       self.status_text = 'Backing'
-      yield from self.ymove(self.moveback, m['backing_steps'])
+      yield from self.ymove(self.moveback * m['backing_steps'])
     self.write('max_speed', m['fixing_speed'])
     while not self.islimit():
       self.status_text = 'Fixing'
-      yield from self.ymove(self.movefwd, m['backing_steps'] * 2)
+      yield from self.ymove(self.movefwd * m['backing_steps'] * 2)
     self.finish()
     self.status_text = 'Finished'
 
@@ -368,16 +391,16 @@ class MotorHomeEndBase(MotorRoutine):
 
 class MotorHomeRoutine(MotorHomeEndBase):
   limitflag: str = 'is_limit_acw'
-  movefwd: str = 'move_acw'
-  moveback: str = 'move_cw'
+  movefwd: int = -1
+  moveback: int = 1
 
   def finish(self):
     self.write('position', 0)
 
 class MotorEndRoutine(MotorHomeEndBase):
   limitflag: str = 'is_limit_cw'
-  movefwd: str = 'move_cw'
-  moveback: str = 'move_acw'
+  movefwd: int = 1
+  moveback: int = -1
 
   def finish(self):
     m = self.motor

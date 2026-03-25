@@ -1,5 +1,8 @@
+#include "Arduino.h"
+#include <sys/_stdint.h>
 #include <stdint.h>
 #include "Motor.h"
+#include "MotorWrapper.h"
 #include <AccelStepper.h>
 
 #ifndef LIMIT_TRIPPED
@@ -17,32 +20,20 @@
 
 #define checkbit(flags, bit) ((flags >> bit) & 1)
 
-uint8_t _lastid = 0;
-
-const uint8_t LIMIT_SWITCHES_MASK = (1 << Motor::BitIsLimitCw) | (1 << Motor::BitIsLimitAcw);
-const uint8_t SETTINGS_FLAGS_MASK = (1 << Motor::BitLimitsEnabled);
-
-Motor::Motor(AccelStepper stepper, Motor::Pins pins)
-  : 
-    id(++_lastid),
-    pins(pins),
-    stateFlags(_stateFlags),
-    settingsFlags(_settingsFlags),
-    stepper(stepper)
-{
-  setMaxSpeed(2000);
-  setAcceleration(50000);
+Motor::Motor(AccelStepper& stepper, Motor::Pins pins)
+  : pins(pins),
+    MotorWrapper(stepper) {
 }
 
 void Motor::begin() {
-  if (pins.enable) {
+  if (pins.enable != NOPIN) {
     pinMode(pins.enable, OUTPUT);
     digitalWrite(pins.enable, 1 - MOTOR_ON);
   }
-  if (pins.limit_cw) {
+  if (pins.limit_cw != NOPIN) {
     pinMode(pins.limit_cw, LIMIT_TRIPPED == HIGH ? INPUT_PULLDOWN : INPUT_PULLUP);
   }
-  if (pins.limit_acw) {
+  if (pins.limit_acw != NOPIN) {
     pinMode(pins.limit_acw, LIMIT_TRIPPED == HIGH ? INPUT_PULLDOWN : INPUT_PULLUP);
   }
   lastActionTime = millis();
@@ -61,9 +52,9 @@ bool Motor::run() {
   return false;
 }
 
-bool Motor::move(const int32_t howMuch) {
-  if (canMove(howMuch)) {
-    stepper.move(howMuch);
+bool Motor::move(const int32_t value) {
+  if (canMove(value)) {
+    stepper.move(value);
     _enable();
     return true;
   }
@@ -76,52 +67,39 @@ bool Motor::stop() {
     // D_println("ignoring stop");
     return false;
   }
-  _stateFlags |= 1 << BitIsStopping;
+  stateFlags |= 1 << BitIsStopping;
   _accelerationSaved = stepper.acceleration();
   stepper.setAcceleration(STOP_DECELERATION);
   stepper.stop();
   return true;
 }
 
+bool Motor::busy() {
+  return checkbit(stateFlags, BitIsMoving);
+}
+
 void Motor::setCurrentPosition(const int32_t value) {
   stepper.setCurrentPosition(value);
-  _stateFlags |= 1 << BitIsManualPos;
-}
-
-void Motor::setMaxSpeed(const uint16_t value) {
-  stepper.setMaxSpeed(value);
-}
-
-void Motor::setAcceleration(const uint16_t value) {
-  stepper.setAcceleration(value);
+  stateFlags |= 1 << BitIsManualPos;
 }
 
 void Motor::setSettingsFlags(const uint8_t value) {
-  _settingsFlags = value & SETTINGS_FLAGS_MASK;
+  settingsFlags = value & SETTINGS_FLAGS_MASK;
 }
 
 void Motor::readLimitSwitches() {
-  _stateFlags = (
-    (stateFlags & ~LIMIT_SWITCHES_MASK) |
-    ((pins.limit_cw  ? (digitalRead(pins.limit_cw) == LIMIT_TRIPPED) : 0) << BitIsLimitCw) |
-    ((pins.limit_acw ? (digitalRead(pins.limit_acw) == LIMIT_TRIPPED) : 0) << BitIsLimitAcw)
-  );
+  uint8_t newFlags = 0;
+  if (pins.limit_cw != NOPIN) {
+    newFlags |= (digitalRead(pins.limit_cw) == LIMIT_TRIPPED) << BitIsLimitCw;
+  }
+  if (pins.limit_acw != NOPIN) {
+    newFlags |= (digitalRead(pins.limit_acw) == LIMIT_TRIPPED) << BitIsLimitAcw;
+  }
+  stateFlags = (stateFlags & ~LIMIT_SWITCHES_MASK) | newFlags;
 }
 
-int32_t Motor::currentPosition() {
-  return stepper.currentPosition();
-}
-int32_t Motor::targetPosition() {
-  return stepper.targetPosition();
-}
-uint16_t Motor::maxSpeed() {
-  return stepper.maxSpeed();
-}
-uint16_t Motor::acceleration() {
-  return stepper.acceleration();
-}
-uint16_t Motor::speed() {
-  return fabs(stepper.speed());
+uint8_t Motor::getStateFlags() {
+  return stateFlags;
 }
 
 bool Motor::canMove(const int32_t direction) {
@@ -142,7 +120,7 @@ void Motor::_runActive() {
     }
   }
   lastActionTime = millis();
-  _stateFlags |= 1 << BitIsMoving;
+  stateFlags |= 1 << BitIsMoving;
 }
 
 void Motor::_updateIdle() {
@@ -150,16 +128,17 @@ void Motor::_updateIdle() {
   if (checkbit(stateFlags, BitIsStopping) && stepper.acceleration() != _accelerationSaved) {
     stepper.setAcceleration(_accelerationSaved);
   }
-  _stateFlags &= ~((1 << BitIsMoving) | (1 << BitIsStopping));
+  stateFlags &= ~((1 << BitIsMoving) | (1 << BitIsStopping));
   _checkSleep();
 }
 
 void Motor::_enable() {
   if (!checkbit(stateFlags, BitIsActive)) {
-    if (pins.enable) {
+    if (pins.enable != NOPIN) {
       digitalWrite(pins.enable, MOTOR_ON);
     }
-    _stateFlags |= 1 << BitIsActive;
+    // stepper.enableOutputs();
+    stateFlags |= 1 << BitIsActive;
     enabledAt = millis();
   }
   lastActionTime = millis();
@@ -167,10 +146,11 @@ void Motor::_enable() {
 
 void Motor::_disable() {
   if (checkbit(stateFlags, BitIsActive)) {
-    if (pins.enable) {
+    if (pins.enable != NOPIN) {
       digitalWrite(pins.enable, 1 - MOTOR_ON);
     }
-    _stateFlags &= ~(1 << BitIsActive);
+    // stepper.disableOutputs();
+    stateFlags &= ~(1 << BitIsActive);
     enabledAt = 0;
   }
 }
@@ -180,4 +160,3 @@ void Motor::_checkSleep() {
     _disable();
   }
 }
-

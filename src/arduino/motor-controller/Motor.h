@@ -2,11 +2,13 @@
 #include <sys/_types.h>
 #ifndef Motor_h
 #define Motor_h
+#include "IMotor.h"
+#include "MotorWrapper.h"
 
 #include <Arduino.h>
 #include <AccelStepper.h>
 
-class Motor {
+class Motor : public MotorWrapper {
 
 public:
   static const uint16_t STOP_DECELERATION = 0xFFFF;
@@ -28,46 +30,39 @@ public:
   } SettingsFlagBit;
 
   struct Pins {
-    uint8_t enable = 0;
-    uint8_t limit_cw = 0;
-    uint8_t limit_acw = 0;
+    uint8_t enable = NOPIN;
+    uint8_t limit_cw = NOPIN;
+    uint8_t limit_acw = NOPIN;
   };
 
-  Motor(AccelStepper stepper, Motor::Pins pins);
+  Motor(AccelStepper&, Motor::Pins);
 
-  const uint8_t id;
   const Motor::Pins pins;
-  const volatile uint8_t &stateFlags;
-  const volatile uint8_t &settingsFlags;
+
+  bool move(const int32_t) override;
+  bool stop() override;
+  bool busy() override;
+
+  void setCurrentPosition(const int32_t) override;
+  void setSettingsFlags(const uint8_t) override;
+  uint8_t getStateFlags() override;
 
   void begin();
-
-  bool run();
-  bool move(const int32_t howMuch);
-  bool stop();
-
-  void setCurrentPosition(const int32_t value);
-  void setMaxSpeed(const uint16_t value);
-  void setAcceleration(const uint16_t value);
-  void setSettingsFlags(const uint8_t value);
   void readLimitSwitches();
-  int32_t currentPosition();
-  int32_t targetPosition();
-  uint16_t maxSpeed();
-  uint16_t acceleration();
-  uint16_t speed();
+  bool run();
+
 protected:
+  const uint8_t LIMIT_SWITCHES_MASK = (1 << BitIsLimitCw) | (1 << BitIsLimitAcw);
+  const uint8_t SETTINGS_FLAGS_MASK = (1 << BitLimitsEnabled);
   // for delaying after enabling motor
   volatile uint32_t enabledAt;
   // for checking motor sleep
   volatile uint32_t lastActionTime;
-  bool canMove(const int32_t direction);
-  AccelStepper stepper;
+  bool canMove(const int32_t);
+  volatile uint8_t stateFlags;
 
 private:
-  volatile uint8_t _stateFlags;
-  volatile uint8_t _settingsFlags;
-  volatile uint16_t _accelerationSaved;
+  volatile float _accelerationSaved;
   void _runActive();
   void _updateIdle();
   void _enable();
