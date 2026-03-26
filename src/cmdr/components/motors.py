@@ -48,8 +48,8 @@ class MotorAttr(CompAttr):
   def pagebuf(self, motor: Motor):
     if self.src is None:
       return
-    if self.name == 'script':
-      return motor.script_pagebuf
+    if self.name[:-1] == 'script':
+      return motor.script_pagebufs[int(self.name[-1])]
     return motor.pagebuf
 
 class Motor(DeviceComponent):
@@ -60,6 +60,7 @@ class Motor(DeviceComponent):
     state_flags=dict(src=0x00, fmt='B'),
     script_index=dict(src=0x01, fmt='B', writeable=True),
     script_repcode=dict(src=0x02, fmt='B'),
+    active_script_page=dict(src=0x03, fmt='B', writeable=True),
     target_position=dict(src=0x08, fmt='l'),
     speed=dict(src=0x0C, fmt='f'),
     # --- writeable & persisted attributes
@@ -76,7 +77,10 @@ class Motor(DeviceComponent):
     enable_delay_ms=dict(src=0x11, fmt='B', writeable=True),
     sleep_timeout_ms=dict(src=0x12, fmt='H', writeable=True),
     # --- not persisted
-    script=dict(fmt='248B', src=-0x08, writeable=True),
+    script0=dict(fmt='248B', src=-0x08, writeable=True),
+    script1=dict(fmt='248B', src=-0x08, writeable=True),
+    script2=dict(fmt='248B', src=-0x08, writeable=True),
+    script3=dict(fmt='248B', src=-0x08, writeable=True),
   ))
   FLAGMAP = OrderedDict((x[0], x) for x in (
     ('is_limit_cw', 'state_flags', 0x0, 0x1),
@@ -104,10 +108,10 @@ class Motor(DeviceComponent):
     # ('move_at_speed', '_routine_move_at_speed', 'fl'),
     # ('move_to_at_speed', '_routine_move_to_at_speed', 'fl'),
     ('delay', 0x28, 'L'),
-    ('script_clear', 0x21, 'x'),
-    ('script_exec', 0x22, 'x'),
+    ('script_clear', 0x21, 'B'),
+    ('script_exec', 0x22, 'B'),
   ))
-  SLCINFO_PERSIST = MotorAttr.sliceinfo(ATTRMAP, 6, 6+12)
+  SLCINFO_PERSIST = MotorAttr.sliceinfo(ATTRMAP, 7, 7+12)
   PERSIST_NS = 0x9100
   PERSIST_VER = 0x08
   init_defaults = OrderedDict(
@@ -145,8 +149,12 @@ class Motor(DeviceComponent):
     self.regoffset = (0x78 * ((self.id - 1) % 2)) + 0x08
     self.page = (self.id - 1) // 2
     self.pagebuf = struct.pack(b'<2B', PAGE_REGISTER, self.page)
-    self.script_page = 0x10 + (self.id - 1)
-    self.script_pagebuf = struct.pack(b'<2B', PAGE_REGISTER, self.script_page)
+    self.script_pages = tuple(x + (self.id - 1) for x in range(0x10, 0x50, 0x10))
+    self.script_pagebufs = tuple(
+      struct.pack(b'<2B', PAGE_REGISTER, page)
+      for page in self.script_pages)
+    # self.script_page = 0x10 + (self.id - 1)
+    # self.script_pagebuf = struct.pack(b'<2B', PAGE_REGISTER, self.script_page)
     self.rbuf = bytearray(2)
     for k, v in initial.items():
       self.write(k, v, fail=True)
@@ -222,7 +230,7 @@ class Motor(DeviceComponent):
     
   def _get_attr_write_buf(self, attr: MotorAttr, *v):
     reg = attr.regptr(self)
-    if attr.name == 'script':
+    if attr.name[:-1] == 'script':
       if not v:
         raise ValueError(f'Missing parameters for {attr.name}')
       bufw = bytearray(1)
@@ -261,12 +269,14 @@ class Motor(DeviceComponent):
       self.write(attr.name, value, fail=fail)
 
   def debug_format_item(self, k: str, v: Any) -> str:
-    if k == 'script':
-      sq = deque((), 16)
-      for x in range(15):
-        it = (f'{hex(v[x*16+i])[2:]:0>2}' for i in range(15))
-        sq.append(' '.join(it))
-      return f'{k}=(\n{'\n'.join(sq)}\n)'
+    if k[:-1] == 'script':
+      if any(v):
+        sq = deque((), 8)
+        for x in range(8):
+          it = (f'{hex(v[x*31+i])[2:]:0>2}' for i in range(31))
+          sq.append(' '.join(it))
+        return f'{k}=(\n{'\n'.join(sq)}\n)'
+      return f'{k}=<empty>'
     return super().debug_format_item(k, v)
 
   def _act_limits_on(self, **kw):
@@ -525,12 +535,23 @@ class MotorChainRoutine(MotorRoutine):
 
 class MotorScriptBuilder:
 
-  def __init__(self, motor: Motor|None = None):
+  def __init__(self, motor: Motor):
     self.motor = motor
     self.cmds = []
 
+  def clear(self):
+    self.cmds = []
+
+  def copy(self):
+    other = type(self)(self.motor)
+    other.cmds.extend(self.cmds)
+    return other
+
+  def pop(self):
+    return self.cmds.pop()
+
   def add(self, name: str, *v):
-    fmt, src = Motor.script_cmdinfo(name)
+    fmt, src = self.motor.script_cmdinfo(name)
     if len(self) + struct.calcsize(fmt) + 1 > 248:
       raise ValueError(f'Size limit exceeded')
     buf = bytearray()
@@ -550,18 +571,16 @@ class MotorScriptBuilder:
     fmt = ''.join(x[2] for x in self.cmds)
     return f'<{fmt}B'
 
-  def save(self, motor: Motor|None = None, *, exec: bool = False, fail: bool = True, **kw):
-    motor = motor or self.motor
-    if not motor:
-      raise ValueError(f'Must specify motor in function or constructor')
-    code = motor.write('script_clear', fail=fail, **kw)
+  def save(self, page: int = 0, *, exec: bool = False, fail: bool = True, **kw):
+    motor = self.motor
+    code = motor.write('script_clear', page, fail=fail, **kw)
     if code != CODE_OK:
       return code
-    code = motor.write('script', self.tobuffer(), fail=fail, **kw)
+    code = motor.write(f'script{page}', self.tobuffer(), fail=fail, **kw)
     if code != CODE_OK:
       return code
     if exec:
-      code = motor.write('script_exec', fail=fail, **kw)
+      code = motor.write('script_exec', page, fail=fail, **kw)
     return code
     
   def __len__(self):

@@ -7,7 +7,11 @@ def generate_cpp_masks():
   write_regs = []
   busy_regs = []
   script_regs = []
-  scriptok = {'stop', 'script_index'}
+  scriptok = {
+    'stop',
+    # 'script_index',
+    'script_clear',
+  }
   busyok = scriptok | {'enable_delay_ms', 'sleep_timeout_ms'}
   # 1. Inspect ATTRMAP (Attributes/Telemetry)
   for name, attr in Motor.ATTRMAP.items():
