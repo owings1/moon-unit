@@ -24,10 +24,12 @@ public:
     // pos was manually set
     BitIsManualPos = 5,
     BitIsScriptActive = 6,
+    BitIsDelayActive = 7,
   } StateFlagBit;
 
   typedef enum {
     BitLimitsEnabled = 0,
+    BitSleepEnabled = 1,
   } SettingsFlagBit;
 
   struct Pins {
@@ -43,12 +45,12 @@ public:
   bool move(const int32_t) override;
   bool stop() override;
   bool busy() override;
-  bool scriptActive() override;
+  // bool scriptActive() override;
 
   void setCurrentPosition(const int32_t) override;
   void setSettingsFlags(const uint8_t) override;
   void setScriptActive(const bool) override;
-  uint8_t getStateFlags() override;
+  void setDelayActive(const bool) override;
 
   void begin();
   void readLimitSwitches();
@@ -56,13 +58,12 @@ public:
 
 protected:
   static const uint8_t LIMIT_SWITCHES_MASK = (1 << BitIsLimitCw) | (1 << BitIsLimitAcw);
-  static const uint8_t SETTINGS_FLAGS_MASK = (1 << BitLimitsEnabled);
+  static const uint8_t SETTINGS_FLAGS_MASK = (1 << BitLimitsEnabled) | (1 << BitSleepEnabled);
   // for delaying after enabling motor
   volatile uint32_t enabledAt;
   // for checking motor sleep
   volatile uint32_t lastActionTime;
   bool canMove(const int32_t);
-  volatile uint8_t stateFlags;
 
 private:
   volatile float _accelerationSaved;

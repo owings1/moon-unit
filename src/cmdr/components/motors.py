@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import struct
 import traceback
-from collections import OrderedDict, deque
+from collections import OrderedDict, deque, namedtuple
 
 import busio
 from micropython import const
@@ -29,6 +29,11 @@ CODE_COMMAND_IGNORED = const(0x2E)
 CODE_COMMAND_PARTIALLY_IGNORED = const(0x2F)
 CODE_READONLY_ATTRIBUTE = const(0x30)
 CODE_UNSET = const(0xFF)
+
+class ActDef(namedtuple('ActDef', ('name', 'src', 'fmt'))):
+  name: str
+  src: str|int
+  fmt: str
 
 class MotorAttr(CompAttr):
   src: int|None
@@ -68,6 +73,8 @@ class Motor(DeviceComponent):
     acceleration=dict(src=0x18, fmt='f', writeable=True),
     backing_steps=dict(fmt='L', writeable=True),
     msteps_per_degree=dict(fmt='L', writeable=True),
+    enable_delay_ms=dict(src=0x11, fmt='B', writeable=True),
+    sleep_timeout_ms=dict(src=0x12, fmt='H', writeable=True),
     # --- not persisted
     script=dict(fmt='248B', src=-0x08, writeable=True),
   ))
@@ -79,9 +86,11 @@ class Motor(DeviceComponent):
     ('is_stopping', 'state_flags', 0x4, 0x1),
     ('is_manual_position', 'state_flags', 0x5, 0x1),
     ('is_script_active', 'state_flags', 0x6, 0x1),
+    ('is_delay_active', 'state_flags', 0x7, 0x1),
     ('limits_enabled', 'settings_flags', 0x0, 0x1),
+    ('sleep_enabled', 'settings_flags', 0x1, 0x1),
   ))
-  ACTMAP = OrderedDict((x[0], x) for x in (
+  ACTMAP = OrderedDict((x[0], ActDef(*x)) for x in (
     ('stop', 0x20, 'x'),
     ('home', '_routine_home', ''),
     ('end', '_routine_end', ''),
@@ -89,23 +98,28 @@ class Motor(DeviceComponent):
     ('limits_on', '_act_limits_on', ''),
     ('limits_off', '_act_limits_off', ''),
     ('move', 0x1C, 'l'),
-    # ('move_to', '_act_move_to', 'l'),
-    ('move_at_speed', '_routine_move_at_speed', 'fl'),
-    ('move_to_at_speed', '_routine_move_to_at_speed', 'fl'),
+    ('move_to', 0x24, 'l'),
+    ('move_at_speed', '_act_move_at_speed', 'fl'),
+    ('move_to_at_speed', '_act_move_to_at_speed', 'fl'),
+    # ('move_at_speed', '_routine_move_at_speed', 'fl'),
+    # ('move_to_at_speed', '_routine_move_to_at_speed', 'fl'),
+    ('delay', 0x28, 'L'),
     ('script_clear', 0x21, 'x'),
     ('script_exec', 0x22, 'x'),
   ))
-  SLCINFO_PERSIST = MotorAttr.sliceinfo(ATTRMAP, 6, 6+10)
+  SLCINFO_PERSIST = MotorAttr.sliceinfo(ATTRMAP, 6, 6+12)
   PERSIST_NS = 0x9100
-  PERSIST_VER = 0x07
+  PERSIST_VER = 0x08
   init_defaults = OrderedDict(
-    settings_flags=0x01,
+    settings_flags=0x03,
     max_speed=0x7ff,
     default_speed=0x7ff,
     homing_speed=0xfff,
     fixing_speed=0x1ff,
     acceleration=0xffff,
-    msteps_per_degree=0x27ff)
+    msteps_per_degree=0x27ff,
+    sleep_timeout_ms=2000,
+    enable_delay_ms=2)
   routine: MotorRoutine|None = None
 
   @property
@@ -163,66 +177,73 @@ class Motor(DeviceComponent):
         in_end=attr.end)
 
   def write(self, name: str, *v, unsafe: bool = False, fail: bool = False) -> int:
-    code = CODE_OK
-    for _ in range(1):
-      if not unsafe and self.routine:
-        if name == 'stop':
-          self.routine = self.routine.cancel()
-        else:
-          code = CODE_MOTOR_BUSY
-          break
-      if name in self.ATTRMAP:
-        attr = self.ATTRMAP[name]
-        if not attr.writeable:
-          code = CODE_READONLY_ATTRIBUTE
-          break
-        if attr.src is None:
-          attr.pack_into(self.packed, v)
-          code = CODE_OK
-          break
-        reg = attr.regptr(self)
-        pagebuf = attr.pagebuf(self)
-        if name == 'script' and len(v) == 1 and isinstance(v[0], (bytes, bytearray)):
-          bufw = bytearray(1)
-          bufw.extend(v[0])
-        else:
-          fmt = '<B' + attr.fmt
-          bufw = bytearray(struct.calcsize(fmt))
-          attr.pack_into(bufw, v, 1)
-        bufw[0] = reg
-      else:
-        actdef = self.ACTMAP[name]
-        if isinstance(actdef[1], str):
-          if actdef[2]:
-            v = struct.unpack(actdef[2], struct.pack(actdef[2], *v))
-          if actdef[1].startswith('_routine'):
-            if self.routine:
-              code = CODE_COMMAND_IGNORED
-              break
-            self.routine = getattr(self, actdef[1])(*v)
-            next(self.routine)
-            code = CODE_OK
-            break
-          if actdef[1].startswith('_act'):
-            code = getattr(self, actdef[1])(*v, unsafe=unsafe)
-            break
-          code = CODE_UNKNOWN_COMMAND
-          break
-        reg = actdef[1] + self.regoffset
-        fmt = '<B' + actdef[2]
-        pagebuf = self.pagebuf
-        bufw = struct.pack(fmt, reg, *v)
-      with self.device as device:
-        device.write(pagebuf)
-        device.write(bufw)
-        # Read response code
-        device.write_then_readinto(self.rbuf, self.rbuf, out_end=1, in_start=1)
-      code = self.rbuf[1]
-      break
+    code = self._write(name, *v, unsafe=unsafe)
     if fail and code != CODE_OK:
       raise WriteFailed(f'Write Failed {name=} code={hex(code)}')
     return code
 
+  def _write(self, name: str, *v, unsafe: bool = False) -> int:
+    if not unsafe and self.routine:
+      if name == 'stop':
+        self.routine = self.routine.cancel()
+      else:
+        return CODE_MOTOR_BUSY
+    if name in self.ATTRMAP:
+      attr = self.ATTRMAP[name]
+      if not attr.writeable:
+        return CODE_READONLY_ATTRIBUTE
+      if attr.src is None:
+        attr.pack_into(self.packed, v)
+        return CODE_OK
+      pagebuf = attr.pagebuf(self)
+      bufw = self._get_attr_write_buf(attr, *v)
+    else:
+      actdef = self.ACTMAP[name]
+      if isinstance(actdef.src, str):
+        if actdef.fmt:
+          v = struct.unpack(actdef.fmt, struct.pack(actdef.fmt, *v))
+        if actdef.src.startswith('_routine'):
+          if self.routine:
+            return CODE_COMMAND_IGNORED
+          self.routine = getattr(self, actdef.src)(*v)
+          next(self.routine)
+          return CODE_OK
+        if actdef.src.startswith('_act'):
+          return getattr(self, actdef.src)(*v, unsafe=unsafe)
+        return CODE_UNKNOWN_COMMAND
+      pagebuf = self.pagebuf
+      bufw = self._get_act_write_buf(actdef, *v)
+    with self.device as device:
+      device.write(pagebuf)
+      device.write(bufw)
+      # Read response code
+      device.write_then_readinto(self.rbuf, self.rbuf, out_end=1, in_start=1)
+    return self.rbuf[1]
+    
+  def _get_attr_write_buf(self, attr: MotorAttr, *v):
+    reg = attr.regptr(self)
+    if attr.name == 'script':
+      if not v:
+        raise ValueError(f'Missing parameters for {attr.name}')
+      bufw = bytearray(1)
+      if len(v) == 1 and isinstance(v[0], (bytes, bytearray)):
+        bufw.extend(v[0])
+      else:
+        bufw.extend(v)
+      if len(bufw) - 1 > attr.end - attr.start:
+        raise ValueError(f'Size exceeds max for {attr.name}')
+    else:
+      fmt = '<B' + attr.fmt
+      bufw = bytearray(struct.calcsize(fmt))
+      attr.pack_into(bufw, v, 1)
+    bufw[0] = reg
+    return bufw
+
+  def _get_act_write_buf(self, actdef: ActDef, *v):
+    reg = actdef.src + self.regoffset
+    fmt = '<B' + actdef.fmt
+    return struct.pack(fmt, reg, *v)
+    
   def check_boot_id(self):
     self.read('boot_id')
     if self['boot_id'] != self.last_boot_id:
@@ -265,11 +286,42 @@ class Motor(DeviceComponent):
   def _routine_home_end(self):
     return MotorChainRoutine(self, (self._routine_home(), self._routine_end()))
 
-  def _routine_move_at_speed(self, speed: float, steps: int):
-    return MotorMoveAtSpeed(self, speed, steps, absolute=False)
+  def _act_move_at_speed(self, speed: float, steps: int, **kw) -> int:
+    s = self.script_builder()
+    s.add('max_speed', speed)
+    s.add('move', steps)
+    s.add('max_speed', self['max_speed'])
+    return s.save(exec=True, fail=False, **kw)
 
-  def _routine_move_to_at_speed(self, speed: float, position: int):
-    return MotorMoveAtSpeed(self, speed, position, absolute=True)
+  def _act_move_to_at_speed(self, speed: float, position: int, **kw) -> int:
+    s = self.script_builder()
+    s.add('max_speed', speed)
+    s.add('move_to', position)
+    s.add('max_speed', self['max_speed'])
+    return s.save(exec=True, fail=False, **kw)
+
+  # def _routine_move_at_speed(self, speed: float, steps: int):
+  #   return MotorMoveAtSpeed(self, speed, steps, absolute=False)
+
+  # def _routine_move_to_at_speed(self, speed: float, position: int):
+  #   return MotorMoveAtSpeed(self, speed, position, absolute=True)
+
+  def script_builder(self):
+    return MotorScriptBuilder(self)
+
+  @classmethod
+  def script_cmdinfo(cls, name: str):
+    if name in cls.ATTRMAP:
+      base = cls.ATTRMAP[name]
+      if not base.writeable:
+        raise ValueError(f'{name} not scriptable (read only)')
+    elif name in cls.ACTMAP:
+      base = cls.ACTMAP[name]
+    else:
+      raise ValueError(f'{name=}')
+    if not (isinstance(base.src, int) and base.src >= 0):
+      raise ValueError(f'{name} not scriptable')
+    return base.fmt, base.src
 
 class RoutineError(Exception):
   errcode = CODE_OTHER_ERROR
@@ -307,8 +359,6 @@ class MotorRoutine:
     except Exception as err:
       self.error = err
       try:
-        self.write('stop', check=False)
-        self.write('stop', check=False)
         self.write('stop', check=False)
       except:
         pass
@@ -362,27 +412,31 @@ class MotorRoutine:
     while self.moving():
       yield
 
-class MotorMoveAtSpeed(MotorRoutine):
+  def ymoveto(self, *args, **kw):
+    self.write('move_to', *args, **kw)
+    yield
+    while self.moving():
+      yield
 
-  def __init__(self, motor: Motor, speed: float, target: int, absolute: bool = False):
-    self.speed = speed
-    self.target = target
-    self.absolute = absolute
-    super().__init__(motor, self.gen())
+# class MotorMoveAtSpeed(MotorRoutine):
 
-  def gen(self):
-    if self.moving():
-      raise RoutineError(None, CODE_MOTOR_BUSY)
-    m = self.motor
-    if self.absolute:
-      m.read('position')
-      steps = self.target - m['position']
-    else:
-      steps = self.target
-    self.overrides['max_speed'] = m['max_speed']
-    self.write('max_speed', self.speed)
-    self.status_text = 'Moving'
-    yield from self.ymove(steps)
+#   def __init__(self, motor: Motor, speed: float, target: int, absolute: bool = False):
+#     self.speed = speed
+#     self.target = target
+#     self.absolute = absolute
+#     super().__init__(motor, self.gen())
+
+#   def gen(self):
+#     if self.moving():
+#       raise RoutineError(None, CODE_MOTOR_BUSY)
+#     m = self.motor
+#     self.overrides['max_speed'] = m['max_speed']
+#     self.write('max_speed', self.speed)
+#     self.status_text = 'Moving'
+#     if self.absolute:
+#       yield from self.ymoveto(self.target)
+#     else:
+#       yield from self.ymove(self.target)
 
 class MotorHomeEndBase(MotorRoutine):
   limitflag: str
@@ -468,3 +522,47 @@ class MotorChainRoutine(MotorRoutine):
       if routine.error:
         raise routine.error
       yield
+
+class MotorScriptBuilder:
+
+  def __init__(self, motor: Motor|None = None):
+    self.motor = motor
+    self.cmds = []
+
+  def add(self, name: str, *v):
+    fmt, src = Motor.script_cmdinfo(name)
+    if len(self) + struct.calcsize(fmt) + 1 > 248:
+      raise ValueError(f'Size limit exceeded')
+    buf = bytearray()
+    buf.append(src)
+    buf.extend(struct.pack(f'<{fmt}', *v))
+    self.cmds.append((name, v, f'B{fmt}', bytes(buf)))
+    return len(self)
+
+  def tobuffer(self):
+    buf = bytearray()
+    for x in self.cmds:
+      buf.extend(x[3])
+    buf.append(0xFF)
+    return bytes(buf)
+
+  def buffmt(self):
+    fmt = ''.join(x[2] for x in self.cmds)
+    return f'<{fmt}B'
+
+  def save(self, motor: Motor|None = None, *, exec: bool = False, fail: bool = True, **kw):
+    motor = motor or self.motor
+    if not motor:
+      raise ValueError(f'Must specify motor in function or constructor')
+    code = motor.write('script_clear', fail=fail, **kw)
+    if code != CODE_OK:
+      return code
+    code = motor.write('script', self.tobuffer(), fail=fail, **kw)
+    if code != CODE_OK:
+      return code
+    if exec:
+      code = motor.write('script_exec', fail=fail, **kw)
+    return code
+    
+  def __len__(self):
+    return struct.calcsize(self.buffmt())

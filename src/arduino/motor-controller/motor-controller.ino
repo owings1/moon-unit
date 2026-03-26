@@ -11,8 +11,8 @@
 #define I2C_ADDRESS 0x09
 #define BAUD_RATE 9600L
 
-AccelStepper s1(AccelStepper::FULL2WIRE, D2, D1);
-AccelStepper s2(AccelStepper::FULL2WIRE, D8, D7);
+AccelStepper s1(AccelStepper::FULL2WIRE, D2, D1, NOPIN, NOPIN);
+AccelStepper s2(AccelStepper::FULL2WIRE, D8, D7, NOPIN, NOPIN);
 Motor m1(s1, {D0, D16, D15 });
 Motor m2(s2, {D9, D17, D18 });
 Motor* motors[] = {&m1, &m2};

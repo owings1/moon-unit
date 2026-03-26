@@ -1,10 +1,9 @@
-#include <sys/_stdint.h>
-#include <stdint.h>
 #ifndef I2C_MOTORS_H
 #define I2C_MOTORS_H
+#include <stddef.h>
+#include <stdint.h>
 #include <Arduino.h>
 #include <Wire.h>
-#include <stddef.h>
 #include "IMotor.h"
 #define I2C_MAXMOTORS 4
 
@@ -17,14 +16,45 @@ public:
 
   // Writable: 0x01 (sysFlags), 0x04 (PageReg)
   static const uint8_t DEVICE_WRITE_MASK = 0x12;
-  // Writable: scriptIdx, currentPosition, settingsFlags, maxSpeed,
-  //           acceleration, cmdMove, cmdStop, cmdScriptClear, cmdScriptExec
-  // Bits: 1, 4-7, 16, 20-23, 24-27, 28-31, 32, 33, 34
-  static const uint64_t MOTOR_WRITE_MASK = 0x0007FFF100F2ULL;
-  // Busy Protected: currentPosition, maxSpeed, acceleration, cmdMove, cmdScriptExec
-  // Bits: 4-7, 20-23, 24-27, 28-31, 34
-  static const uint64_t MOTOR_BUSY_MASK = 0x0004FFF100F2ULL;
-
+  // Writeable:
+  // script_index       | offset: 0x01 | span: 1 bytes
+  // position           | offset: 0x04 | span: 4 bytes
+  // settings_flags     | offset: 0x10 | span: 1 bytes
+  // enable_delay_ms    | offset: 0x11 | span: 1 bytes
+  // sleep_timeout_ms   | offset: 0x12 | span: 2 bytes
+  // max_speed          | offset: 0x14 | span: 4 bytes
+  // acceleration       | offset: 0x18 | span: 4 bytes
+  // move               | offset: 0x1c | span: 4 bytes
+  // stop               | offset: 0x20 | span: 1 bytes
+  // script_clear       | offset: 0x21 | span: 1 bytes
+  // script_exec        | offset: 0x22 | span: 1 bytes
+  // move_to            | offset: 0x24 | span: 4 bytes
+  // delay              | offset: 0x28 | span: 4 bytes
+  static const uint64_t MOTOR_WRITE_MASK = 0x0FF7FFFF00F2ULL;
+  // Busy Protected:
+  // position           | offset: 0x04 | span: 4 bytes
+  // settings_flags     | offset: 0x10 | span: 1 bytes
+  // max_speed          | offset: 0x14 | span: 4 bytes
+  // acceleration       | offset: 0x18 | span: 4 bytes
+  // move               | offset: 0x1c | span: 4 bytes
+  // script_clear       | offset: 0x21 | span: 1 bytes
+  // script_exec        | offset: 0x22 | span: 1 bytes
+  // move_to            | offset: 0x24 | span: 4 bytes
+  // delay              | offset: 0x28 | span: 4 bytes
+  static const uint64_t MOTOR_BUSY_MASK = 0x0FF6FFF100F0ULL;
+  // Script Protected:
+  // position           | offset: 0x04 | span: 4 bytes
+  // settings_flags     | offset: 0x10 | span: 1 bytes
+  // enable_delay_ms    | offset: 0x11 | span: 1 bytes
+  // sleep_timeout_ms   | offset: 0x12 | span: 2 bytes
+  // max_speed          | offset: 0x14 | span: 4 bytes
+  // acceleration       | offset: 0x18 | span: 4 bytes
+  // move               | offset: 0x1c | span: 4 bytes
+  // script_clear       | offset: 0x21 | span: 1 bytes
+  // script_exec        | offset: 0x22 | span: 1 bytes
+  // move_to            | offset: 0x24 | span: 4 bytes
+  // delay              | offset: 0x28 | span: 4 bytes
+  static const uint64_t SCRIPT_LOCK_MASK = 0x0FF6FFFF00F0ULL;
   static const uint16_t FAST_SYNC_MS = 20;
   static const uint16_t SLOW_SYNC_MS = 500;
   static const bool SCRIPT_CLEAR_ON_READ = false;
@@ -33,6 +63,7 @@ public:
     OK = 0x00,
     OTHER_ERROR = 0x07,
     MOTOR_BUSY = 0x1F,
+    CANCELED = 0x20,
     UNKNOWN_COMMAND = 0x2C,
     INVALID_MOTOR = 0x2D,
     COMMAND_IGNORED = 0x2E,
@@ -52,7 +83,8 @@ public:
     volatile float speed;              // +0x0C
     // 0x10 - Configuration
     volatile uint8_t settingsFlags;  // +0x10
-    uint8_t _pad1[3];
+    volatile uint8_t enableDelayMs;  // +0x11
+    volatile uint16_t sleepTimeoutMs; // +0x12
     volatile float maxSpeed;      // +0x14
     volatile float acceleration;  // +0x18
     // 0x1C - Actions
@@ -61,10 +93,14 @@ public:
     volatile uint8_t cmdScriptClear;  // +0x21
     volatile uint8_t cmdScriptExec;   // +0x22
     uint8_t _pad2[1];
-    // 0x24 - (Future)
-    uint8_t _unallocated[0x54];  // +0x24 - 0x77 future
+    volatile int32_t cmdMoveTo;    // +0x24
+    volatile uint32_t cmdDelay;    // +0x28
+    // 0x2C - (Future)
+    uint8_t _unallocated[0x4C];  // +0x2C - 0x77 future
     // 0x78 - Script buffer
     volatile uint8_t script[0xF8]; // 248 bytes
+    volatile uint32_t _waitEndTime;
+    volatile uint8_t _internalFlags;
   };
 
   struct DeviceMap {
@@ -83,7 +119,6 @@ public:
 
   I2CMotors(TwoWire& wire, IMotor** motors, uint8_t count);
 
-  void begin(uint8_t address, uint32_t freq);
   void setBootId(uint16_t id);
   void update();
 
@@ -92,6 +127,9 @@ public:
   const uint8_t numMotors;
 
 private:
+  typedef enum {
+    BitIsScriptActive = 0,
+  } InternalFlagBit;
   TwoWire& wire;
   IMotor** motors;
   volatile uint8_t currentPage = 0;
@@ -100,7 +138,7 @@ private:
   volatile bool masterWriting = false;
   uint32_t lastFastSync = 0;
   uint32_t lastSlowSync = 0;
-  uint8_t handleMotorWrite(const uint8_t mIdx, const uint8_t offset, const uint8_t incoming);
+  uint8_t handleMotorWrite(const uint8_t mIdx, const uint8_t offset, const uint8_t incoming, const bool enforceBusy, const bool enforceScriptLock);
   void processScript();
   void processScript(const uint8_t mIdx);
   void exitScript(const uint8_t mIdx, const uint8_t code);
@@ -111,6 +149,7 @@ private:
   void syncAll(const uint8_t mIdx);
   void syncMotorSettings(const uint8_t mIdx);
   void syncMotorState(const uint8_t mIdx);
+  bool isMotorBusy(const uint8_t mIdx);
   static bool isWriteable(const uint8_t page, const uint8_t ptr);
   static uint8_t getMidx(const uint8_t page, const uint8_t ptr);
   static uint8_t getStructOffset(const uint8_t ptr);
