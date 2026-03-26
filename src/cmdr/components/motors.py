@@ -105,8 +105,6 @@ class Motor(DeviceComponent):
     ('move_to', 0x24, 'l'),
     ('move_at_speed', '_act_move_at_speed', 'fl'),
     ('move_to_at_speed', '_act_move_to_at_speed', 'fl'),
-    # ('move_at_speed', '_routine_move_at_speed', 'fl'),
-    # ('move_to_at_speed', '_routine_move_to_at_speed', 'fl'),
     ('delay', 0x28, 'L'),
     ('script_clear', 0x21, 'B'),
     ('script_exec', 0x22, 'B'),
@@ -147,14 +145,10 @@ class Motor(DeviceComponent):
     initial.update(init_data)
     self.packed = bytearray(self.PKR.size)
     self.regoffset = (0x78 * ((self.id - 1) % 2)) + 0x08
-    self.page = (self.id - 1) // 2
-    self.pagebuf = struct.pack(b'<2B', PAGE_REGISTER, self.page)
-    self.script_pages = tuple(x + (self.id - 1) for x in range(0x10, 0x50, 0x10))
+    self.pagebuf = struct.pack(b'<2B', PAGE_REGISTER, (self.id - 1) // 2)
     self.script_pagebufs = tuple(
-      struct.pack(b'<2B', PAGE_REGISTER, page)
-      for page in self.script_pages)
-    # self.script_page = 0x10 + (self.id - 1)
-    # self.script_pagebuf = struct.pack(b'<2B', PAGE_REGISTER, self.script_page)
+      struct.pack(b'<2B', PAGE_REGISTER, x + (self.id - 1))
+      for x in range(0x10, 0x50, 0x10))
     self.rbuf = bytearray(2)
     for k, v in initial.items():
       self.write(k, v, fail=True)
@@ -310,12 +304,6 @@ class Motor(DeviceComponent):
     s.add('max_speed', self['max_speed'])
     return s.save(exec=True, fail=False, **kw)
 
-  # def _routine_move_at_speed(self, speed: float, steps: int):
-  #   return MotorMoveAtSpeed(self, speed, steps, absolute=False)
-
-  # def _routine_move_to_at_speed(self, speed: float, position: int):
-  #   return MotorMoveAtSpeed(self, speed, position, absolute=True)
-
   def script_builder(self):
     return MotorScriptBuilder(self)
 
@@ -428,26 +416,6 @@ class MotorRoutine:
     while self.moving():
       yield
 
-# class MotorMoveAtSpeed(MotorRoutine):
-
-#   def __init__(self, motor: Motor, speed: float, target: int, absolute: bool = False):
-#     self.speed = speed
-#     self.target = target
-#     self.absolute = absolute
-#     super().__init__(motor, self.gen())
-
-#   def gen(self):
-#     if self.moving():
-#       raise RoutineError(None, CODE_MOTOR_BUSY)
-#     m = self.motor
-#     self.overrides['max_speed'] = m['max_speed']
-#     self.write('max_speed', self.speed)
-#     self.status_text = 'Moving'
-#     if self.absolute:
-#       yield from self.ymoveto(self.target)
-#     else:
-#       yield from self.ymove(self.target)
-
 class MotorHomeEndBase(MotorRoutine):
   limitflag: str
   movefwd: int
@@ -552,13 +520,14 @@ class MotorScriptBuilder:
 
   def add(self, name: str, *v):
     fmt, src = self.motor.script_cmdinfo(name)
-    if len(self) + struct.calcsize(fmt) + 1 > 248:
+    newlength = len(self) + struct.calcsize(fmt) + 1
+    if newlength > 0xF8:
       raise ValueError(f'Size limit exceeded')
     buf = bytearray()
     buf.append(src)
     buf.extend(struct.pack(f'<{fmt}', *v))
     self.cmds.append((name, v, f'B{fmt}', bytes(buf)))
-    return len(self)
+    return newlength
 
   def tobuffer(self):
     buf = bytearray()

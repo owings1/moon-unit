@@ -153,10 +153,6 @@ class GPS:
   status_flags = PackedField(b'B', 0x3D)
   '[0:A/V, 1:M/A, 2:2D/3D, 3:DRDY]'
   update_counter = PackedField(b'H', 0x3E)
-  # total_mess_num = PackedField(b'B', 0x40)
-  # "Number of messages"
-  # mess_num = PackedField(b'B', 0x41)
-  # "Message number"
   gsv_msg_cycle = PackedField(b'B', 0x41)
   "GSV Message Cycle Total (0-3) / Current (4-7)"
   # 0x42 - 0x65 Sat Table
@@ -578,10 +574,8 @@ class GPS:
     else:
       self.fix_quality = 0
     # Latitude
-    # self.latitude = _read_degrees(data, 2, "s")
     self.latitude = _read_degrees(data[2], data[3])
     # Longitude
-    # self.longitude = _read_degrees(data, 4, "w")
     self.longitude = _read_degrees(data[4], data[5])
     # Speed over ground, knots
     self.speed_knots = data[6]
@@ -591,7 +585,6 @@ class GPS:
     if data[9] is None or data[10] is None:
       self._magnetic_variation = None
     else:
-      # self._magnetic_variation = _read_degrees(data, 9, "w")
       self._magnetic_variation = _read_degrees(data[9], data[10])
     # Parse FAA mode indicator
     self._mode_indicator = data[11]
@@ -619,11 +612,9 @@ class GPS:
     # Horizontal dilution of precision
     self.horizontal_dilution = data[7]
     # Antenna altitude relative to mean sea level
-    # self.altitude_m = _parse_float(data[8])
     self.altitude_m = data[8]
     # data[9] - antenna altitude unit, always 'M' ???
     # Geoidal separation relative to WGS 84
-    # self.height_geoid = _parse_float(data[10])
     self.height_geoid = data[10]
     # data[11] - geoidal separation unit, always 'M' ???
     # data[12] - Age of differential GPS data, can be null
@@ -647,7 +638,6 @@ class GPS:
     self.sel_mode = data[0]
     # Mode: 1 - no fix, 2 - 2D fix, 3 - 3D fix
     self.fix_quality_3d = data[1]
-    # self.sat_prns = [f"{talker}{sat}" for sat in filter(None, data[2:-4])]
     # PDOP, dilution of precision
     self.pdop = data[14]
     # HDOP, horizontal dilution of precision
