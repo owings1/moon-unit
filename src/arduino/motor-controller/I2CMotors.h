@@ -154,13 +154,9 @@ private:
   uint32_t lastFastSync = 0;
   uint32_t lastSlowSync = 0;
   uint8_t handleMotorWrite(const uint8_t mIdx, const uint8_t offset, const uint8_t incoming, const bool enforceBusy, const bool enforceScriptLock);
-  void processScript();
   void processScript(const uint8_t mIdx);
   void exitScript(const uint8_t mIdx, const uint8_t code);
   void memSyncInterval();
-  void syncAll();
-  void syncMotorSettings();
-  void syncMotorState();
   void syncAll(const uint8_t mIdx);
   void syncMotorSettings(const uint8_t mIdx);
   void syncMotorState(const uint8_t mIdx);

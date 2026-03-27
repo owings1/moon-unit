@@ -8,7 +8,7 @@ I2CMotors::I2CMotors(TwoWire& wire, IMotor** motors, uint8_t count)
   : wire(wire), motors(motors), numMotors(min(MAX_MOTORS, count)) {
   memset((void*) mem.buffer, 0, sizeof(mem.buffer));
   setBootId((uint16_t) millis());
-  syncAll();
+  for (uint8_t i = 0; i < numMotors; ++i) syncAll(i);
 }
 
 void I2CMotors::setBootId(uint16_t id) {
@@ -16,7 +16,7 @@ void I2CMotors::setBootId(uint16_t id) {
 }
 
 void I2CMotors::update() {
-  processScript();
+  for (uint8_t i = 0; i < numMotors; ++i) processScript(i);
   memSyncInterval();
 }
 
@@ -194,10 +194,21 @@ uint8_t I2CMotors::handleMotorWrite(const uint8_t mIdx, const uint8_t offset, co
 
     case offsetof(MotorBlock, cmdScriptClear):
       if (incoming < NUM_SCRIPT_PAGES) {
-        if (isScriptActive(mIdx) && incoming == mregs.scriptPage) {
-          // Prevent clearing running script
-          repCode = MOTOR_BUSY;
-        } else {
+        if (isScriptActive(mIdx)) {
+          if (incoming == mregs.scriptPage) {
+            // Prevent clearing running script
+            repCode = MOTOR_BUSY;
+          } else {
+            for (uint8_t i = 0; i < mregs.sp; ++i) {
+              // Prevent clearing a page in the call stack
+              if (incoming == mregs.scriptStackPage[i]) {
+                repCode = MOTOR_BUSY;
+                break;
+              }
+            }
+          }
+        }
+        if (repCode == OK) {
           memset((void*) mregs.scripts[incoming], 0, SCRIPT_PAGE_SIZE);
           mregs.scriptIdx = 0;
         }
@@ -300,12 +311,6 @@ uint8_t I2CMotors::scriptStackPush(const uint8_t mIdx, uint8_t page, const uint8
   return OK;
 }
 
-void I2CMotors::processScript() {
-  for (uint8_t i = 0; i < numMotors; ++i) {
-    processScript(i);
-  }
-}
-
 void I2CMotors::processScript(const uint8_t mIdx) {
   if (mIdx >= numMotors) {
     return;
@@ -326,7 +331,6 @@ void I2CMotors::processScript(const uint8_t mIdx) {
   // Get OpCode (Struct Offset)
   volatile uint8_t* scriptBase = mregs.scripts[mregs.scriptPage];
   const uint8_t op = scriptBase[mregs.scriptIdx];
-  scriptBase[mregs.scriptIdx] = 0;
   if (op == 0x00 || op == 0xFF) {  // End markers
     if (mregs.sp > 0) {
       mregs.sp--;
@@ -354,7 +358,6 @@ void I2CMotors::processScript(const uint8_t mIdx) {
   for (uint8_t i = 0; i < dataLen; i++) {
     uint8_t offset = op + i;
     uint8_t incoming = scriptBase[currentCmdStart + i + 1];
-    scriptBase[currentCmdStart + i + 1] = 0;
     uint8_t code = handleMotorWrite(mIdx, offset, incoming, true, false);
     if (code != OK) {
       exitScript(mIdx, code);
@@ -375,7 +378,7 @@ void I2CMotors::exitScript(const uint8_t mIdx, const uint8_t code) {
   auto& mregs = mem.regs.motors[mIdx];
   mregs.sp = 0;
   mregs.scriptRepCode = code;
-  mregs.scriptIdx = 0;
+  // mregs.scriptIdx = 0;
   m->setScriptActive(false);
   mregs._internalFlags &= ~(1 << BitIsScriptActive);
   mregs._waitEndTime = 0;
@@ -423,34 +426,18 @@ void I2CMotors::memSyncInterval() {
   // 1. Fast Sync (High-priority telemetry)
   if (now - lastFastSync >= FAST_SYNC_MS) {
     lastFastSync = now;
-    syncMotorState();
+    for (uint8_t i = 0; i < numMotors; ++i) syncMotorState(i);
   }
   // 2. Slow Sync (Settings/Config) - Every 500ms
   if (now - lastSlowSync >= SLOW_SYNC_MS) {
     lastSlowSync = now;
-    syncMotorSettings();
+    for (uint8_t i = 0; i < numMotors; ++i) syncMotorSettings(i);
   }
 }
 
-void I2CMotors::syncAll() {
-  syncMotorSettings();
-  syncMotorState();
-}
 void I2CMotors::syncAll(const uint8_t mIdx) {
   syncMotorSettings(mIdx);
   syncMotorState(mIdx);
-}
-
-void I2CMotors::syncMotorState() {
-  for (uint8_t i = 0; i < numMotors; ++i) {
-    syncMotorState(i);
-  }
-}
-
-void I2CMotors::syncMotorSettings() {
-  for (uint8_t i = 0; i < numMotors; ++i) {
-    syncMotorSettings(i);
-  }
 }
 
 void I2CMotors::syncMotorState(const uint8_t mIdx) {

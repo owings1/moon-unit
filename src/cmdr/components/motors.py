@@ -294,21 +294,33 @@ class Motor(DeviceComponent):
     return MotorChainRoutine(self, (self._routine_home(), self._routine_end()))
 
   def _act_move_at_speed(self, speed: float, steps: int, **kw) -> int:
-    s = self.script_builder()
+    s = self.builder()
     s.add('max_speed', speed)
     s.add('move', steps)
     s.add('max_speed', self['max_speed'])
-    return s.save(exec=True, fail=False, **kw)
+    code = self.write('script_clear', 0, **kw)
+    if code != CODE_OK:
+      return code
+    code = self.write('script0', s.compile(), **kw)
+    if code != CODE_OK:
+      return code
+    return self.write('script_exec', 0, **kw)
 
   def _act_move_to_at_speed(self, speed: float, position: int, **kw) -> int:
-    s = self.script_builder()
+    s = self.builder()
     s.add('max_speed', speed)
     s.add('move_to', position)
     s.add('max_speed', self['max_speed'])
-    return s.save(exec=True, fail=False, **kw)
+    code = self.write('script_clear', 0, **kw)
+    if code != CODE_OK:
+      return code
+    code = self.write('script0', s.compile(), **kw)
+    if code != CODE_OK:
+      return code
+    return self.write('script_exec', 0, **kw)
 
-  def script_builder(self):
-    return MotorScriptBuilder(self)
+  def builder(self):
+    return MotorScriptBuilder()
 
   @classmethod
   def script_cmdinfo(cls, name: str):
@@ -504,6 +516,62 @@ class MotorChainRoutine(MotorRoutine):
         raise routine.error
       yield
 
+class MotorScriptBuilder:
+
+  def __init__(self) -> None:
+    self.instructions: list[tuple[str, tuple[Any, ...]]|bytes] = []
+    self.labels: dict[str, int] = {}
+
+  def label(self, name: str) -> int:
+    """Mark the NEXT instruction with this name."""
+    if name in self.labels:
+      raise ValueError(f'Duplicate label {name!r}')
+    return self.labels.setdefault(name, self._offset())
+
+  def add(self, op: str|bytes|int, *args) -> None:
+    if not args:
+      if op == 'end':
+        op = 0xFF
+      if isinstance(op, int):
+        op = op.to_bytes(1, 'little')
+      if isinstance(op, bytes):
+        self.instructions.append(op)
+    else:
+      self.instructions.append((op, args))
+
+  def _offset(self) -> int:
+    offset = 0
+    for instruction in self.instructions:
+      if isinstance(instruction, bytes):
+        offset += len(instruction)
+      else:
+        fmt = Motor.script_cmdinfo(instruction[0])[0]
+        offset += 1 + struct.calcsize(fmt)
+    return offset
+
+  def compile(self) -> bytes:
+    """Resolve labels and pack bytes."""
+    buf = bytearray()
+    for instruction in self.instructions:
+      if isinstance(instruction, bytes):
+        buf.extend(instruction)
+        continue
+      name, args = instruction
+      fmt, src = Motor.script_cmdinfo(name)
+      # Resolve Label strings to absolute byte offsets
+      resolved = deque((), len(args))
+      for arg in args:
+        if isinstance(arg, str):
+          resolved.append(self.labels[arg])
+        else:
+          resolved.append(arg)
+      buf.append(src)
+      buf.extend(struct.pack(f'<{fmt}', *resolved))
+    buf.append(0xFF)
+    return bytes(buf)
+
+
+"""
 class MotorScriptBuilder:
 
   def __init__(self, motor: Motor):
