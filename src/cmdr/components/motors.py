@@ -28,6 +28,7 @@ CODE_INVALID_MOTORID = const(0x2D)
 CODE_COMMAND_IGNORED = const(0x2E)
 CODE_COMMAND_PARTIALLY_IGNORED = const(0x2F)
 CODE_READONLY_ATTRIBUTE = const(0x30)
+CODE_OVERFLOW = const(0x31)
 CODE_UNSET = const(0xFF)
 
 class ActDef(namedtuple('ActDef', ('name', 'src', 'fmt'))):
@@ -58,9 +59,7 @@ class Motor(DeviceComponent):
     # --- Negative src indicates global device register
     boot_id=dict(src=-0x02, fmt='H'),
     state_flags=dict(src=0x00, fmt='B'),
-    script_index=dict(src=0x01, fmt='B', writeable=True),
-    script_repcode=dict(src=0x02, fmt='B'),
-    active_script_page=dict(src=0x03, fmt='B', writeable=True),
+    script_repcode=dict(src=0x03, fmt='B'),
     target_position=dict(src=0x08, fmt='l'),
     speed=dict(src=0x0C, fmt='f'),
     # --- writeable & persisted attributes
@@ -95,21 +94,25 @@ class Motor(DeviceComponent):
     ('sleep_enabled', 'settings_flags', 0x1, 0x1),
   ))
   ACTMAP = OrderedDict((x[0], ActDef(*x)) for x in (
-    ('stop', 0x20, 'x'),
+    ('stop', 0x28, 'x'),
     ('home', '_routine_home', ''),
     ('end', '_routine_end', ''),
     ('home_end', '_routine_home_end', ''),
     ('limits_on', '_act_limits_on', ''),
     ('limits_off', '_act_limits_off', ''),
     ('move', 0x1C, 'l'),
-    ('move_to', 0x24, 'l'),
+    ('move_to', 0x20, 'l'),
     ('move_at_speed', '_act_move_at_speed', 'fl'),
     ('move_to_at_speed', '_act_move_to_at_speed', 'fl'),
-    ('delay', 0x28, 'L'),
-    ('script_clear', 0x21, 'B'),
-    ('script_exec', 0x22, 'B'),
+    ('delay', 0x24, 'L'),
+    ('script_clear', 0x29, 'B'),
+    ('script_exec', 0x2A, 'B'),
+    ('call', 0x2E, '2B'),
+    ('cond_call', 0x30, '4B'),
+    ('cond_jump', 0x34, '4B'),
+    ('jump', 0x38, '2B'),
   ))
-  SLCINFO_PERSIST = MotorAttr.sliceinfo(ATTRMAP, 7, 7+12)
+  SLCINFO_PERSIST = MotorAttr.sliceinfo(ATTRMAP, 5, 5+12)
   PERSIST_NS = 0x9100
   PERSIST_VER = 0x08
   init_defaults = OrderedDict(
@@ -518,27 +521,42 @@ class MotorScriptBuilder:
   def pop(self):
     return self.cmds.pop()
 
-  def add(self, name: str, *v):
+  def add(self, name: str, *v, end: bool = False):
     fmt, src = self.motor.script_cmdinfo(name)
-    newlength = len(self) + struct.calcsize(fmt) + 1
+    if end:
+      fmt += 'B'
+    newlength = len(self) + struct.calcsize(fmt) + 2
     if newlength > 0xF8:
       raise ValueError(f'Size limit exceeded')
     buf = bytearray()
     buf.append(src)
     buf.extend(struct.pack(f'<{fmt}', *v))
+    if end:
+      buf.append(0xFF)
     self.cmds.append((name, v, f'B{fmt}', bytes(buf)))
     return newlength
 
-  def tobuffer(self):
+  def cond_hasflag(self, name: str, page: int, sidx: int):
+    flagdef = self.motor.FLAGMAP[name]
+    return self.add('cond_call', 0x10, 1 << flagdef[2], page, sidx)
+
+  def cond_notflag(self, name: str, page: int, sidx: int):
+    flagdef = self.motor.FLAGMAP[name]
+    return self.add('cond_call', 0x11, 1 << flagdef[2], page, sidx)
+    
+  def tobuffer(self, end: bool = True):
     buf = bytearray()
     for x in self.cmds:
       buf.extend(x[3])
-    buf.append(0xFF)
+    if end:
+      buf.append(0xFF)
     return bytes(buf)
 
-  def buffmt(self):
-    fmt = ''.join(x[2] for x in self.cmds)
-    return f'<{fmt}B'
+  def buffmt(self, end: bool = True):
+    fmt = '<' + ''.join(x[2] for x in self.cmds)
+    if end:
+      fmt += 'B'
+    return fmt
 
   def save(self, page: int = 0, *, exec: bool = False, fail: bool = True, **kw):
     motor = self.motor
@@ -553,4 +571,29 @@ class MotorScriptBuilder:
     return code
     
   def __len__(self):
-    return struct.calcsize(self.buffmt())
+    return struct.calcsize(self.buffmt(end=False))
+
+
+"""
+b1 = m.script_builder()
+x = [1635, 1835, 2060, 2183, 2450, 2750, 2914, 3270, -2914, -2750, -2450, -2183, -2060, -1835, -1635]
+for steps in x:
+  b1.add('max_speed', abs(steps))
+  b1.add('move', round(-steps * 0.475))
+  b1.add('delay', 50)
+
+b2 = m.script_builder()
+y = [1945, 2183, 2312, 2750, 2914, 3270, 3465, 3889, -3465, -3270, -2914, -2750, -2312, -2183, -1945]
+for steps in y:
+  b2.add('max_speed', abs(steps))
+  b2.add('move', round(-steps * 0.2375))
+  b2.add('delay', 25)
+
+b2.add('script_call', 1)
+
+b0 = m.script_builder()
+b0.add('script_call', 1)
+b0.add('script_call', 2)
+b0.add('script_call', 2)
+b0.add('script_call', 1)
+"""

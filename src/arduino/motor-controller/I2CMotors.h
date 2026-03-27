@@ -17,8 +17,6 @@ public:
   // Writable: 0x01 (sysFlags), 0x04 (PageReg)
   static const uint8_t DEVICE_WRITE_MASK = 0x12;
   // Writeable:
-  // script_index       | offset: 0x01 | span: 1 bytes
-  // active_script_page | offset: 0x03 | span: 1 bytes
   // position           | offset: 0x04 | span: 4 bytes
   // settings_flags     | offset: 0x10 | span: 1 bytes
   // enable_delay_ms    | offset: 0x11 | span: 1 bytes
@@ -26,27 +24,23 @@ public:
   // max_speed          | offset: 0x14 | span: 4 bytes
   // acceleration       | offset: 0x18 | span: 4 bytes
   // move               | offset: 0x1c | span: 4 bytes
-  // stop               | offset: 0x20 | span: 1 bytes
-  // script_clear       | offset: 0x21 | span: 1 bytes
-  // script_exec        | offset: 0x22 | span: 1 bytes
-  // move_to            | offset: 0x24 | span: 4 bytes
-  // delay              | offset: 0x28 | span: 4 bytes
-  static const uint64_t MOTOR_WRITE_MASK = 0x0FF7FFFF00FAULL;
+  // move_to            | offset: 0x20 | span: 4 bytes
+  // delay              | offset: 0x24 | span: 4 bytes
+  // stop               | offset: 0x28 | span: 1 bytes
+  // script_clear       | offset: 0x29 | span: 1 bytes
+  // script_exec        | offset: 0x2a | span: 1 bytes
+  static const uint64_t MOTOR_WRITE_MASK = 0x07FFFFFF00F0ULL;
   // Busy Protected:
-  // script_index       | offset: 0x01 | span: 1 bytes
-  // active_script_page | offset: 0x03 | span: 1 bytes
   // position           | offset: 0x04 | span: 4 bytes
   // settings_flags     | offset: 0x10 | span: 1 bytes
   // max_speed          | offset: 0x14 | span: 4 bytes
   // acceleration       | offset: 0x18 | span: 4 bytes
   // move               | offset: 0x1c | span: 4 bytes
-  // script_exec        | offset: 0x22 | span: 1 bytes
-  // move_to            | offset: 0x24 | span: 4 bytes
-  // delay              | offset: 0x28 | span: 4 bytes
-  static const uint64_t MOTOR_BUSY_MASK = 0x0FF4FFF100FAULL;
+  // move_to            | offset: 0x20 | span: 4 bytes
+  // delay              | offset: 0x24 | span: 4 bytes
+  // script_exec        | offset: 0x2a | span: 1 bytes
+  static const uint64_t MOTOR_BUSY_MASK = 0x04FFFFF100F0ULL;
   // Script Protected:
-  // script_index       | offset: 0x01 | span: 1 bytes
-  // active_script_page | offset: 0x03 | span: 1 bytes
   // position           | offset: 0x04 | span: 4 bytes
   // settings_flags     | offset: 0x10 | span: 1 bytes
   // enable_delay_ms    | offset: 0x11 | span: 1 bytes
@@ -54,14 +48,14 @@ public:
   // max_speed          | offset: 0x14 | span: 4 bytes
   // acceleration       | offset: 0x18 | span: 4 bytes
   // move               | offset: 0x1c | span: 4 bytes
-  // script_exec        | offset: 0x22 | span: 1 bytes
-  // move_to            | offset: 0x24 | span: 4 bytes
-  // delay              | offset: 0x28 | span: 4 bytes
-  static const uint64_t SCRIPT_LOCK_MASK = 0x0FF4FFFF00FAULL;
+  // move_to            | offset: 0x20 | span: 4 bytes
+  // delay              | offset: 0x24 | span: 4 bytes
+  // script_exec        | offset: 0x2a | span: 1 bytes
+  static const uint64_t SCRIPT_LOCK_MASK = 0x04FFFFFF00F0ULL;
   static const uint16_t FAST_SYNC_MS = 20;
   static const uint16_t SLOW_SYNC_MS = 500;
-  static const bool SCRIPT_CLEAR_ON_READ = false;
   static const uint8_t NUM_SCRIPT_PAGES = 4;
+  static const uint8_t SCRIPT_STACK_SIZE = 8;
   static const uint8_t MAX_MOTORS = 4;
 
   typedef enum {
@@ -73,16 +67,21 @@ public:
     INVALID_MOTOR = 0x2D,
     COMMAND_IGNORED = 0x2E,
     READONLY_ATTRIBUTE = 0x30,
+    OVERFLOW = 0x31,
     UNSET = 0xFF,
   } ResCode;
+
+  typedef enum {
+    AND_STFLGS_RHS = 0x10,
+    NAND_STFLGS_RHS = 0x11,
+  } FunId;
 
 #pragma pack(push, 1)
   struct MotorBlock {
     // 0x00 - Telemetry (Aligned)
     volatile uint8_t stateFlags;       // +0x00
-    volatile uint8_t scriptIdx;        // +0x01
-    volatile uint8_t scriptRepCode;    // +0x02
-    volatile uint8_t activeScriptPage; // +0x03
+    uint8_t _pad0[2];
+    volatile uint8_t scriptRepCode;    // +0x03
     volatile int32_t currentPosition;  // +0x04
     volatile int32_t targetPosition;   // +0x08
     volatile float speed;              // +0x0C
@@ -94,17 +93,28 @@ public:
     volatile float acceleration;       // +0x18
     // 0x1C - Actions
     volatile int32_t cmdMove;          // +0x1C
-    volatile uint8_t cmdStop;          // +0x20
-    volatile uint8_t cmdScriptClear;   // +0x21
-    volatile uint8_t cmdScriptExec;    // +0x22
-    uint8_t _pad2[1];
-    volatile int32_t cmdMoveTo;        // +0x24
-    volatile uint32_t cmdDelay;        // +0x28
-    // 0x2C - (Future)
-    uint8_t _unallocated[0x4C];        // +0x2C - 0x77 future
+    volatile int32_t cmdMoveTo;        // +0x20
+    volatile uint32_t cmdDelay;        // +0x24
+    volatile uint8_t cmdStop;          // +0x28
+    volatile uint8_t cmdScriptClear;   // +0x29
+    volatile uint8_t cmdScriptExec;    // +0x2A
+    uint8_t _pad1[1];
+    volatile uint8_t scriptPage;       // +0x2C
+    volatile uint8_t scriptIdx;        // +0x2D
+    volatile uint8_t cmdCall[2];       // +0x2E
+    volatile uint8_t cmdCondCall[4];   // +0x30
+    volatile uint8_t cmdCondJump[4];   // +0x34
+    volatile uint8_t cmdJump[2];       // +0x38
+    uint8_t _pad2[2];
+
+    // 0x3C - (Future)
+    uint8_t _unallocated[0x3C];        // +0x3C - 0x77 future
     // 0x78 - Script buffer
     volatile uint8_t scripts[NUM_SCRIPT_PAGES][SCRIPT_PAGE_SIZE]; // 248 bytes. 4 pages = 992 bytes per motor
     volatile uint32_t _waitEndTime;
+    volatile uint8_t scriptStackIdx[SCRIPT_STACK_SIZE];
+    volatile uint8_t scriptStackPage[SCRIPT_STACK_SIZE];
+    volatile uint8_t sp; // Stack Pointer
     volatile uint8_t _internalFlags;
   };
 
@@ -156,6 +166,8 @@ private:
   void syncMotorState(const uint8_t mIdx);
   bool isMotorBusy(const uint8_t mIdx);
   bool isScriptActive(const uint8_t mIdx);
+  int8_t scriptCondition(const uint8_t mIdx, const uint8_t func, const uint8_t rhs);
+  uint8_t scriptStackPush(const uint8_t mIdx, uint8_t page, const uint8_t sIdx);
   static bool isWriteable(const uint8_t page, const uint8_t ptr);
   static uint8_t getMidx(const uint8_t page, const uint8_t ptr);
   static uint8_t getStructOffset(const uint8_t ptr);

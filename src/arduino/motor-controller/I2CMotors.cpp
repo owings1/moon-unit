@@ -71,7 +71,7 @@ void I2CMotors::handleWrite(int howMany) {
         } else if (currentPage < 0x10 * (NUM_SCRIPT_PAGES + 1)) {
           uint8_t sIdx = (currentPage / 0x10) - 1;
           auto& mregs = mem.regs.motors[mIdx];
-          if (isScriptActive(mIdx) && mregs.activeScriptPage == sIdx) {
+          if (isScriptActive(mIdx) && mregs.scriptPage == sIdx) {
             // Prevent writing to running script
             mem.regs.repCode = MOTOR_BUSY;
           } else {
@@ -110,7 +110,7 @@ uint8_t I2CMotors::handleMotorWrite(const uint8_t mIdx, const uint8_t offset, co
   }
   // Get a pointer to the start of this specific motor's data in the buffer
   // This translates struct-relative 'offset' to the correct absolute buffer index
-  uint8_t* motorData = (uint8_t*)&mregs;
+  uint8_t* motorData = (uint8_t*) &mregs;
   const uint8_t previous = motorData[offset];
   motorData[offset] = incoming;
   uint8_t repCode = OK;
@@ -147,19 +147,6 @@ uint8_t I2CMotors::handleMotorWrite(const uint8_t mIdx, const uint8_t offset, co
       mregs.settingsFlags = m->settingsFlags();
       break;
 
-    case offsetof(MotorBlock, activeScriptPage):
-      // validate value
-      if (incoming < NUM_SCRIPT_PAGES) {
-        if (incoming != previous) {
-          mregs.scriptIdx = 0;
-        }
-      } else {
-        // restore to previous
-        mregs.activeScriptPage = previous;
-        repCode = UNKNOWN_COMMAND;
-      }
-      break;
-
     case offsetof(MotorBlock, maxSpeed) + 3:
       m->setMaxSpeed(mregs.maxSpeed);
       mregs.maxSpeed = m->maxSpeed();
@@ -180,35 +167,6 @@ uint8_t I2CMotors::handleMotorWrite(const uint8_t mIdx, const uint8_t offset, co
       mregs.enableDelayMs = m->enableDelayMs();
       break;
 
-    case offsetof(MotorBlock, cmdScriptExec):
-      if (incoming < NUM_SCRIPT_PAGES) {
-        mregs.activeScriptPage = incoming;
-        mregs.scriptIdx = 0;
-        mregs.scriptRepCode = OK;
-        m->setScriptActive(true);
-        mregs._internalFlags |= 1 << BitIsScriptActive;
-        syncMotorState(mIdx);
-      } else {
-        repCode = UNKNOWN_COMMAND;
-      }
-      mregs.cmdScriptExec = 0;
-      break;
-
-    case offsetof(MotorBlock, cmdScriptClear):
-      if (incoming < NUM_SCRIPT_PAGES) {
-        if (isScriptActive(mIdx) && incoming == mregs.activeScriptPage) {
-          // Prevent clearing running script
-          repCode = MOTOR_BUSY;
-        } else {
-          memset((void*) mregs.scripts[incoming], 0, SCRIPT_PAGE_SIZE);
-          mregs.scriptIdx = 0;
-        }
-      } else {
-        repCode = UNKNOWN_COMMAND;
-      }
-      mregs.cmdScriptClear = 0;
-      break;
-
     case offsetof(MotorBlock, cmdDelay) + 3:
       if (mregs.cmdDelay > 0) {
         mregs._waitEndTime = millis() + mregs.cmdDelay;
@@ -219,8 +177,127 @@ uint8_t I2CMotors::handleMotorWrite(const uint8_t mIdx, const uint8_t offset, co
       }
       mregs.cmdDelay = 0;
       break;
+
+    case offsetof(MotorBlock, cmdScriptExec):
+      if (incoming < NUM_SCRIPT_PAGES) {
+        mregs.scriptPage = incoming;
+        mregs.scriptIdx = 0;
+        mregs.scriptRepCode = OK;
+        m->setScriptActive(true);
+        mregs._internalFlags |= 1 << BitIsScriptActive;
+        syncMotorState(mIdx);
+      } else {
+        repCode = OVERFLOW;
+      }
+      mregs.cmdScriptExec = 0;
+      break;
+
+    case offsetof(MotorBlock, cmdScriptClear):
+      if (incoming < NUM_SCRIPT_PAGES) {
+        if (isScriptActive(mIdx) && incoming == mregs.scriptPage) {
+          // Prevent clearing running script
+          repCode = MOTOR_BUSY;
+        } else {
+          memset((void*) mregs.scripts[incoming], 0, SCRIPT_PAGE_SIZE);
+          mregs.scriptIdx = 0;
+        }
+      } else {
+        repCode = OVERFLOW;
+      }
+      mregs.cmdScriptClear = 0;
+      break;
+
+    case offsetof(MotorBlock, cmdCall) + 1:
+      if (!isScriptActive(mIdx)) {
+        repCode = UNKNOWN_COMMAND;
+      } else {
+        repCode = scriptStackPush(mIdx, mregs.cmdCall[0], incoming);
+      }
+      memset((void*) mregs.cmdCall, 0, 2);
+      break;
+
+    case offsetof(MotorBlock, cmdJump) + 1:
+      if (!isScriptActive(mIdx)) {
+        repCode = UNKNOWN_COMMAND;
+      } else {
+        uint8_t page = mregs.cmdJump[0];
+        if (page == 0xFF) {
+          page = mregs.scriptPage;
+        }
+        if (page < NUM_SCRIPT_PAGES && incoming < SCRIPT_PAGE_SIZE) {
+          mregs.scriptPage = page;
+          mregs.scriptIdx = incoming;
+        } else {
+          repCode = OVERFLOW;
+        }
+      }
+      memset((void*) mregs.cmdJump, 0, 2);
+      break;
+
+    case offsetof(MotorBlock, cmdCondCall) + 3:
+      if (!isScriptActive(mIdx)) {
+        repCode = UNKNOWN_COMMAND;
+      } else {
+        const uint8_t func = mregs.cmdCondCall[0];
+        const uint8_t rhs = mregs.cmdCondCall[1];
+        const int8_t result = scriptCondition(mIdx, func, rhs);
+        if (result < 0) {
+          repCode = UNKNOWN_COMMAND;
+        } else if (result > 0) {
+          repCode = scriptStackPush(mIdx, mregs.cmdCondCall[2], incoming);
+        }
+      }
+      memset((void*) mregs.cmdCondCall, 0, 4);
+      break;
+
+    case offsetof(MotorBlock, cmdCondJump) + 3:
+      if (!isScriptActive(mIdx)) {
+        repCode = UNKNOWN_COMMAND;
+      } else {
+        uint8_t page = mregs.cmdCondJump[2];
+        if (page == 0xFF) {
+          page = mregs.scriptPage;
+        }
+        if (page < NUM_SCRIPT_PAGES && incoming < SCRIPT_PAGE_SIZE) {
+          const uint8_t func = mregs.cmdCondJump[0];
+          const uint8_t rhs = mregs.cmdCondJump[1];
+          const int8_t result = scriptCondition(mIdx, func, rhs);
+          if (result < 0) {
+            repCode = UNKNOWN_COMMAND;
+          } else if (result > 0) {
+            mregs.scriptPage = page;
+            mregs.scriptIdx = incoming;
+          }
+        } else {
+          repCode = OVERFLOW;
+        }
+      }
+      memset((void*) mregs.cmdCondJump, 0, 4);
+      break;
   }
   return repCode;
+}
+
+uint8_t I2CMotors::scriptStackPush(const uint8_t mIdx, uint8_t page, const uint8_t sIdx) {
+  if (mIdx >= numMotors) {
+    return INVALID_MOTOR;
+  }
+  if (!isScriptActive(mIdx)) {
+    return OTHER_ERROR;
+  }
+  auto& mregs = mem.regs.motors[mIdx];
+  if (page == 0xFF) {
+    page = mregs.scriptPage;
+  }
+  if (page >= NUM_SCRIPT_PAGES || sIdx >= SCRIPT_PAGE_SIZE || mregs.sp >= SCRIPT_STACK_SIZE) {
+    return OVERFLOW;
+  }
+  mregs.scriptStackIdx[mregs.sp] = mregs.scriptIdx;
+  mregs.scriptStackPage[mregs.sp] = mregs.scriptPage;
+  mregs.sp++;
+  mregs.scriptPage = page;
+  mregs.scriptIdx = sIdx;
+  return OK;
 }
 
 void I2CMotors::processScript() {
@@ -238,21 +315,25 @@ void I2CMotors::processScript(const uint8_t mIdx) {
   if (!isScriptActive(mIdx) || isMotorBusy(mIdx)) {
     return;
   }
-  if (mregs.activeScriptPage >= NUM_SCRIPT_PAGES) {
+  if (mregs.scriptPage >= NUM_SCRIPT_PAGES) {
     exitScript(mIdx, OTHER_ERROR);
     return;
   }
   if (mregs.scriptIdx >= SCRIPT_PAGE_SIZE) {
-    exitScript(mIdx, OTHER_ERROR);
+    exitScript(mIdx, OVERFLOW);
     return;
   }
-  // 1. Get OpCode (Struct Offset)
-  volatile uint8_t* scriptBase = mregs.scripts[mregs.activeScriptPage];
+  // Get OpCode (Struct Offset)
+  volatile uint8_t* scriptBase = mregs.scripts[mregs.scriptPage];
   const uint8_t op = scriptBase[mregs.scriptIdx];
-  if (SCRIPT_CLEAR_ON_READ) {
-    scriptBase[mregs.scriptIdx] = 0;
-  }
+  scriptBase[mregs.scriptIdx] = 0;
   if (op == 0x00 || op == 0xFF) {  // End markers
+    if (mregs.sp > 0) {
+      mregs.sp--;
+      mregs.scriptPage = mregs.scriptStackPage[mregs.sp];
+      mregs.scriptIdx = mregs.scriptStackIdx[mregs.sp];
+      return;
+    }
     exitScript(mIdx, OK);
     return;
   }
@@ -266,17 +347,14 @@ void I2CMotors::processScript(const uint8_t mIdx) {
     exitScript(mIdx, OTHER_ERROR);
     return;
   }
-  // 2. Consume from buffer (Advance BEFORE execution)
+  // Consume from buffer (Advance BEFORE execution)
   const uint8_t currentCmdStart = mregs.scriptIdx;
   mregs.scriptIdx += totalCmdLen;
-  // 3. Extract data and execute
   // We feed bytes one-by-one to handleMotorWrite to reuse all logic
   for (uint8_t i = 0; i < dataLen; i++) {
-    uint8_t offset = op + i;  // The target register offset
+    uint8_t offset = op + i;
     uint8_t incoming = scriptBase[currentCmdStart + i + 1];
-    if (SCRIPT_CLEAR_ON_READ) {
-      scriptBase[currentCmdStart + i + 1] = 0;
-    }
+    scriptBase[currentCmdStart + i + 1] = 0;
     uint8_t code = handleMotorWrite(mIdx, offset, incoming, true, false);
     if (code != OK) {
       exitScript(mIdx, code);
@@ -295,6 +373,7 @@ void I2CMotors::exitScript(const uint8_t mIdx, const uint8_t code) {
   }
   auto& m = motors[mIdx];
   auto& mregs = mem.regs.motors[mIdx];
+  mregs.sp = 0;
   mregs.scriptRepCode = code;
   mregs.scriptIdx = 0;
   m->setScriptActive(false);
@@ -302,6 +381,20 @@ void I2CMotors::exitScript(const uint8_t mIdx, const uint8_t code) {
   mregs._waitEndTime = 0;
   m->setDelayActive(false);
   mregs.stateFlags = m->stateFlags();
+}
+
+int8_t I2CMotors::scriptCondition(const uint8_t mIdx, const uint8_t func, const uint8_t rhs) {
+  if (mIdx >= numMotors) {
+    return -1;
+  }
+  auto& m = motors[mIdx];
+  switch (func) {
+    case AND_STFLGS_RHS:
+      return m->stateFlags() & rhs;
+    case NAND_STFLGS_RHS:
+      return !(m->stateFlags() & rhs);
+  }
+  return -1;
 }
 
 bool I2CMotors::isMotorBusy(const uint8_t mIdx) {
@@ -416,22 +509,22 @@ uint8_t I2CMotors::getStructOffset(const uint8_t ptr) {
 
 uint8_t I2CMotors::getOpCodeDataLength(const uint8_t offset) {
   switch (offset) {
-    case offsetof(MotorBlock, cmdMove):
-    case offsetof(MotorBlock, cmdMoveTo):
+    case offsetof(MotorBlock, currentPosition):
     case offsetof(MotorBlock, maxSpeed):
     case offsetof(MotorBlock, acceleration):
-    case offsetof(MotorBlock, currentPosition):
+    case offsetof(MotorBlock, cmdMove):
+    case offsetof(MotorBlock, cmdMoveTo):
     case offsetof(MotorBlock, cmdDelay):
+    case offsetof(MotorBlock, cmdCondCall):
+    case offsetof(MotorBlock, cmdCondJump):
       return 4;
     case offsetof(MotorBlock, sleepTimeoutMs):
+    case offsetof(MotorBlock, cmdCall):
+    case offsetof(MotorBlock, cmdJump):
       return 2;
-    case offsetof(MotorBlock, cmdScriptExec):
-    case offsetof(MotorBlock, cmdScriptClear):
-    case offsetof(MotorBlock, scriptIdx):
-    case offsetof(MotorBlock, cmdStop):
     case offsetof(MotorBlock, settingsFlags):
     case offsetof(MotorBlock, enableDelayMs):
-    case offsetof(MotorBlock, activeScriptPage):
+    case offsetof(MotorBlock, cmdStop):
       return 1;
     default:
       return 0;

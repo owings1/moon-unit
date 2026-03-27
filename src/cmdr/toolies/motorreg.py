@@ -1,22 +1,33 @@
 from __future__ import annotations
 
+"""
+from toolies import motorreg; motorreg.generate_cpp_masks()
+"""
+
 import struct
 from components.motors import Motor
 
+BLOCK_CUTOFF = 0x2C
 def generate_cpp_masks():
   write_regs = []
   busy_regs = []
   script_regs = []
+  exclude = {
+    'script_call',
+    'script_index',
+    'cond_call',
+  }
   scriptok = {
     'stop',
-    # 'script_index',
     'script_clear',
   }
   busyok = scriptok | {'enable_delay_ms', 'sleep_timeout_ms'}
   # 1. Inspect ATTRMAP (Attributes/Telemetry)
   for name, attr in Motor.ATTRMAP.items():
+    if name in exclude:
+      continue
     # Only process motor-space registers (non-negative src) that are writeable
-    if attr.src is not None and attr.src >= 0 and attr.src < 0x38 and attr.writeable:
+    if attr.src is not None and attr.src >= 0 and attr.src < BLOCK_CUTOFF and attr.writeable:
       byte_len = struct.calcsize(attr.fmt)
       reg_info = (attr.name, attr.src, byte_len)
       write_regs.append(reg_info)
@@ -27,7 +38,9 @@ def generate_cpp_masks():
 
   # 2. Inspect ACTMAP (Actions/Triggers)
   for name, act in Motor.ACTMAP.items():
-    if isinstance(act.src, int) and act.src >= 0:
+    if name in exclude:
+      continue
+    if isinstance(act.src, int) and act.src >= 0 and act.src < BLOCK_CUTOFF:
       byte_len = struct.calcsize(act.fmt)# if act.fmt else 1
       # if act.fmt == 'x':
       #   byte_len = 1 # struct.calcsize('x') is 1

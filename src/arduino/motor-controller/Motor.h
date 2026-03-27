@@ -13,15 +13,11 @@ class Motor : public MotorWrapper {
 public:
   static const uint16_t STOP_DECELERATION = 0xFFFF;
   typedef enum {
-    // limit switch states
     BitIsLimitCw = 0,
     BitIsLimitAcw = 1,
-    // is the stepper motor engaged
     BitIsActive = 2,
-    // is the motor moving
     BitIsMoving = 3,
     BitIsStopping = 4,
-    // pos was manually set
     BitIsManualPos = 5,
     BitIsScriptActive = 6,
     BitIsDelayActive = 7,
