@@ -11,8 +11,10 @@ public:
   static const uint8_t PAGE_REGISTER = 0x04;
   static const uint8_t MOTOR_BASE_ADDR = 0x08;
   static const uint8_t MOTOR_BLOCK_SIZE = 0x78;
+  static const uint8_t LOWER_BLOCK_SIZE = MOTOR_BLOCK_SIZE + MOTOR_BASE_ADDR;
   static const uint8_t TOTAL_BLOCK_SIZE = MOTOR_BLOCK_SIZE * 2 + MOTOR_BASE_ADDR;
   static const uint8_t SCRIPT_PAGE_SIZE = 0xF8;
+  static const uint8_t SCRIPT_PAGE_START = 0x10;
 
   // Writable: 0x01 (sysFlags), 0x04 (PageReg)
   static const uint8_t DEVICE_WRITE_MASK = 0x12;
@@ -68,12 +70,20 @@ public:
     COMMAND_IGNORED = 0x2E,
     READONLY_ATTRIBUTE = 0x30,
     OVERFLOW = 0x31,
+    USR1 = 0xFA,
+    USR2 = 0xFB,
+    USR3 = 0xFC,
+    USR4 = 0xFD,
+    USR5 = 0xFE,
     UNSET = 0xFF,
   } ResCode;
 
   typedef enum {
-    AND_STFLGS_RHS = 0x10,
-    NAND_STFLGS_RHS = 0x11,
+    AND_STATEFLAGS_RHS = 0x00,
+    EQL_RETURNCODE_RHS = 0x03,
+    AND_SETTINGSFLAGS_RHS = 0x10,
+    EQL_LASTCONDARG_RHS = 0x30,
+    ALWAYS_TRUE = 0x7F,
   } FunId;
 
 #pragma pack(push, 1)
@@ -116,6 +126,7 @@ public:
     volatile uint8_t scriptStackPage[SCRIPT_STACK_SIZE];
     volatile uint8_t sp; // Stack Pointer
     volatile uint8_t _internalFlags;
+    volatile uint8_t scriptLastRhs;
   };
 
   struct DeviceMap {
@@ -157,11 +168,11 @@ private:
   void processScript(const uint8_t mIdx);
   void exitScript(const uint8_t mIdx, const uint8_t code);
   void memSyncInterval();
-  void syncAll(const uint8_t mIdx);
   void syncMotorSettings(const uint8_t mIdx);
   void syncMotorState(const uint8_t mIdx);
   bool isMotorBusy(const uint8_t mIdx);
   bool isScriptActive(const uint8_t mIdx);
+  bool isPageInStack(const uint8_t mIdx, const uint8_t page);
   int8_t scriptCondition(const uint8_t mIdx, const uint8_t func, const uint8_t rhs);
   uint8_t scriptStackPush(const uint8_t mIdx, uint8_t page, const uint8_t sIdx);
   static bool isWriteable(const uint8_t page, const uint8_t ptr);

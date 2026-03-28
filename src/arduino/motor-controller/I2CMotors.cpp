@@ -8,7 +8,10 @@ I2CMotors::I2CMotors(TwoWire& wire, IMotor** motors, uint8_t count)
   : wire(wire), motors(motors), numMotors(min(MAX_MOTORS, count)) {
   memset((void*) mem.buffer, 0, sizeof(mem.buffer));
   setBootId((uint16_t) millis());
-  for (uint8_t i = 0; i < numMotors; ++i) syncAll(i);
+  for (uint8_t mIdx = 0; mIdx < numMotors; ++mIdx) {
+    syncMotorSettings(mIdx);
+    syncMotorState(mIdx);
+  }
 }
 
 void I2CMotors::setBootId(uint16_t id) {
@@ -26,20 +29,20 @@ void I2CMotors::handleRead() {
   } else {
     const uint8_t mIdx = getMidx(currentPage, ptr);
     if (mIdx >= numMotors) {
-      wire.write(0xFF);
-    } else if (currentPage < 0x10) {
+      wire.write(UNSET);
+    } else if (currentPage < SCRIPT_PAGE_START) {
       if (ptr < TOTAL_BLOCK_SIZE) {
         const uint8_t offset = getStructOffset(ptr);
         uint8_t* motorData = (uint8_t*) &mem.regs.motors[mIdx];
         wire.write(motorData[offset]);
       } else {
-        wire.write(0xFF);
+        wire.write(UNSET);
       }
-    } else if (currentPage < 0x10 * (NUM_SCRIPT_PAGES + 1)) {
-      const uint8_t sIdx = (currentPage / 0x10) - 1;
+    } else if (currentPage < SCRIPT_PAGE_START * (NUM_SCRIPT_PAGES + 1)) {
+      const uint8_t sIdx = (currentPage / SCRIPT_PAGE_START) - 1;
       wire.write(mem.regs.motors[mIdx].scripts[sIdx][ptr - MOTOR_BASE_ADDR]);
     } else {
-      wire.write(0xFF);
+      wire.write(UNSET);
     }
   }
   ptr++;
@@ -65,11 +68,11 @@ void I2CMotors::handleWrite(int howMany) {
         uint8_t mIdx = getMidx(currentPage, ptr);
         if (mIdx >= numMotors) {
           mem.regs.repCode = INVALID_MOTOR;
-        } else if (currentPage < 0x10) {
+        } else if (currentPage < SCRIPT_PAGE_START) {
           uint8_t offset = getStructOffset(ptr);
           mem.regs.repCode = handleMotorWrite(mIdx, offset, incoming, true, true);
-        } else if (currentPage < 0x10 * (NUM_SCRIPT_PAGES + 1)) {
-          uint8_t sIdx = (currentPage / 0x10) - 1;
+        } else if (currentPage < SCRIPT_PAGE_START * (NUM_SCRIPT_PAGES + 1)) {
+          uint8_t sIdx = (currentPage / SCRIPT_PAGE_START) - 1;
           auto& mregs = mem.regs.motors[mIdx];
           if (isScriptActive(mIdx) && mregs.scriptPage == sIdx) {
             // Prevent writing to running script
@@ -105,7 +108,8 @@ uint8_t I2CMotors::handleMotorWrite(const uint8_t mIdx, const uint8_t offset, co
     enforceScriptLock && ((SCRIPT_LOCK_MASK >> offset) & 1) && isScriptActive(mIdx)
   ) {
     // In case of prior partial write
-    syncAll(mIdx);
+    syncMotorSettings(mIdx);
+    syncMotorState(mIdx);
     return MOTOR_BUSY;
   }
   // Get a pointer to the start of this specific motor's data in the buffer
@@ -194,23 +198,11 @@ uint8_t I2CMotors::handleMotorWrite(const uint8_t mIdx, const uint8_t offset, co
 
     case offsetof(MotorBlock, cmdScriptClear):
       if (incoming < NUM_SCRIPT_PAGES) {
-        if (isScriptActive(mIdx)) {
-          if (incoming == mregs.scriptPage) {
-            // Prevent clearing running script
-            repCode = MOTOR_BUSY;
-          } else {
-            for (uint8_t i = 0; i < mregs.sp; ++i) {
-              // Prevent clearing a page in the call stack
-              if (incoming == mregs.scriptStackPage[i]) {
-                repCode = MOTOR_BUSY;
-                break;
-              }
-            }
-          }
-        }
-        if (repCode == OK) {
+        if (isPageInStack(mIdx, incoming)) {
+          // Prevent clearing running script
+          repCode = MOTOR_BUSY;
+        } else {
           memset((void*) mregs.scripts[incoming], 0, SCRIPT_PAGE_SIZE);
-          mregs.scriptIdx = 0;
         }
       } else {
         repCode = OVERFLOW;
@@ -232,7 +224,7 @@ uint8_t I2CMotors::handleMotorWrite(const uint8_t mIdx, const uint8_t offset, co
         repCode = UNKNOWN_COMMAND;
       } else {
         uint8_t page = mregs.cmdJump[0];
-        if (page == 0xFF) {
+        if (page == UNSET) {
           page = mregs.scriptPage;
         }
         if (page < NUM_SCRIPT_PAGES && incoming < SCRIPT_PAGE_SIZE) {
@@ -266,7 +258,7 @@ uint8_t I2CMotors::handleMotorWrite(const uint8_t mIdx, const uint8_t offset, co
         repCode = UNKNOWN_COMMAND;
       } else {
         uint8_t page = mregs.cmdCondJump[2];
-        if (page == 0xFF) {
+        if (page == UNSET) {
           page = mregs.scriptPage;
         }
         if (page < NUM_SCRIPT_PAGES && incoming < SCRIPT_PAGE_SIZE) {
@@ -297,7 +289,7 @@ uint8_t I2CMotors::scriptStackPush(const uint8_t mIdx, uint8_t page, const uint8
     return OTHER_ERROR;
   }
   auto& mregs = mem.regs.motors[mIdx];
-  if (page == 0xFF) {
+  if (page == UNSET) {
     page = mregs.scriptPage;
   }
   if (page >= NUM_SCRIPT_PAGES || sIdx >= SCRIPT_PAGE_SIZE || mregs.sp >= SCRIPT_STACK_SIZE) {
@@ -311,17 +303,30 @@ uint8_t I2CMotors::scriptStackPush(const uint8_t mIdx, uint8_t page, const uint8
   return OK;
 }
 
+bool I2CMotors::isPageInStack(const uint8_t mIdx, const uint8_t page) {
+  if (!isScriptActive(mIdx)) {
+    return false;
+  }
+  auto& mregs = mem.regs.motors[mIdx];
+  if (page == mregs.scriptPage) {
+    return true;
+  }
+  for (uint8_t i = 0; i < mregs.sp; ++i) {
+    if (page == mregs.scriptStackPage[i]) {
+      return true;
+    }
+  }
+  return false;
+}
+
 void I2CMotors::processScript(const uint8_t mIdx) {
-  if (mIdx >= numMotors) {
+  if (!isScriptActive(mIdx) || isMotorBusy(mIdx)) {
     return;
   }
   auto& m = motors[mIdx];
   auto& mregs = mem.regs.motors[mIdx];
-  if (!isScriptActive(mIdx) || isMotorBusy(mIdx)) {
-    return;
-  }
   if (mregs.scriptPage >= NUM_SCRIPT_PAGES) {
-    exitScript(mIdx, OTHER_ERROR);
+    exitScript(mIdx, OVERFLOW);
     return;
   }
   if (mregs.scriptIdx >= SCRIPT_PAGE_SIZE) {
@@ -331,14 +336,21 @@ void I2CMotors::processScript(const uint8_t mIdx) {
   // Get OpCode (Struct Offset)
   volatile uint8_t* scriptBase = mregs.scripts[mregs.scriptPage];
   const uint8_t op = scriptBase[mregs.scriptIdx];
-  if (op == 0x00 || op == 0xFF) {  // End markers
+  if (op == OK || op >= USR1) {  // End markers
+    // OK 0x00 or UNSET 0xFF are treated as OK 0x00.
+    // Anything USR1 0xFA to USR5 0xFE are passed on as is to
+    // the scriptRepCode, which can be evaluated in conditional
+    // functions with EQL_RETURNCODE_RHS 0x03. A subroutine can
+    // use this as a return code to the caller.
+    const uint8_t code = (op == OK || op == UNSET) ? OK : op;
     if (mregs.sp > 0) {
       mregs.sp--;
+      mregs.scriptRepCode = code;
       mregs.scriptPage = mregs.scriptStackPage[mregs.sp];
       mregs.scriptIdx = mregs.scriptStackIdx[mregs.sp];
       return;
     }
-    exitScript(mIdx, OK);
+    exitScript(mIdx, code);
     return;
   }
   const uint8_t dataLen = getOpCodeDataLength(op);
@@ -366,7 +378,6 @@ void I2CMotors::processScript(const uint8_t mIdx) {
     if (!isScriptActive(mIdx)) {
       return;
     }
-    mregs.scriptRepCode = code;
   }
 }
 
@@ -378,7 +389,6 @@ void I2CMotors::exitScript(const uint8_t mIdx, const uint8_t code) {
   auto& mregs = mem.regs.motors[mIdx];
   mregs.sp = 0;
   mregs.scriptRepCode = code;
-  // mregs.scriptIdx = 0;
   m->setScriptActive(false);
   mregs._internalFlags &= ~(1 << BitIsScriptActive);
   mregs._waitEndTime = 0;
@@ -390,14 +400,39 @@ int8_t I2CMotors::scriptCondition(const uint8_t mIdx, const uint8_t func, const 
   if (mIdx >= numMotors) {
     return -1;
   }
+  // Bit 7 of the function code signifies negation.
+  const bool negate = func & 0x80;
   auto& m = motors[mIdx];
-  switch (func) {
-    case AND_STFLGS_RHS:
-      return m->stateFlags() & rhs;
-    case NAND_STFLGS_RHS:
-      return !(m->stateFlags() & rhs);
+  auto& mregs = mem.regs.motors[mIdx];
+  bool result = false;
+  const uint8_t funId = func & 0x7F;
+  switch (funId) {
+    case ALWAYS_TRUE:
+      result = true;
+      break;
+    case AND_STATEFLAGS_RHS:
+      result = m->stateFlags() & rhs;
+      break;
+    case AND_SETTINGSFLAGS_RHS:
+      result = m->settingsFlags() & rhs;
+      break;
+    case EQL_RETURNCODE_RHS:
+      result = mregs.scriptRepCode == rhs;
+      break;
+    // The RHS value of the previous condition check can be evaluated
+    // with EQL_LASTCONDARG_RHS 0x30. This can be used with ALWAYS_TRUE
+    // to pass an argument to a subroutine.
+    case EQL_LASTCONDARG_RHS:
+      result = mregs.scriptLastRhs == rhs;
+      break;
+    default:
+      return -1;
   }
-  return -1;
+  if (funId != EQL_LASTCONDARG_RHS) {
+    // Only update the register if the operation wasn't a 'Read' of the register
+    mregs.scriptLastRhs = rhs;
+  }
+  return result ^ negate;
 }
 
 bool I2CMotors::isMotorBusy(const uint8_t mIdx) {
@@ -433,11 +468,6 @@ void I2CMotors::memSyncInterval() {
     lastSlowSync = now;
     for (uint8_t i = 0; i < numMotors; ++i) syncMotorSettings(i);
   }
-}
-
-void I2CMotors::syncAll(const uint8_t mIdx) {
-  syncMotorSettings(mIdx);
-  syncMotorState(mIdx);
 }
 
 void I2CMotors::syncMotorState(const uint8_t mIdx) {
@@ -482,16 +512,16 @@ void I2CMotors::syncMotorSettings(const uint8_t mIdx) {
 }
 
 uint8_t I2CMotors::getMidx(const uint8_t page, const uint8_t ptr) {
-  if (page < 0x10) {
-    return (page * 2) + (ptr >= 0x80);
+  if (page < SCRIPT_PAGE_START) {
+    return (page * 2) + (ptr >= LOWER_BLOCK_SIZE);
   }
-  return page % 0x10;
+  return page % SCRIPT_PAGE_START;
 }
 
 uint8_t I2CMotors::getStructOffset(const uint8_t ptr) {
   // Motor 2 starts at exactly 0x80
   // Motor 1 starts at exactly 0x08
-  return (ptr >= 0x80) ? (ptr - 0x80) : (ptr - MOTOR_BASE_ADDR);
+  return (ptr >= LOWER_BLOCK_SIZE) ? (ptr - LOWER_BLOCK_SIZE) : (ptr - MOTOR_BASE_ADDR);
 }
 
 uint8_t I2CMotors::getOpCodeDataLength(const uint8_t offset) {
@@ -523,8 +553,8 @@ bool I2CMotors::isWriteable(const uint8_t page, const uint8_t ptr) {
   if (ptr < MOTOR_BASE_ADDR) {
     return (DEVICE_WRITE_MASK >> ptr) & 1;
   }
-  if (page >= 0x10) {
-    return (page % 0x10) < MAX_MOTORS;
+  if (page >= SCRIPT_PAGE_START) {
+    return (page % SCRIPT_PAGE_START) < MAX_MOTORS;
   }
   if (ptr >= TOTAL_BLOCK_SIZE) {
     return false;
