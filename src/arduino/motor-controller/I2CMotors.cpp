@@ -297,6 +297,7 @@ uint8_t I2CMotors::scriptStackPush(const uint8_t mIdx, uint8_t page, const uint8
   }
   mregs.scriptStackIdx[mregs.sp] = mregs.scriptIdx;
   mregs.scriptStackPage[mregs.sp] = mregs.scriptPage;
+  mregs.scriptStackRhsArg[mregs.sp] = mregs.scriptLastRhs;
   mregs.sp++;
   mregs.scriptPage = page;
   mregs.scriptIdx = sIdx;
@@ -348,6 +349,7 @@ void I2CMotors::processScript(const uint8_t mIdx) {
       mregs.scriptRepCode = code;
       mregs.scriptPage = mregs.scriptStackPage[mregs.sp];
       mregs.scriptIdx = mregs.scriptStackIdx[mregs.sp];
+      mregs.scriptLastRhs = mregs.scriptStackRhsArg[mregs.sp];
       return;
     }
     exitScript(mIdx, code);
@@ -420,15 +422,18 @@ int8_t I2CMotors::scriptCondition(const uint8_t mIdx, const uint8_t func, const 
       result = mregs.scriptRepCode == rhs;
       break;
     // The RHS value of the previous condition check can be evaluated
-    // with EQL_LASTCONDARG_RHS 0x30. This can be used with ALWAYS_TRUE
-    // to pass an argument to a subroutine.
+    // with EQL_LASTCONDARG_RHS 0x30 or AND_LASTCONDARG_RHS 0x31. This
+    // can be used with ALWAYS_TRUE to pass an argument to a subroutine.
     case EQL_LASTCONDARG_RHS:
       result = mregs.scriptLastRhs == rhs;
+      break;
+    case AND_LASTCONDARG_RHS:
+      result = mregs.scriptLastRhs & rhs;
       break;
     default:
       return -1;
   }
-  if (funId != EQL_LASTCONDARG_RHS) {
+  if (funId < EQL_LASTCONDARG_RHS || funId > AND_LASTCONDARG_RHS) {
     // Only update the register if the operation wasn't a 'Read' of the register
     mregs.scriptLastRhs = rhs;
   }

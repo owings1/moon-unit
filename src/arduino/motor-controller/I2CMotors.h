@@ -83,6 +83,7 @@ public:
     EQL_RETURNCODE_RHS = 0x03,
     AND_SETTINGSFLAGS_RHS = 0x10,
     EQL_LASTCONDARG_RHS = 0x30,
+    AND_LASTCONDARG_RHS = 0x30 + 1,
     ALWAYS_TRUE = 0x7F,
   } FunId;
 
@@ -124,6 +125,7 @@ public:
     volatile uint32_t _waitEndTime;
     volatile uint8_t scriptStackIdx[SCRIPT_STACK_SIZE];
     volatile uint8_t scriptStackPage[SCRIPT_STACK_SIZE];
+    volatile uint8_t scriptStackRhsArg[SCRIPT_STACK_SIZE];
     volatile uint8_t sp; // Stack Pointer
     volatile uint8_t _internalFlags;
     volatile uint8_t scriptLastRhs;
