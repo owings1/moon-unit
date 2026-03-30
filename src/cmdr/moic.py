@@ -37,7 +37,7 @@ class Attributes:
   delay = Attribute(0x24, b'L', 4)
   stop = Attribute(0x28, b'x', 1)
   script_clear = Attribute(0x29, b'B', 1)#
-  script_exec = Attribute(0x2A, b'B', 1)#
+  script_exec = Attribute(0x2A, b'2B', 2)#
   script_page = Attribute(0x2C, b'B', 1)#
   script_index = Attribute(0x2D, b'B', 1)#
   call = Attribute(0x2E, b'2B', 2)

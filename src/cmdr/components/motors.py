@@ -7,13 +7,13 @@ from collections import OrderedDict, deque
 import busio
 import moic
 from micropython import const
-from moic import FunId, Return
+from moic import Return
 from utils import Pkr
 
 from . import CompAttr, DeviceComponent, ActDef, FlagDef
 
 try:
-  from typing import Any, Generator, Iterable, Literal
+  from typing import Any, Generator, Iterable
 except ImportError:
   pass
 
@@ -103,7 +103,7 @@ class Motor(DeviceComponent):
     ('sleep_enabled', 'settings_flags', 0x1, 0x1),
   ))
   ACTMAP = OrderedDict((x[0], ActDef(*x)) for x in (
-    ('stop', moic.Attributes.stop.offset, b'x'),
+    ('stop', moic.Attributes.stop.offset, moic.Attributes.stop.fmt),
     ('home', '_act_home', ''),
     ('end', '_act_end', ''),
     ('home_end', '_act_home_end', ''),
@@ -114,13 +114,13 @@ class Motor(DeviceComponent):
     ('move_to', moic.Attributes.move_to.offset, moic.Attributes.move_to.fmt),
     ('move_at_speed', '_act_move_at_speed', b'fl'),
     ('move_to_at_speed', '_act_move_to_at_speed', b'fl'),
-    ('delay', moic.Attributes.delay.offset, b'L'),
-    ('script_clear', moic.Attributes.script_clear.offset, b'B'),
-    ('script_exec', moic.Attributes.script_exec.offset, b'B'),
-    ('call', moic.Attributes.call.offset, b'2B'),
-    ('cond_call', moic.Attributes.cond_call.offset, b'4B'),
-    ('cond_jump', moic.Attributes.cond_jump.offset, b'4B'),
-    ('jump', moic.Attributes.jump.offset, b'2B'),
+    ('delay', moic.Attributes.delay.offset, moic.Attributes.delay.fmt),
+    ('script_clear', moic.Attributes.script_clear.offset, moic.Attributes.script_clear.fmt),
+    ('script_exec', moic.Attributes.script_exec.offset, moic.Attributes.script_exec.fmt),
+    ('call', moic.Attributes.call.offset, moic.Attributes.call.fmt),
+    ('cond_call', moic.Attributes.cond_call.offset, moic.Attributes.cond_call.fmt),
+    ('cond_jump', moic.Attributes.cond_jump.offset, moic.Attributes.cond_jump.fmt),
+    ('jump', moic.Attributes.jump.offset, moic.Attributes.jump.fmt),
   ))
   SLCINFO_PERSIST = MotorAttr.sliceinfo(ATTRMAP, 6, 6+12)
   PERSIST_NS = 0x9100
@@ -303,55 +303,41 @@ class Motor(DeviceComponent):
   def _act_home(self, **kw) -> int:
     scripts: HomeEndScripts = HomeEndScripts()
     self.sync_moicdb()
-    self.write('script_clear', 0, **kw)
     self.write('script_clear', 4, **kw)
     self.write('script4', scripts.lib(5), **kw)
-    self.write('script0', scripts.build('home', 4), **kw)
-    return self.write('script_exec', 0, **kw)
+    return self.write('script_exec', 4, 1, **kw)
 
   def _act_end(self, **kw) -> int:
     scripts: HomeEndScripts = HomeEndScripts()
     self.sync_moicdb()
-    self.write('script_clear', 0, **kw)
     self.write('script_clear', 4, **kw)
     self.write('script4', scripts.lib(5), **kw)
-    self.write('script0', scripts.build('end', 4), **kw)
-    return self.write('script_exec', 0, **kw)
+    return self.write('script_exec', 4, 2, **kw)
 
   def _act_home_end(self, **kw) -> int:
     scripts: HomeEndScripts = HomeEndScripts()
     self.sync_moicdb()
-    self.write('script_clear', 0, **kw)
     self.write('script_clear', 4, **kw)
     self.write('script4', scripts.lib(5), **kw)
-    self.write('script0', scripts.build('home_end', 4), **kw)
-    return self.write('script_exec', 0, **kw)
+    return self.write('script_exec', 4, 3, **kw)
     
   def _act_move_at_speed(self, speed: float, steps: int, **kw) -> int:
     s = moic.Script()
     s.add('max_speed', speed)
     s.add('move', steps)
     s.add('max_speed', self['max_speed'])
-    code = self.write('script_clear', 0, **kw)
-    if code != CODE_OK:
-      return code
-    code = self.write('script0', s.compile(), **kw)
-    if code != CODE_OK:
-      return code
-    return self.write('script_exec', 0, **kw)
+    self.write('script_clear', 0, **kw)
+    self.write('script0', s.compile(), **kw)
+    return self.write('script_exec', 0, 0, **kw)
 
   def _act_move_to_at_speed(self, speed: float, position: int, **kw) -> int:
     s = moic.Script()
     s.add('max_speed', speed)
     s.add('move_to', position)
     s.add('max_speed', self['max_speed'])
-    code = self.write('script_clear', 0, **kw)
-    if code != CODE_OK:
-      return code
-    code = self.write('script0', s.compile(), **kw)
-    if code != CODE_OK:
-      return code
-    return self.write('script_exec', 0, **kw)
+    self.write('script_clear', 0, **kw)
+    self.write('script0', s.compile(), **kw)
+    return self.write('script_exec', 0, 0, **kw)
 
 class HomeEndScripts:
 
@@ -403,20 +389,6 @@ class HomeEndScripts:
     lib.add(Return.UNSET)
 
     return lib.compile()
-    
-  def build(self, routine: Literal['home', 'end', 'home_end'], libpg: int):
-    main = moic.Script()
-    reqs = (routine.startswith, 'home'), (routine.endswith, 'end')
-    arg = 0
-    for i, (pred, pat) in enumerate(reqs):
-      if pred(pat):
-        arg |= i + 1
-    main.add('cond_call', FunId.ALWAYS_TRUE, arg, libpg, 0)
-    for ret in (Return.USR1, Return.USR2, Return.USR3):
-      with main.if_repeql(ret):
-        main.add(ret)
-    main.add(Return.UNSET)
-    return main.compile()
     
 class RoutineError(Exception):
   errcode = CODE_OTHER_ERROR

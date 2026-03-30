@@ -30,17 +30,17 @@ void syncMotorState(IMotor* m, volatile Moic::MotorBlock& mregs) {
     }
   }
 }
-uint8_t enterScript(IMotor* m, volatile Moic::MotorBlock& mregs, uint8_t page, const uint8_t sIdx) {
+uint8_t enterScript(IMotor* m, volatile Moic::MotorBlock& mregs, uint8_t page, const uint8_t arg) {
   if (isMotorBusy(m, mregs) || isScriptActive(m, mregs)) {
     return Moic::MOTOR_BUSY;
   }
-  if (page >= Moic::NUM_SCRIPT_PAGES || sIdx >= Moic::SCRIPT_PAGE_SIZE) {
+  if (page >= Moic::NUM_SCRIPT_PAGES) {
     return Moic::OVERFLOW;
   }
   mregs.scriptPage = page;
-  mregs.scriptIdx = sIdx;
+  mregs.scriptIdx = 0;
   mregs.scriptRepCode = Moic::OK;
-  mregs.scriptCallArg = 0;
+  mregs.scriptCallArg = arg;
   mregs.scriptLastRhs = 0;
   m->setScriptActive(true);
   mregs._internalFlags |= 1 << Moic::BitIsScriptActive;

@@ -25,7 +25,7 @@ uint8_t onSleepTimeout(IMotor* m, volatile Moic::MotorBlock& mregs) {
 }
 uint8_t onMaxSpeed(IMotor* m, volatile Moic::MotorBlock& mregs) {
   m->setMaxSpeed(mregs.maxSpeed);
-  mregs.maxSpeed = m->maxSpeed();  // Re-sync from hardware
+  mregs.maxSpeed = m->maxSpeed();
   return Moic::OK;
 }
 uint8_t onAcceleration(IMotor* m, volatile Moic::MotorBlock& mregs) {
@@ -85,8 +85,8 @@ uint8_t onScriptClear(IMotor* m, volatile Moic::MotorBlock& mregs) {
   return code;
 }
 uint8_t onScriptExec(IMotor* m, volatile Moic::MotorBlock& mregs) {
-  const uint8_t code = MotorState::enterScript(m, mregs, mregs.cmdScriptExec, 0);
-  mregs.cmdScriptExec = 0;
+  const uint8_t code = MotorState::enterScript(m, mregs, mregs.cmdScriptExec[0], mregs.cmdScriptExec[1]);
+  clearTrigger(mregs.cmdScriptExec, 2);
   return code;
 }
 uint8_t onCmdCall(IMotor* m, volatile Moic::MotorBlock& mregs) {

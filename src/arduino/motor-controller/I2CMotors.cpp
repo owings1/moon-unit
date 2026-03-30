@@ -25,23 +25,23 @@ void I2CMotors::update() {
 }
 
 void I2CMotors::handleRead() {
-  if (ptr < I2CMotors::MOTOR_BASE_ADDR) {
+  if (ptr < MOTOR_BASE_ADDR) {
     wire.write(mem.buffer[ptr]);
   } else {
     const uint8_t mIdx = getMidx(currentPage, ptr);
     if (mIdx >= numMotors) {
       wire.write(Moic::UNSET);
-    } else if (currentPage < I2CMotors::SCRIPT_PAGE_START) {
-      if (ptr < I2CMotors::TOTAL_BLOCK_SIZE) {
+    } else if (currentPage < SCRIPT_PAGE_START) {
+      if (ptr < TOTAL_BLOCK_SIZE) {
         const uint8_t offset = getStructOffset(ptr);
         uint8_t* motorData = (uint8_t*) &mem.regs.motors[mIdx];
         wire.write(motorData[offset]);
       } else {
         wire.write(Moic::UNSET);
       }
-    } else if (currentPage < I2CMotors::SCRIPT_PAGE_START * (Moic::NUM_SCRIPT_PAGES + 1)) {
-      const uint8_t sIdx = (currentPage / I2CMotors::SCRIPT_PAGE_START) - 1;
-      wire.write(mem.regs.motors[mIdx].scripts[sIdx][ptr - I2CMotors::MOTOR_BASE_ADDR]);
+    } else if (currentPage < SCRIPT_PAGE_START * (Moic::NUM_SCRIPT_PAGES + 1)) {
+      const uint8_t sIdx = (currentPage / SCRIPT_PAGE_START) - 1;
+      wire.write(mem.regs.motors[mIdx].scripts[sIdx][ptr - MOTOR_BASE_ADDR]);
     } else {
       wire.write(Moic::UNSET);
     }
@@ -58,28 +58,28 @@ void I2CMotors::handleWrite(int howMany) {
   howMany--;
   while (howMany > 0 && ptr < 0x100) {
     uint8_t incoming = wire.read();
-    if (ptr == I2CMotors::PAGE_REGISTER) {
+    if (ptr == PAGE_REGISTER) {
       currentPage = incoming;
       mem.regs.repCode = Moic::OK;
     } else if (isWriteable(currentPage, ptr)) {
-      if (ptr < I2CMotors::MOTOR_BASE_ADDR) {
+      if (ptr < MOTOR_BASE_ADDR) {
         mem.buffer[ptr] = incoming;
         mem.regs.repCode = Moic::OK;
       } else {
         uint8_t mIdx = getMidx(currentPage, ptr);
         if (mIdx >= numMotors) {
           mem.regs.repCode = Moic::INVALID_MOTOR;
-        } else if (currentPage < I2CMotors::SCRIPT_PAGE_START) {
+        } else if (currentPage < SCRIPT_PAGE_START) {
           uint8_t offset = getStructOffset(ptr);
           mem.regs.repCode = MotorActions::write(motors[mIdx], mem.regs.motors[mIdx], offset, incoming, true, true);
-        } else if (currentPage < I2CMotors::SCRIPT_PAGE_START * (Moic::NUM_SCRIPT_PAGES + 1)) {
-          uint8_t sIdx = (currentPage / I2CMotors::SCRIPT_PAGE_START) - 1;
+        } else if (currentPage < SCRIPT_PAGE_START * (Moic::NUM_SCRIPT_PAGES + 1)) {
+          uint8_t sIdx = (currentPage / SCRIPT_PAGE_START) - 1;
           auto& mregs = mem.regs.motors[mIdx];
-          if (MotorState::isScriptActive(motors[mIdx], mregs) && mregs.scriptPage == sIdx) {
+          if (MotorState::isScriptActive(motors[mIdx], mregs) && MotorState::isPageInStack(motors[mIdx], mregs, sIdx)) {
             // Prevent writing to running script
             mem.regs.repCode = Moic::MOTOR_BUSY;
           } else {
-            mregs.scripts[sIdx][ptr - I2CMotors::MOTOR_BASE_ADDR] = incoming;
+            mregs.scripts[sIdx][ptr - MOTOR_BASE_ADDR] = incoming;
             mem.regs.repCode = Moic::OK;
           }
         } else {

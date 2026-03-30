@@ -8,7 +8,6 @@
 #include "MoicProtocol.h"
 #include "MotorState.h"
 #include "MotorActions.h"
-#include "MotorVM.h"
 
 class I2CMotors {
 public:
@@ -33,9 +32,9 @@ public:
   // delay              | offset: 0x24 | span: 4 bytes
   // stop               | offset: 0x28 | span: 1 bytes
   // script_clear       | offset: 0x29 | span: 1 bytes
-  // script_exec        | offset: 0x2a | span: 1 bytes
+  // script_exec        | offset: 0x2a | span: 2 bytes
   // move_rev           | offset: 0x3c | span: 4 bytes
-  static const uint64_t MOTOR_WRITE_MASK = 0xF00007FFFFFF00F0ULL;
+  static const uint64_t MOTOR_WRITE_MASK = 0xF0000FFFFFFF00F0ULL;
   static const uint16_t FAST_SYNC_MS = 20;
   static const uint16_t SLOW_SYNC_MS = 500;
 
