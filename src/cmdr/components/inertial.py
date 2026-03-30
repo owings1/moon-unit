@@ -11,7 +11,7 @@ from digitalio import DigitalInOut, Direction
 from micropython import const
 from utils import Pkr, debug
 
-from . import CompAttr, DeviceComponent, Component
+from . import CompAttr, DeviceComponent, Component, FlagDef
 
 class IMU6(DeviceComponent):
   PKR = Pkr('<')
@@ -105,7 +105,7 @@ class IMU9(DeviceComponent):
     radius_accelerometer=dict(fmt='h', writeable=True),
     radius_magnetometer=dict(fmt='h', writeable=True),
   ))
-  FLAGMAP = OrderedDict((x[0], x) for x in (
+  FLAGMAP = OrderedDict((x[0], FlagDef(*x)) for x in (
     ('cal_mag', 'calflag', 0x0, 0x3),
     ('cal_accel', 'calflag', 0x2, 0x3),
     ('cal_gyro', 'calflag', 0x4, 0x3),
@@ -256,7 +256,7 @@ class IMU9OrthoPair(Component):
     heading=dict(fmt='f'),
     declination_degrees=dict(fmt='e'),
   ))
-  FLAGMAP = OrderedDict((x[0], x) for x in (
+  FLAGMAP = OrderedDict((x[0], FlagDef(*x)) for x in (
     ('a_cal_mag', 'a_calflag', 0x0, 0x3),
     ('a_cal_accel', 'a_calflag', 0x2, 0x3),
     ('a_cal_gyro', 'a_calflag', 0x4, 0x3),

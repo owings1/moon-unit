@@ -16,7 +16,7 @@ except ImportError:
 
 class Component:
   ATTRMAP: dict[str, CompAttr] = {}
-  FLAGMAP = {}
+  FLAGMAP: dict[str, FlagDef] = {}
   PERSIST_NS: int|None = None
   PERSIST_VER: int = 0x01
   component_address: int
@@ -70,7 +70,7 @@ class Component:
   def __getitem__(self, name: str):
     if name in self.FLAGMAP:
       flagdef = self.FLAGMAP[name]
-      return (self[flagdef[1]] >> flagdef[2]) & flagdef[3]
+      return (self[flagdef.attr] >> flagdef.bit) & flagdef.mask
     if self.packed is None:
       raise KeyError(name)
     return self.ATTRMAP[name].unpack_from(self.packed)
@@ -132,6 +132,17 @@ class DeviceComponent(Component):
   def metaitems(self) -> Iterable[tuple[str, Any]]:
     yield from super().metaitems()
     yield 'device_address', hex(self.device_address)
+
+class ActDef(namedtuple('ActDef', ('name', 'src', 'fmt'))):
+  name: str
+  src: str|int
+  fmt: str
+
+class FlagDef(namedtuple('FlagDef', ('name', 'attr', 'bit', 'mask'))):
+  name: str
+  attr: str
+  bit: int
+  mask: int
 
 class CompAttr(
   namedtuple(

@@ -337,8 +337,6 @@ class GPS:
     self._sats = None  # Temporary holder for information from GSV messages
     self.sats = None
     "Information from GSV messages"
-    # self.sat_prns = None
-    # "Satellite pseudorandom noise code"
     self._mode_indicator = None
     self._magnetic_variation = None
     self.horizontal_dilution = None

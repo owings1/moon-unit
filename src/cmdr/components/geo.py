@@ -9,7 +9,7 @@ import time
 from digitalio import Direction, DigitalInOut, Pull
 from utils import Pkr, as_pin, debug, millis, ysleep
 
-from . import CompAttr, Component, DeviceComponent
+from . import CompAttr, Component, DeviceComponent, FlagDef
 
 try:
   from typing import Sequence
@@ -366,7 +366,7 @@ class MagnetometerQMC(DeviceComponent):
     offset=dict(fmt='3e'),
     scale=dict(fmt='3e'),
   ))
-  FLAGMAP = OrderedDict((x[0], x) for x in (
+  FLAGMAP = OrderedDict((x[0], FlagDef(*x)) for x in (
     ('overflow', 'flags', 0x5, 0x1),
     ('calibrated', 'flags', 0x6, 0x1),
   ))
