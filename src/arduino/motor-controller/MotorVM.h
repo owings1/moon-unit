@@ -8,6 +8,7 @@
 
 namespace MotorVM {
 static const uint8_t INDIRECT_OPCODE_FLAG = 0x40;
+static const uint8_t FARPTR_OPCODE_FLAG = 0x80;
 uint8_t jump(volatile Moic::MotorBlock& mregs, volatile uint8_t* cmdBuf);
 uint8_t call(volatile Moic::MotorBlock& mregs, volatile uint8_t* cmdBuf);
 uint8_t condCall(volatile Moic::MotorBlock& mregs, volatile uint8_t* cmdBuf);

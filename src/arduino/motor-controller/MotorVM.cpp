@@ -81,8 +81,9 @@ bool processNext(volatile Moic::MotorBlock& mregs, uint8_t& offset, uint8_t& cou
       return false;
     }
   }
-  const bool isIndirect = op & INDIRECT_OPCODE_FLAG;
-  const uint8_t directOp = op & ~INDIRECT_OPCODE_FLAG;
+  const bool isFar = op & FARPTR_OPCODE_FLAG;
+  const bool isInd = op & INDIRECT_OPCODE_FLAG;
+  const uint8_t directOp = op & ~(INDIRECT_OPCODE_FLAG | FARPTR_OPCODE_FLAG);
   const uint8_t dataLen = getOpCodeDataLength(directOp);
   if (dataLen == 0) {
     exitCode = Moic::UNKNOWN_COMMAND;
@@ -92,23 +93,36 @@ bool processNext(volatile Moic::MotorBlock& mregs, uint8_t& offset, uint8_t& cou
     exitCode = Moic::OTHER_ERROR;
     return false;
   }
-  const uint8_t totalCmdLen = 1 + (isIndirect ? 1 : dataLen);
+  const uint8_t operandLen = isFar ? 2 : (isInd ? 1 : dataLen);
+  const uint8_t totalCmdLen = 1 + operandLen;
   if (mregs.scriptIdx + totalCmdLen >= Moic::SCRIPT_PAGE_SIZE) {
-    exitCode = Moic::OTHER_ERROR;
+    exitCode = Moic::OVERFLOW;
     return false;
   }
-  // Consume from buffer (Advance BEFORE execution)
   const uint8_t currentCmdStart = mregs.scriptIdx;
+  // Consume from buffer (Advance BEFORE execution)
   mregs.scriptIdx += totalCmdLen;
+  uint8_t ptrOffset, farPage;
+  if (isFar) {
+    farPage = scriptBase[currentCmdStart + 1];
+    ptrOffset = scriptBase[currentCmdStart + 2];
+    if (farPage >= Moic::NUM_SCRIPT_PAGES || ((uint16_t)ptrOffset) + dataLen >= Moic::SCRIPT_PAGE_SIZE) {
+      exitCode = Moic::OVERFLOW;
+      return false;
+    }
+  } else if (isInd) {
+    ptrOffset = scriptBase[currentCmdStart + 1];
+    if (((uint16_t)ptrOffset) + dataLen > 0x1B) {
+      exitCode = Moic::UNINVITED_POINTER;
+      return false;
+    }
+  }
   // We feed bytes one-by-one to handleMotorWrite to reuse all logic
   for (uint8_t i = 0; i < dataLen; i++) {
     uint8_t incoming;
-    if (isIndirect) {
-      uint8_t ptrOffset = scriptBase[currentCmdStart + 1];
-      if (ptrOffset > 0x1B) {
-        exitCode = Moic::UNINVITED_POINTER;
-        return false;
-      }
+    if (isFar) {
+      incoming = mregs.scripts[farPage][ptrOffset + i];
+    } else if (isInd) {
       incoming = ((uint8_t*)&mregs)[ptrOffset + i];
     } else {
       incoming = scriptBase[currentCmdStart + i + 1];

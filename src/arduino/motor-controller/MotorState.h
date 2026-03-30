@@ -9,8 +9,8 @@
 namespace Moic {
 static const uint8_t MOTOR_BLOCK_SIZE = 0x78;
 static const uint8_t SCRIPT_PAGE_SIZE = 0xF8;
-static const uint8_t NUM_SCRIPT_PAGES = 4;
-static const uint8_t SCRIPT_STACK_SIZE = 8;
+static const uint8_t NUM_SCRIPT_PAGES = 12;
+static const uint8_t SCRIPT_STACK_SIZE = 0x10;
 static const uint8_t SCRIPT_WRITEBUF_SIZE = 8;
 // Busy Protected:
 // position           | offset: 0x04 | span: 4 bytes
@@ -68,7 +68,7 @@ struct MotorBlock {
   // 0x3C - (Future)
   uint8_t _unallocated[0x3C];  // +0x3C - 0x77 future
   // 0x78 - Script buffer
-  volatile uint8_t scripts[NUM_SCRIPT_PAGES][SCRIPT_PAGE_SIZE];  // 248 bytes. 4 pages = 992 bytes per motor
+  volatile uint8_t scripts[NUM_SCRIPT_PAGES][SCRIPT_PAGE_SIZE];  // 248 bytes. 12 pages = 2976 bytes per motor
   volatile uint32_t _waitEndTime;
   volatile uint8_t scriptStackIdx[SCRIPT_STACK_SIZE];
   volatile uint8_t scriptStackPage[SCRIPT_STACK_SIZE];
