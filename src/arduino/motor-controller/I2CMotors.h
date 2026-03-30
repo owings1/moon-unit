@@ -22,7 +22,7 @@ public:
   // Writable: 0x01 (sysFlags), 0x04 (PageReg)
   static const uint8_t DEVICE_WRITE_MASK = 0x12;
   // Writeable:
-  // position           | offset: 0x04 | span: 4 bytes
+  // current_position   | offset: 0x04 | span: 4 bytes
   // settings_flags     | offset: 0x10 | span: 1 bytes
   // enable_delay_ms    | offset: 0x11 | span: 1 bytes
   // sleep_timeout_ms   | offset: 0x12 | span: 2 bytes
@@ -34,7 +34,8 @@ public:
   // stop               | offset: 0x28 | span: 1 bytes
   // script_clear       | offset: 0x29 | span: 1 bytes
   // script_exec        | offset: 0x2a | span: 1 bytes
-  static const uint64_t MOTOR_WRITE_MASK = 0x07FFFFFF00F0ULL;
+  // move_rev           | offset: 0x3c | span: 4 bytes
+  static const uint64_t MOTOR_WRITE_MASK = 0xF00007FFFFFF00F0ULL;
   static const uint16_t FAST_SYNC_MS = 20;
   static const uint16_t SLOW_SYNC_MS = 500;
 

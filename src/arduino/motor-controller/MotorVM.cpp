@@ -145,6 +145,7 @@ void scriptStackPop(volatile Moic::MotorBlock& mregs, const uint8_t code) {
   mregs.scriptPage = mregs.scriptStackPage[mregs.sp];
   mregs.scriptIdx = mregs.scriptStackIdx[mregs.sp];
   mregs.scriptLastRhs = mregs.scriptStackRhsArg[mregs.sp];
+  mregs.scriptCallArg = mregs.scriptStackCallArg[mregs.sp];
 }
 
 uint8_t scriptStackPush(volatile Moic::MotorBlock& mregs, uint8_t page, const uint8_t sIdx) {
@@ -157,9 +158,11 @@ uint8_t scriptStackPush(volatile Moic::MotorBlock& mregs, uint8_t page, const ui
   mregs.scriptStackIdx[mregs.sp] = mregs.scriptIdx;
   mregs.scriptStackPage[mregs.sp] = mregs.scriptPage;
   mregs.scriptStackRhsArg[mregs.sp] = mregs.scriptLastRhs;
+  mregs.scriptStackCallArg[mregs.sp] = mregs.scriptCallArg;
   mregs.sp++;
   mregs.scriptPage = page;
   mregs.scriptIdx = sIdx;
+  mregs.scriptCallArg = mregs.scriptLastRhs;
   return Moic::OK;
 }
 
@@ -190,6 +193,15 @@ int8_t scriptCondition(volatile Moic::MotorBlock& mregs, const uint8_t func, con
     case Moic::AND_LASTCONDARG_RHS:
       result = mregs.scriptLastRhs & rhs;
       break;
+    // The CALLARG is set to the last RHS value when the stack is pushed
+    // and remains immutable for that context, until it is restored to its
+    // previous value when the stack is popped.
+    case Moic::EQL_CALLARG_RHS:
+      result = mregs.scriptCallArg == rhs;
+      break;
+    case Moic::AND_CALLARG_RHS:
+      result = mregs.scriptCallArg & rhs;
+      break;
     default:
       return -1;
   }
@@ -205,6 +217,7 @@ uint8_t getOpCodeDataLength(const uint8_t offset) {
     case offsetof(Moic::MotorBlock, maxSpeed):
     case offsetof(Moic::MotorBlock, acceleration):
     case offsetof(Moic::MotorBlock, cmdMove):
+    case offsetof(Moic::MotorBlock, cmdMoveRev):
     case offsetof(Moic::MotorBlock, cmdMoveTo):
     case offsetof(Moic::MotorBlock, cmdDelay):
     case offsetof(Moic::MotorBlock, cmdCondCall):

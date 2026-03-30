@@ -13,7 +13,7 @@ static const uint8_t NUM_SCRIPT_PAGES = 12;
 static const uint8_t SCRIPT_STACK_SIZE = 0x10;
 static const uint8_t SCRIPT_WRITEBUF_SIZE = 8;
 // Busy Protected:
-// position           | offset: 0x04 | span: 4 bytes
+// current_position   | offset: 0x04 | span: 4 bytes
 // settings_flags     | offset: 0x10 | span: 1 bytes
 // max_speed          | offset: 0x14 | span: 4 bytes
 // acceleration       | offset: 0x18 | span: 4 bytes
@@ -21,9 +21,10 @@ static const uint8_t SCRIPT_WRITEBUF_SIZE = 8;
 // move_to            | offset: 0x20 | span: 4 bytes
 // delay              | offset: 0x24 | span: 4 bytes
 // script_exec        | offset: 0x2a | span: 1 bytes
-static const uint64_t MOTOR_BUSY_MASK = 0x04FFFFF100F0ULL;
+// move_rev           | offset: 0x3c | span: 4 bytes
+static const uint64_t MOTOR_BUSY_MASK = 0xF00004FFFFF100F0ULL;
 // Script Protected:
-// position           | offset: 0x04 | span: 4 bytes
+// current_position   | offset: 0x04 | span: 4 bytes
 // settings_flags     | offset: 0x10 | span: 1 bytes
 // enable_delay_ms    | offset: 0x11 | span: 1 bytes
 // sleep_timeout_ms   | offset: 0x12 | span: 2 bytes
@@ -33,7 +34,8 @@ static const uint64_t MOTOR_BUSY_MASK = 0x04FFFFF100F0ULL;
 // move_to            | offset: 0x20 | span: 4 bytes
 // delay              | offset: 0x24 | span: 4 bytes
 // script_exec        | offset: 0x2a | span: 1 bytes
-static const uint64_t SCRIPT_LOCK_MASK = 0x04FFFFFF00F0ULL;
+// move_rev           | offset: 0x3c | span: 4 bytes
+static const uint64_t SCRIPT_LOCK_MASK = 0xF00004FFFFFF00F0ULL;
 #pragma pack(push, 1)
 struct MotorBlock {
   // 0x00 - Telemetry (Aligned)
@@ -64,19 +66,22 @@ struct MotorBlock {
   volatile uint8_t cmdCondJump[4];  // +0x34
   volatile uint8_t cmdJump[2];      // +0x38
   uint8_t _pad2[2];
+  volatile int32_t cmdMoveRev;      // +0x3C
 
-  // 0x3C - (Future)
-  uint8_t _unallocated[0x3C];  // +0x3C - 0x77 future
+  // 0x40 - (Future)
+  uint8_t _unallocated[0x38];  // +0x40 - 0x77 future
   // 0x78 - Script buffer
   volatile uint8_t scripts[NUM_SCRIPT_PAGES][SCRIPT_PAGE_SIZE];  // 248 bytes. 12 pages = 2976 bytes per motor
   volatile uint32_t _waitEndTime;
   volatile uint8_t scriptStackIdx[SCRIPT_STACK_SIZE];
   volatile uint8_t scriptStackPage[SCRIPT_STACK_SIZE];
   volatile uint8_t scriptStackRhsArg[SCRIPT_STACK_SIZE];
+  volatile uint8_t scriptStackCallArg[SCRIPT_STACK_SIZE];
   volatile uint8_t sp;  // Stack Pointer
   volatile uint8_t _internalFlags;
   volatile uint8_t scriptLastRhs;
-  uint8_t _pad3[2];
+  volatile uint8_t scriptCallArg;
+  // uint8_t _pad3[1];
   volatile uint8_t scriptWriteBuf[SCRIPT_WRITEBUF_SIZE];
 };
 

@@ -24,6 +24,7 @@ uint8_t onCmdCall(IMotor* m, volatile Moic::MotorBlock& mregs);
 uint8_t onCondCall(IMotor* m, volatile Moic::MotorBlock& mregs);
 uint8_t onCondJump(IMotor* m, volatile Moic::MotorBlock& mregs);
 uint8_t onCmdJump(IMotor* m, volatile Moic::MotorBlock& mregs);
+uint8_t onMoveRev(IMotor* m, volatile Moic::MotorBlock& mregs);
 uint8_t write(IMotor* m, volatile Moic::MotorBlock& mregs, const uint8_t offset, const uint8_t incoming, const bool enforceBusy, const bool enforceScriptLock);
 void tickScript(IMotor* m, volatile Moic::MotorBlock& mregs);
 }
@@ -50,6 +51,7 @@ const RegMapping ACTION_TABLE[] = {
   { 0x30, 4, MotorActions::onCondCall },
   { 0x34, 4, MotorActions::onCondJump },
   { 0x38, 2, MotorActions::onCmdJump },
+  { 0x3C, 4, MotorActions::onMoveRev },
 };
 
 const uint8_t MOTOR_REGS_COUNT = sizeof(ACTION_TABLE) / sizeof(RegMapping);

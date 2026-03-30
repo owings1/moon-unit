@@ -159,7 +159,7 @@ class CompAttr(
   src: Any
   start: int
   end: int
-  fmt: str
+  fmt: str|bytes
   bom: str
   writeable: bool
   scale: int|float
@@ -217,7 +217,8 @@ class CompAttr(
   def sliceinfo(cls, attrmap: dict[str, Self], start, end):
     attrs = tuple(attrmap.values())[start:end]
     slc = slice(attrs[0].start, attrs[-1].end)
-    fmt = attrs[0].bom + ''.join(x.fmt for x in attrs)
+    joiner = b'' if isinstance(attrs[0].bom, bytes) else ''
+    fmt = attrs[0].bom + joiner.join(x.fmt for x in attrs)
     return cls.SliceInfo(attrs, fmt, slc)
 
   class SliceInfo(namedtuple('SliceInfo', ('attrs', 'fmt', 'slc'))):

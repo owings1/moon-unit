@@ -12,6 +12,7 @@ files=(
   code.py
   defaults.py
   utils.py
+  moic.py
   components/*
   contrib/*
   sensors/*.mpy

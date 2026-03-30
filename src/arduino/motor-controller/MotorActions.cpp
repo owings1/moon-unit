@@ -38,6 +38,11 @@ uint8_t onMove(IMotor* m, volatile Moic::MotorBlock& mregs) {
   mregs.cmdMove = 0;
   return code;
 }
+uint8_t onMoveRev(IMotor* m, volatile Moic::MotorBlock& mregs) {
+  const uint8_t code = m->move(-mregs.cmdMoveRev) ? Moic::OK : Moic::COMMAND_IGNORED;
+  mregs.cmdMoveRev = 0;
+  return code;
+}
 uint8_t onMoveTo(IMotor* m, volatile Moic::MotorBlock& mregs) {
   const uint8_t code = m->move(mregs.cmdMoveTo - m->currentPosition()) ? Moic::OK : Moic::COMMAND_IGNORED;
   mregs.cmdMoveTo = 0;

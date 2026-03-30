@@ -40,6 +40,8 @@ uint8_t enterScript(IMotor* m, volatile Moic::MotorBlock& mregs, uint8_t page, c
   mregs.scriptPage = page;
   mregs.scriptIdx = sIdx;
   mregs.scriptRepCode = Moic::OK;
+  mregs.scriptCallArg = 0;
+  mregs.scriptLastRhs = 0;
   m->setScriptActive(true);
   mregs._internalFlags |= 1 << Moic::BitIsScriptActive;
   return Moic::OK;
