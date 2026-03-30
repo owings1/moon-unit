@@ -41,7 +41,6 @@ public:
   bool move(const int32_t) override;
   bool stop() override;
   bool busy() override;
-  // bool scriptActive() override;
 
   void setCurrentPosition(const int32_t) override;
   void setSettingsFlags(const uint8_t) override;
