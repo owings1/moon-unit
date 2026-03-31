@@ -4,9 +4,27 @@ import struct
 from collections import namedtuple
 
 try:
-  from typing import Any, Callable
+  from typing import Any, Callable, TypeVar
+  _T = TypeVar('_T')
 except ImportError:
   pass
+try:
+  from micropython import const
+except ImportError:
+  # Support generic environment
+  def const(x: _T): return x
+
+MOTOR_BLOCK_SIZE = const(0x78)
+SCRIPT_PAGE_SIZE = const(0xF8)
+NUM_SCRIPT_PAGES = const(0x0C)
+SCRIPT_STACK_SIZE = const(0x10)
+
+INDIRECT_OPCODE_FLAG = const(0x40)
+FARPTR_OPCODE_FLAG = const(0x80)
+
+PAGE_REGISTER = const(0x04)
+SCRIPT_PAGE_START = const(0x10)
+MOTOR_BASE_ADDR = const(0x08)
 
 class Attribute(namedtuple('Attribute', ('offset', 'fmt', 'size'))):
   offset: int
@@ -81,14 +99,28 @@ class FunId:
   AND_CALLARG_RHS = Attributes.call.offset + 1
   ALWAYS_TRUE = 0xFF >> 1
 
-class Return:
+class Code:
   OK = 0x00
+  OTHER_ERROR = 0x07
+  MOTOR_BUSY = 0x1F
+  CANCELED = 0x20
+  UNKNOWN_COMMAND = 0x2C
+  INVALID_MOTOR = 0x2D
+  COMMAND_IGNORED = 0x2E
+  UNINVITED_POINTER = 0x2F
+  READONLY_ATTRIBUTE = 0x30
+  OVERFLOW = 0x31
   USR1 = 0xFA
   USR2 = 0xFB
   USR3 = 0xFC
   USR4 = 0xFD
   USR5 = 0xFE
   UNSET = 0xFF
+
+codes: dict[int, str] = {
+  getattr(Code, name): name
+  for name in dir(Code)
+  if name.upper() == name}
 
 class Condition(namedtuple('Condition', ('func', 'rhs'))):
   func: int
@@ -133,7 +165,7 @@ class Script:
   def add(self, op: str|bytes|int, *args) -> None:
     if not args:
       if op == 'end':
-        op = 0xFF
+        op = Code.UNSET
       if isinstance(op, int):
         op = op.to_bytes(1, 'little')
       if isinstance(op, bytes):
@@ -142,9 +174,9 @@ class Script:
     else:
       self.instructions.append((op, args))
       if isinstance(op, int):
-        if op & 0x80:
+        if op & FARPTR_OPCODE_FLAG:
           oplen = 2
-        elif op & 0x40:
+        elif op & INDIRECT_OPCODE_FLAG:
           oplen = 1
         else:
           oplen = revops[op].size
@@ -169,9 +201,9 @@ class Script:
         args = map(resolver, args)
       args = map(self.resolve, args)
       if isinstance(op, int):
-        if op & 0x80:
+        if op & FARPTR_OPCODE_FLAG:
           fmt = b'BB'
-        elif op & 0x40:
+        elif op & INDIRECT_OPCODE_FLAG:
           fmt = b'B'
         else:
           fmt = revops[op].fmt
@@ -179,17 +211,17 @@ class Script:
       else:
         if op.endswith('**'):
           fmt = b'BB'
-          opcode = opsmap[op[:-2]].offset | 0x80
+          opcode = opsmap[op[:-2]].offset | FARPTR_OPCODE_FLAG
         elif op.endswith('*'):
           fmt = b'B'
-          opcode = opsmap[op[:-1]].offset | 0x40
+          opcode = opsmap[op[:-1]].offset | INDIRECT_OPCODE_FLAG
         else:
           attr = opsmap[op]
           fmt = attr.fmt
           opcode = attr.offset
       buf.append(opcode)
       buf.extend(struct.pack(b'<'+fmt, *args))
-    buf.append(0xFF)
+    buf.append(Code.UNSET)
     return bytes(buf)
 
   def resolve(self, arg: str|int|float) -> int|float:
@@ -224,14 +256,14 @@ class If:
 
   def __enter__(self):
     # If NOT condition, jump to the ELSE marker
-    self.script.add(Attributes.cond_jump.offset, *~self.condition, 0xFF, self.else_label)
+    self.script.add(Attributes.cond_jump.offset, *~self.condition, Code.UNSET, self.else_label)
     return self
 
   def else_(self):
     "Transition point between True and False branches."
     self._has_run_else = True
     # True block is finished; jump over the upcoming Else block
-    self.script.add(Attributes.jump.offset, 0xFF, self.exit_label)
+    self.script.add(Attributes.jump.offset, Code.UNSET, self.exit_label)
     # Mark where the Else block starts
     self.script.label(self.else_label)
 
@@ -252,10 +284,10 @@ class While:
   def __enter__(self):
     self.script.label(self.start_label)
     # 'If NOT (condition), Jump to Exit'
-    self.script.add(Attributes.cond_jump.offset, *~self.condition, 0xFF, self.exit_label)
+    self.script.add(Attributes.cond_jump.offset, *~self.condition, Code.UNSET, self.exit_label)
     return self
 
   def __exit__(self, exc_type, exc_val, exc_tb):
-    self.script.add(Attributes.jump.offset, 0xFF, self.start_label)
+    self.script.add(Attributes.jump.offset, Code.UNSET, self.start_label)
     self.script.label(self.exit_label)
 

@@ -6,8 +6,7 @@ from collections import OrderedDict, deque
 
 import busio
 import moic
-from micropython import const
-from moic import Return
+from moic import Code
 from utils import Pkr
 
 from . import CompAttr, DeviceComponent, ActDef, FlagDef
@@ -19,20 +18,6 @@ except ImportError:
 
 __all__ = ('Motor',)
 
-PAGE_REGISTER = const(0x04)
-CODE_OK = const(0x00)
-CODE_OTHER_ERROR = const(0x07)
-CODE_WRITE_FAILED = const(0x0B)
-CODE_MOTOR_BUSY = const(0x1F)
-CODE_CANCELED = const(0x20)
-CODE_UNKNOWN_COMMAND = const(0x2C)
-CODE_INVALID_MOTORID = const(0x2D)
-CODE_COMMAND_IGNORED = const(0x2E)
-CODE_UNINVITED_POINTER = const(0x2F)
-CODE_READONLY_ATTRIBUTE = const(0x30)
-CODE_OVERFLOW = const(0x31)
-CODE_UNSET = const(0xFF)
-
 class MotorAttr(CompAttr):
   src: int|None
 
@@ -42,13 +27,6 @@ class MotorAttr(CompAttr):
     if self.src < 0:
       return -1 * self.src
     return self.src + motor.regoffset
-
-  def pagebuf(self, motor: Motor):
-    if self.src is None:
-      return
-    if self.name[:-1] == 'script':
-      return motor.script_pagebufs[int(self.name[-1], 0x10)]
-    return motor.pagebuf
 
   @classmethod
   def prepdefn(cls, defn: dict[str, Any]):
@@ -82,13 +60,13 @@ class Motor(DeviceComponent):
     enable_delay_ms=dict(writeable=True),
     sleep_timeout_ms=dict(writeable=True),
     # --- not persisted
-    script0=dict(fmt=b'248B', src=-0x08, writeable=True),
-    script1=dict(fmt=b'248B', src=-0x08, writeable=True),
-    script2=dict(fmt=b'248B', src=-0x08, writeable=True),
-    script3=dict(fmt=b'248B', src=-0x08, writeable=True),
-    script4=dict(fmt=b'248B', src=-0x08, writeable=True),
-    script5=dict(fmt=b'248B', src=-0x08, writeable=True),
-    script6=dict(fmt=b'248B', src=-0x08, writeable=True),
+    # script0=dict(fmt=b'248B', src=-0x08, writeable=True),
+    # script1=dict(fmt=b'248B', src=-0x08, writeable=True),
+    # script2=dict(fmt=b'248B', src=-0x08, writeable=True),
+    # script3=dict(fmt=b'248B', src=-0x08, writeable=True),
+    # script4=dict(fmt=b'248B', src=-0x08, writeable=True),
+    # script5=dict(fmt=b'248B', src=-0x08, writeable=True),
+    # script6=dict(fmt=b'248B', src=-0x08, writeable=True),
   ))
   FLAGMAP = OrderedDict((x[0], FlagDef(*x)) for x in (
     ('is_limit_cw', 'state_flags', 0x0, 0x1),
@@ -102,38 +80,40 @@ class Motor(DeviceComponent):
     ('limits_enabled', 'settings_flags', 0x0, 0x1),
     ('sleep_enabled', 'settings_flags', 0x1, 0x1),
   ))
-  ACTMAP = OrderedDict((x[0], ActDef(*x)) for x in (
-    ('stop', moic.Attributes.stop.offset, moic.Attributes.stop.fmt),
+  ACTMAP = OrderedDict(
+    (x.name, ActDef(x.name, x.offset, x.fmt))
+      if isinstance(x, moic.Attribute) else
+    (x[0], ActDef(*x)) for x in (
+    moic.Attributes.stop,
     ('home', '_act_home', ''),
     ('end', '_act_end', ''),
     ('home_end', '_act_home_end', ''),
     ('limits_on', '_act_limits_on', ''),
     ('limits_off', '_act_limits_off', ''),
-    ('move', moic.Attributes.move.offset, moic.Attributes.move.fmt),
-    ('move_rev', moic.Attributes.move_rev.offset, moic.Attributes.move_rev.fmt),
-    ('move_to', moic.Attributes.move_to.offset, moic.Attributes.move_to.fmt),
+    moic.Attributes.move,
+    moic.Attributes.move_rev,
+    moic.Attributes.move_to,
     ('move_at_speed', '_act_move_at_speed', b'fl'),
     ('move_to_at_speed', '_act_move_to_at_speed', b'fl'),
-    ('delay', moic.Attributes.delay.offset, moic.Attributes.delay.fmt),
-    ('script_clear', moic.Attributes.script_clear.offset, moic.Attributes.script_clear.fmt),
-    ('script_exec', moic.Attributes.script_exec.offset, moic.Attributes.script_exec.fmt),
-    ('call', moic.Attributes.call.offset, moic.Attributes.call.fmt),
-    ('cond_call', moic.Attributes.cond_call.offset, moic.Attributes.cond_call.fmt),
-    ('cond_jump', moic.Attributes.cond_jump.offset, moic.Attributes.cond_jump.fmt),
-    ('jump', moic.Attributes.jump.offset, moic.Attributes.jump.fmt),
+    moic.Attributes.delay,
+    moic.Attributes.script_clear,
+    moic.Attributes.script_exec,
+    moic.Attributes.call,
+    moic.Attributes.cond_call,
+    moic.Attributes.cond_jump,
+    moic.Attributes.jump,
   ))
   SLCINFO_PERSIST = MotorAttr.sliceinfo(ATTRMAP, 6, 6+12)
   PERSIST_NS = 0x9100
   PERSIST_VER = 0x0A
-  SLCINFO_MOICDB = MotorAttr.sliceinfo(ATTRMAP, 9, 9+6)
   init_defaults = OrderedDict(
     settings_flags=0x03,
-    max_speed=0x7ff,
-    default_speed=0x7ff,
-    homing_speed=0xfff,
-    fixing_speed=0x1ff,
-    acceleration=0xffff,
-    msteps_per_degree=0x27ff,
+    max_speed=2000.0,
+    default_speed=2000.0,
+    homing_speed=4000.0,
+    fixing_speed=500.0,
+    acceleration=60_000.0,
+    msteps_per_degree=10_000,
     sleep_timeout_ms=2000,
     enable_delay_ms=2)
   routine: MotorRoutine|None = None
@@ -158,16 +138,14 @@ class Motor(DeviceComponent):
     initial = OrderedDict(self.init_defaults)
     initial.update(init_data)
     self.packed = bytearray(self.PKR.size)
-    self.regoffset = (0x78 * ((self.id - 1) % 2)) + 0x08
-    self.pagebuf = struct.pack(b'<2B', PAGE_REGISTER, (self.id - 1) // 2)
-    self.script_pagebufs = tuple(
-      struct.pack(b'<2B', PAGE_REGISTER, x + (self.id - 1))
-      for x in range(0x10, 0xC0, 0x10))
+    self.regoffset = (moic.MOTOR_BLOCK_SIZE * ((self.id - 1) % 2)) + moic.MOTOR_BASE_ADDR
+    self.pagebuf = struct.pack(b'<2B', moic.PAGE_REGISTER, (self.id - 1) // 2)
     self.rbuf = bytearray(2)
     for k, v in initial.items():
       self.write(k, v, fail=True)
     self.read('boot_id')
     self.last_boot_id = self['boot_id']
+    self.scripts = MotorScripts(self)
 
   def refresh(self):
     self.check_boot_id()
@@ -185,7 +163,7 @@ class Motor(DeviceComponent):
   def read(self, name: str) -> None:
     attr = self.ATTRMAP[name]
     with self.device as device:
-      device.write(attr.pagebuf(self))
+      device.write(self.pagebuf)
       device.write_then_readinto(
         attr.regptr(self).to_bytes(1, 'little'),
         self.packed,
@@ -194,8 +172,8 @@ class Motor(DeviceComponent):
 
   def write(self, name: str, *v, unsafe: bool = False, fail: bool = True) -> int:
     code = self._write(name, *v, unsafe=unsafe)
-    if fail and code != Return.OK:
-      raise WriteFailed(f'Write Failed {name=} code={hex(code)}', code=code)
+    if fail and code != Code.OK:
+      raise WriteFailed(f'Write Failed {name=}', code)
     return code
 
   def _write(self, name: str, *v, unsafe: bool = False) -> int:
@@ -203,34 +181,32 @@ class Motor(DeviceComponent):
       if name == 'stop':
         self.routine = self.routine.cancel()
       else:
-        return CODE_MOTOR_BUSY
+        return Code.MOTOR_BUSY
     if name in self.ATTRMAP:
       attr = self.ATTRMAP[name]
       if not attr.writeable:
-        return CODE_READONLY_ATTRIBUTE
+        return Code.READONLY_ATTRIBUTE
       if attr.src is None:
         attr.pack_into(self.packed, v)
-        return CODE_OK
-      pagebuf = attr.pagebuf(self)
+        return Code.OK
       bufw = self._get_attr_write_buf(attr, *v)
     else:
       actdef = self.ACTMAP[name]
       if isinstance(actdef.src, str):
-        if actdef.fmt:
-          v = struct.unpack(actdef.fmt, struct.pack(actdef.fmt, *v))
+        # if actdef.fmt:
+        #   v = struct.unpack(actdef.fmt, struct.pack(actdef.fmt, *v))
         if actdef.src.startswith('_routine'):
           if self.routine:
-            return CODE_COMMAND_IGNORED
+            return Code.COMMAND_IGNORED
           self.routine = getattr(self, actdef.src)(*v)
           next(self.routine)
-          return CODE_OK
+          return Code.OK
         if actdef.src.startswith('_act'):
           return getattr(self, actdef.src)(*v, unsafe=unsafe)
-        return CODE_UNKNOWN_COMMAND
-      pagebuf = self.pagebuf
+        return Code.UNKNOWN_COMMAND
       bufw = self._get_act_write_buf(actdef, *v)
     with self.device as device:
-      device.write(pagebuf)
+      device.write(self.pagebuf)
       device.write(bufw)
       # Read response code
       device.write_then_readinto(self.rbuf, self.rbuf, out_end=1, in_start=1)
@@ -238,20 +214,9 @@ class Motor(DeviceComponent):
     
   def _get_attr_write_buf(self, attr: MotorAttr, *v):
     reg = attr.regptr(self)
-    if attr.name[:-1] == 'script':
-      if not v:
-        raise ValueError(f'Missing parameters for {attr.name}')
-      bufw = bytearray(1)
-      if len(v) == 1 and isinstance(v[0], (bytes, bytearray)):
-        bufw.extend(v[0])
-      else:
-        bufw.extend(v)
-      if len(bufw) - 1 > attr.end - attr.start:
-        raise ValueError(f'Size exceeds max for {attr.name}')
-    else:
-      fmt = b'<B' + attr.fmt
-      bufw = bytearray(struct.calcsize(fmt))
-      attr.pack_into(bufw, v, 1)
+    fmt = b'<B' + attr.fmt
+    bufw = bytearray(struct.calcsize(fmt))
+    attr.pack_into(bufw, v, 1)
     bufw[0] = reg
     return bufw
 
@@ -276,11 +241,6 @@ class Motor(DeviceComponent):
     for attr, value in zip(slcinfo.attrs, values):
       self.write(attr.name, value, fail=fail)
 
-  def sync_moicdb(self):
-    slcinfo = self.SLCINFO_MOICDB
-    self.write('script_clear', 5, fail=True)
-    self.write('script5', self.packed[slcinfo.slc], fail=True)
-
   def debug_format_item(self, k: str, v: Any) -> str:
     if k[:-1] == 'script':
       if any(v):
@@ -294,40 +254,27 @@ class Motor(DeviceComponent):
 
   def _act_limits_on(self, **kw):
     flagdef = self.FLAGMAP['limits_enabled']
-    return self.write(flagdef[1], self[flagdef[1]] | (1 << flagdef[2]), **kw)
+    return self.write(flagdef.attr, self[flagdef.attr] | (1 << flagdef.bit), **kw)
 
   def _act_limits_off(self, **kw):
     flagdef = self.FLAGMAP['limits_enabled']
-    return self.write(flagdef[1], self[flagdef[1]] & ~(1 << flagdef[2]), **kw)
+    return self.write(flagdef.attr, self[flagdef.attr] & ~(1 << flagdef.bit), **kw)
 
   def _act_home(self, **kw) -> int:
-    scripts: HomeEndScripts = HomeEndScripts()
-    self.sync_moicdb()
-    self.write('script_clear', 4, **kw)
-    self.write('script4', scripts.lib(5), **kw)
-    return self.write('script_exec', 4, 1, **kw)
+    return self.scripts.exec('home')
 
   def _act_end(self, **kw) -> int:
-    scripts: HomeEndScripts = HomeEndScripts()
-    self.sync_moicdb()
-    self.write('script_clear', 4, **kw)
-    self.write('script4', scripts.lib(5), **kw)
-    return self.write('script_exec', 4, 2, **kw)
+    return self.scripts.exec('end')
 
   def _act_home_end(self, **kw) -> int:
-    scripts: HomeEndScripts = HomeEndScripts()
-    self.sync_moicdb()
-    self.write('script_clear', 4, **kw)
-    self.write('script4', scripts.lib(5), **kw)
-    return self.write('script_exec', 4, 3, **kw)
+    return self.scripts.exec('home_end')
     
   def _act_move_at_speed(self, speed: float, steps: int, **kw) -> int:
     s = moic.Script()
     s.add('max_speed', speed)
     s.add('move', steps)
     s.add('max_speed', self['max_speed'])
-    self.write('script_clear', 0, **kw)
-    self.write('script0', s.compile(), **kw)
+    self.scripts.upload(0, s.compile())
     return self.write('script_exec', 0, 0, **kw)
 
   def _act_move_to_at_speed(self, speed: float, position: int, **kw) -> int:
@@ -335,33 +282,86 @@ class Motor(DeviceComponent):
     s.add('max_speed', speed)
     s.add('move_to', position)
     s.add('max_speed', self['max_speed'])
-    self.write('script_clear', 0, **kw)
-    self.write('script0', s.compile(), **kw)
+    self.scripts.upload(0, s.compile())
     return self.write('script_exec', 0, 0, **kw)
 
-class HomeEndScripts:
+class MotorScripts:
+  fixlib_page = 4
+  moicdb_page = 5
+  moicdb_slcinfo = MotorAttr.sliceinfo(Motor.ATTRMAP, 9, 9+6)
 
-  def lib(self, dbpg: int):
-    dbstart = Motor.SLCINFO_MOICDB.slc.start
-    mattrs = Motor.ATTRMAP
+  def __init__(self, motor: Motor):
+    self._static: dict[str, bytes] = {}
+    self.last_boot_id = None
+    self.motor = motor
+    self.rbuf = motor.rbuf
+    self.pagebufs = tuple(
+      struct.pack(
+        b'<2B',
+        moic.PAGE_REGISTER,
+        moic.SCRIPT_PAGE_START * (i + 1) + (self.motor.id - 1))
+      for i in range(moic.NUM_SCRIPT_PAGES))
+    self._execargs: dict[str, tuple[int, int]] = dict(
+      home=(self.fixlib_page, 1),
+      end=(self.fixlib_page, 2),
+      home_end=(self.fixlib_page, 3),)
+
+  def exec(self, name: str):
+    page, arg = self._execargs[name]
+    self.sync()
+    return self.motor.write('script_exec', page, arg)
+
+  def sync(self):
+    self.upload(self.moicdb_page, self.moicdb_content)
+    if self.motor['boot_id'] != self.last_boot_id:
+      self.upload(self.fixlib_page, self.fixlib_content)
+      self.last_boot_id = self.motor['boot_id']
+
+  def upload(self, page: int, content: bytes|bytearray):
+    self.motor.write('script_clear', page)
+    buf = bytearray()
+    buf.append(moic.MOTOR_BASE_ADDR)
+    buf.extend(content)
+    with self.motor.device as device:
+      device.write(self.pagebufs[page])
+      device.write(buf)
+      device.write_then_readinto(self.rbuf, self.rbuf, out_end=1, in_start=1)
+    code = self.rbuf[1]
+    if code != Code.OK:
+      raise WriteFailed(f'Failed writing script {page=}', code)
+    
+  @property
+  def moicdb_content(self):
+    return self.motor.packed[self.moicdb_slcinfo.slc]
+
+  @property
+  def fixlib_content(self):
+    try:
+      return self._static['fixlib']
+    except KeyError:
+      return self._static.setdefault('fixlib', self.fixlib_generate())
+
+  def fixlib_generate(self):
+    dbpg = self.moicdb_page
+    ptr = self.moicdb_ptridx
     lib = moic.Script()
-    __ = 0xFF
+    __ = Code.UNSET
     with lib.if_argand(3, negate=True):
-      lib.add(Return.USR3)
+      lib.add(Code.USR3)
     with lib.if_flag('limits_enabled', negate=True):
-      lib.add(Return.USR1)
+      lib.add(Code.USR1)
     with lib.if_argand(1):
       lib.add('call', __, 'subroutine:home')
-      with lib.if_repeql(Return.USR2):
+      with lib.if_repeql(Code.USR2):
         lib.add('call', __, 'subroutine:cleanup')
-        lib.add(Return.USR2)
+        lib.add(Code.USR2)
     with lib.if_argand(2):
       lib.add('call', __, 'subroutine:end')
-      with lib.if_repeql(Return.USR2):
+      with lib.if_repeql(Code.USR2):
         lib.add('call', __, 'subroutine:cleanup')
-        lib.add(Return.USR2)
+        lib.add(Code.USR2)
     lib.add('call', __, 'subroutine:cleanup')
-    lib.add(Return.UNSET)
+    lib.add(Code.UNSET)
     
     for label, direction in (('home', 'acw'), ('end', 'cw')):
       if direction == 'acw':
@@ -370,44 +370,51 @@ class HomeEndScripts:
         mvback, mvfix = 'move_rev', 'move'
       flag = f'is_limit_{direction}'
       lib.label(f'subroutine:{label}')
-      lib.add('max_speed**', dbpg, mattrs['homing_speed'].start - dbstart)
+      lib.add('max_speed**', dbpg, ptr('homing_speed'))
       with lib.if_flag(flag, negate=True):
         lib.add(mvfix,  0x7fffffff)
       with lib.if_flag(flag, negate=True):
-        lib.add(Return.USR2)
+        lib.add(Code.USR2)
       with lib.while_flag(flag):
-        lib.add(f'{mvback}**', dbpg, mattrs['backing_steps'].start - dbstart)
-      lib.add('max_speed**', dbpg, mattrs['fixing_speed'].start - dbstart)
+        lib.add(f'{mvback}**', dbpg, ptr('backing_steps'))
+        lib.add(f'{mvback}**', dbpg, ptr('backing_steps'))
+      lib.add('max_speed**', dbpg, ptr('fixing_speed'))
       with lib.while_flag(flag, negate=True):
-        lib.add(f'{mvfix}**', dbpg, mattrs['backing_steps'].start - dbstart)
+        lib.add(f'{mvfix}**', dbpg, ptr('backing_steps'))
       if label == 'home':
         lib.add('current_position', 0)
-      lib.add(Return.UNSET)
+      lib.add(Code.UNSET)
 
     lib.label('subroutine:cleanup')
-    lib.add('max_speed**', dbpg, mattrs['default_speed'].start - dbstart)
-    lib.add(Return.UNSET)
+    lib.add('max_speed**', dbpg, ptr('default_speed'))
+    lib.add(Code.UNSET)
 
     return lib.compile()
-    
-class RoutineError(Exception):
-  errcode = CODE_OTHER_ERROR
+
+  def moicdb_ptridx(self, name: str) -> int:
+    slcinfo = self.moicdb_slcinfo
+    idx = Motor.ATTRMAP[name].start - slcinfo.slc.start
+    if 0 <= idx < slcinfo.slc.stop:
+      return idx
+    raise ValueError(f'Not in moicdb slice: {name}')
+
+class MotorError(Exception):
+  errcode = Code.OTHER_ERROR
+  errtext = 'Motor Error'
+
+  def __init__(self, errtext: str|None = None, code: int|None = None):
+    if errtext:
+      self.errtext = errtext
+    if code is not None:
+      self.errcode = code
+    self.errtext = f'{self.errtext} {hex(self.errcode)} {moic.codes[self.errcode]}'
+    super().__init__(self.errtext, self.errcode)
+
+class RoutineError(MotorError):
   errtext = 'Routine Error'
 
-  def __init__(self, errtext: str|None = None, code: int|None = None):
-    if errtext:
-      self.errtext = errtext
-    if code is not None:
-      self.errcode = code
-
-class WriteFailed(Exception):
-  errcode = CODE_WRITE_FAILED
+class WriteFailed(MotorError):
   errtext = 'Write Failed'
-  def __init__(self, errtext: str|None = None, code: int|None = None):
-    if errtext:
-      self.errtext = errtext
-    if code is not None:
-      self.errcode = code
 
 class MotorRoutine:
   status_text = ''
@@ -437,9 +444,9 @@ class MotorRoutine:
       traceback.print_exception(err)
       if isinstance(err, RoutineError):
         self.errcode = err.errcode
-        self.status_text = f'Error: {self.errcode and hex(self.errcode)} {err.errtext}'
+        self.status_text = f'Error: {err.errtext}'
       else:
-        self.errcode = CODE_OTHER_ERROR
+        self.errcode = Code.OTHER_ERROR
         self.status_text = f'Error: {err!r}'
       self.cleanup()
 
@@ -447,8 +454,8 @@ class MotorRoutine:
     return self
 
   def cancel(self):
-    self.error = RoutineError(None, CODE_CANCELED)
-    self.errcode = CODE_CANCELED
+    self.error = RoutineError(None, Code.CANCELED)
+    self.errcode = Code.CANCELED
     self.canceled = True
     self.status_text = 'Canceling'
     self.it = iter(())
@@ -464,55 +471,11 @@ class MotorRoutine:
 
   def cleanup(self):
     'Cleanup should be idempotent'
-    if self.overrides:
-      for key in tuple(self.overrides):
-        self.write(key, self.overrides.pop(key))
+    pass
 
   def moving(self) -> bool:
     self.motor.read('state_flags')
     return self.motor['is_moving']
 
-  def write(self, name: str, *v, check: bool = True) -> int:
-    code = self.motor.write(name, *v, unsafe=True)
-    if check and code != CODE_OK:
-      raise WriteFailed(f'{name=} {hex(code)}')
-    return CODE_OK
-
-  def ymove(self, *args, **kw):
-    self.write('move', *args, **kw)
-    yield
-    while self.moving():
-      yield
-
-  def ymoveto(self, *args, **kw):
-    self.write('move_to', *args, **kw)
-    yield
-    while self.moving():
-      yield
-
-class MotorChainRoutine(MotorRoutine):
-
-  def __init__(self, motor: Motor, chain: Iterable[MotorRoutine]):
-    self.chain = chain
-    self.routine = None
-    super().__init__(motor, self.gen())
-
-  def cancel(self):
-    if self.routine:
-      self.routine.cancel()
-    super().cancel()
-
-  def cleanup(self):
-    if self.routine:
-      self.routine.cleanup()
-    super().cleanup()
-
-  def gen(self):
-    for routine in self.chain:
-      self.routine = routine
-      for _ in routine:
-        self.status_text = routine.status_text
-        yield
-      if routine.error:
-        raise routine.error
-      yield
+  def write(self, name: str, *v) -> int:
+    return self.motor.write(name, *v, unsafe=True)
