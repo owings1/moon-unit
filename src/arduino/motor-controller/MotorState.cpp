@@ -1,7 +1,7 @@
 #include "MotorState.h"
 
 namespace MotorState {
-void syncMotorSettings(IMotor* m, volatile Moic::MotorBlock& mregs) {
+void syncMotorSettings(IMotor* m, volatile Moic::MotorInterface& mregs) {
   if (mregs.settingsFlags != m->settingsFlags()) {
     mregs.settingsFlags = m->settingsFlags();
   }
@@ -18,20 +18,20 @@ void syncMotorSettings(IMotor* m, volatile Moic::MotorBlock& mregs) {
     mregs.enableDelayMs = m->enableDelayMs();
   }
 }
-void syncMotorState(IMotor* m, volatile Moic::MotorBlock& mregs) {
+void syncMotorState(IMotor* m, volatile Moic::MotorInterface& mregs) {
   mregs.stateFlags = m->stateFlags();
   mregs.currentPosition = m->currentPosition();
   mregs.targetPosition = m->targetPosition();
   mregs.speed = m->speed();
-  if (mregs._waitEndTime != 0) {
-    if (millis() >= mregs._waitEndTime) {
-      mregs._waitEndTime = 0;
+  if (mregs.waitEndTime != 0) {
+    if (millis() >= mregs.waitEndTime) {
+      mregs.waitEndTime = 0;
       m->setDelayActive(false);
     }
   }
 }
-uint8_t enterScript(IMotor* m, volatile Moic::MotorBlock& mregs, uint8_t page, const uint8_t arg) {
-  if (isMotorBusy(m, mregs) || isScriptActive(m, mregs)) {
+uint8_t enterScript(IMotor* m, volatile Moic::MotorInterface& mregs, volatile Moic::MotorContext& ctx, uint8_t page, const uint8_t arg) {
+  if (isMotorBusy(m, mregs) || isScriptActive(m, mregs, ctx)) {
     return Moic::MOTOR_BUSY;
   }
   if (page >= Moic::NUM_SCRIPT_PAGES) {
@@ -40,36 +40,36 @@ uint8_t enterScript(IMotor* m, volatile Moic::MotorBlock& mregs, uint8_t page, c
   mregs.scriptPage = page;
   mregs.scriptIdx = 0;
   mregs.scriptRepCode = Moic::OK;
-  mregs.scriptCallArg = arg;
-  mregs.scriptLastRhs = 0;
+  ctx.scriptCallArg = arg;
+  ctx.scriptLastRhs = 0;
   m->setScriptActive(true);
-  mregs._internalFlags |= 1 << Moic::BitIsScriptActive;
+  ctx._internalFlags |= 1 << Moic::BitIsScriptActive;
   return Moic::OK;
 }
-void exitScript(IMotor* m, volatile Moic::MotorBlock& mregs, const uint8_t code) {
-  mregs.sp = 0;
+void exitScript(IMotor* m, volatile Moic::MotorInterface& mregs, volatile Moic::MotorContext& ctx, const uint8_t code) {
+  ctx.sp = 0;
   mregs.scriptRepCode = code;
   m->setScriptActive(false);
-  mregs._internalFlags &= ~(1 << Moic::BitIsScriptActive);
-  mregs._waitEndTime = 0;
+  ctx._internalFlags &= ~(1 << Moic::BitIsScriptActive);
+  mregs.waitEndTime = 0;
   m->setDelayActive(false);
   mregs.stateFlags = m->stateFlags();
 }
-bool isMotorBusy(IMotor* m, volatile Moic::MotorBlock& mregs) {
-  return mregs._waitEndTime != 0 && millis() < mregs._waitEndTime || m->busy();
+bool isMotorBusy(IMotor* m, volatile Moic::MotorInterface& mregs) {
+  return mregs.waitEndTime != 0 && millis() < mregs.waitEndTime || m->busy();
 }
-bool isScriptActive(IMotor* m, volatile Moic::MotorBlock& mregs) {
-  return (mregs._internalFlags >> Moic::BitIsScriptActive) & 1;
+bool isScriptActive(IMotor* m, volatile Moic::MotorInterface& mregs, volatile Moic::MotorContext& ctx) {
+  return (ctx._internalFlags >> Moic::BitIsScriptActive) & 1;
 }
-bool isPageInStack(IMotor* m, volatile Moic::MotorBlock& mregs, const uint8_t page) {
-  if (!MotorState::isScriptActive(m, mregs)) {
+bool isPageInStack(IMotor* m, volatile Moic::MotorInterface& mregs, volatile Moic::MotorContext& ctx, const uint8_t page) {
+  if (!MotorState::isScriptActive(m, mregs, ctx)) {
     return false;
   }
   if (page == mregs.scriptPage) {
     return true;
   }
-  for (uint8_t i = 0; i < mregs.sp; ++i) {
-    if (page == mregs.scriptStackPage[i]) {
+  for (uint8_t i = 0; i < ctx.sp; ++i) {
+    if (page == ctx.scriptStackPage[i]) {
       return true;
     }
   }

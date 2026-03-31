@@ -3,6 +3,8 @@
 #include "Motor.h"
 #include "I2CMotors.h"
 #include "IMotor.h"
+#include "MotorState.h"
+#include "MotorManager.h"
 
 #define I2C_MAIN Wire
 #define SDA_MAIN D14
@@ -18,7 +20,9 @@ Motor m2(s2, {D9, D17, D18 });
 Motor* motors[] = {&m1, &m2};
 IMotor* imotors[] = {&m1, &m2};
 
-I2CMotors mainI2cMotors = I2CMotors(I2C_MAIN, imotors, 2);
+Moic::MotorContext motorContexts[2];
+Moic::MotorContext* contexts[] = {&motorContexts[0], &motorContexts[1]};
+I2CMotors mainI2cMotors = I2CMotors(I2C_MAIN, imotors, contexts, 2);
 
 void setup() { for (auto& m : motors) m->begin(); }
 // void loop() { for (auto& m : motors) m->run(); }
@@ -63,10 +67,10 @@ void loop1() {
     for (uint8_t i = 0; i < mainI2cMotors.numMotors; i++) {
       if ((mask >> i) & 1) {
         // Run the VM
-        MotorActions::tickScript(mainI2cMotors.motors[i], mainI2cMotors.mem.regs.motors[i]);
+        MotorActions::tickScript(mainI2cMotors.motors[i], mainI2cMotors.mem.regs.motors[i], motorContexts[i]);
 
         // 3. Clear bit if script finished itself
-        if (!MotorState::isScriptActive(mainI2cMotors.motors[i], mainI2cMotors.mem.regs.motors[i])) {
+        if (!MotorState::isScriptActive(mainI2cMotors.motors[i], mainI2cMotors.mem.regs.motors[i], motorContexts[i])) {
           mainI2cMotors.clearTmpScriptBit(i);
         }
       }

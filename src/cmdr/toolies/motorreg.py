@@ -33,7 +33,7 @@ def generate_cpp_masks():
     attr = moic.attrsmap[name]
     # Only process motor-space registers (non-negative src) that are writeable
     if attr.offset < BLOCK_CUTOFF:
-      byte_len = struct.calcsize(attr.fmt)
+      byte_len = attr.size
       reg_info = (attr.name, attr.offset, byte_len)
       write_regs.append(reg_info)
       if attr.name not in busyok:

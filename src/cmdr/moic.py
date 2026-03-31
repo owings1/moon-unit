@@ -44,6 +44,8 @@ class Flag(namedtuple('Flag', ('bit', 'attr'))):
 
 class Attributes:
   state_flags = Attribute(0x00, b'B', 1)#
+  script_page = Attribute(0x01, b'B', 1)#
+  script_index = Attribute(0x02, b'B', 1)#
   script_repcode = Attribute(0x03, b'B', 1)#
   current_position = Attribute(0x04, b'l', 4)
   target_position = Attribute(0x08, b'l', 4)#
@@ -59,12 +61,11 @@ class Attributes:
   stop = Attribute(0x28, b'x', 1)
   script_clear = Attribute(0x29, b'B', 1)#
   script_exec = Attribute(0x2A, b'2B', 2)#
-  script_page = Attribute(0x2C, b'B', 1)#
-  script_index = Attribute(0x2D, b'B', 1)#
-  call = Attribute(0x2E, b'2B', 2)
-  cond_call = Attribute(0x30, b'4B', 4)
-  cond_jump = Attribute(0x34, b'4B', 4)
-  jump = Attribute(0x38, b'2B', 2)
+  wait_end_time = Attribute(0x2C, b'L', 4)#
+  call = Attribute(0x30, b'2B', 2)
+  cond_call = Attribute(0x32, b'4B', 4)
+  cond_jump = Attribute(0x36, b'4B', 4)
+  jump = Attribute(0x3A, b'2B', 2)
   move_rev = Attribute(0x3C, b'l', 4)
 
 attrsmap: dict[str, Attribute] = {
@@ -76,7 +77,7 @@ revoffs: dict[int, str] = {attr.offset: name for name, attr in attrsmap.items()}
 
 revops: dict[int, Attribute] = {
   key: attrsmap[revoffs[key]] for key in
-  set(revoffs).difference((0x00, 0x03, 0x08, 0x0C, 0x29, 0x2A, 0x2C, 0x2D))}
+  set(revoffs).difference((0x00, 0x01, 0x02, 0x03, 0x08, 0x0C, 0x29, 0x2A, 0x2C))}
 
 opsmap: dict[str, Attribute] = {attr.name: attr for attr in revops.values()}
 

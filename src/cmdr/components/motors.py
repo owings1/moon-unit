@@ -60,14 +60,8 @@ class Motor(DeviceComponent):
     msteps_per_degree=dict(fmt=b'L', writeable=True),
     enable_delay_ms=dict(writeable=True),
     sleep_timeout_ms=dict(writeable=True),
-    # --- not persisted
-    # script0=dict(fmt=b'248B', src=-0x08, writeable=True),
-    # script1=dict(fmt=b'248B', src=-0x08, writeable=True),
-    # script2=dict(fmt=b'248B', src=-0x08, writeable=True),
-    # script3=dict(fmt=b'248B', src=-0x08, writeable=True),
-    # script4=dict(fmt=b'248B', src=-0x08, writeable=True),
-    # script5=dict(fmt=b'248B', src=-0x08, writeable=True),
-    # script6=dict(fmt=b'248B', src=-0x08, writeable=True),
+    # --- debug
+    wait_end_time={},
   ))
   FLAGMAP = OrderedDict((x[0], FlagDef(*x)) for x in (
     ('is_limit_cw', 'state_flags', 0x0, 0x1),

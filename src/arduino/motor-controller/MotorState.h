@@ -37,10 +37,11 @@ static const uint64_t MOTOR_BUSY_MASK = 0xF0000CFFFFF100F0ULL;
 // move_rev           | offset: 0x3c | span: 4 bytes
 static const uint64_t SCRIPT_LOCK_MASK = 0xF0000CFFFFFF00F0ULL;
 #pragma pack(push, 1)
-struct MotorBlock {
+struct MotorInterface {
   // 0x00 - Telemetry (Aligned)
   volatile uint8_t stateFlags;  // +0x00
-  uint8_t _pad0[2];
+  volatile uint8_t scriptPage;       // +0x01
+  volatile uint8_t scriptIdx;        // +0x02
   volatile uint8_t scriptRepCode;    // +0x03
   volatile int32_t currentPosition;  // +0x04
   volatile int32_t targetPosition;   // +0x08
@@ -58,39 +59,37 @@ struct MotorBlock {
   volatile uint8_t cmdStop;         // +0x28
   volatile uint8_t cmdScriptClear;  // +0x29
   volatile uint8_t cmdScriptExec[2];// +0x2A
-  volatile uint8_t scriptPage;      // +0x2C
-  volatile uint8_t scriptIdx;       // +0x2D
-  volatile uint8_t cmdCall[2];      // +0x2E
-  volatile uint8_t cmdCondCall[4];  // +0x30
-  volatile uint8_t cmdCondJump[4];  // +0x34
-  volatile uint8_t cmdJump[2];      // +0x38
-  uint8_t _pad2[2];
+  volatile uint32_t waitEndTime;    // +0x2C
+  volatile uint8_t cmdCall[2];      // +0x30
+  volatile uint8_t cmdCondCall[4];  // +0x32
+  volatile uint8_t cmdCondJump[4];  // +0x36
+  volatile uint8_t cmdJump[2];      // +0x3A
   volatile int32_t cmdMoveRev;      // +0x3C
-  // --------------------
-  volatile uint8_t scripts[NUM_SCRIPT_PAGES][SCRIPT_PAGE_SIZE];  // 248 bytes. 12 pages = 2976 bytes per motor
-  volatile uint32_t _waitEndTime;
+};
+struct MotorContext {
+  volatile uint8_t _internalFlags;
+  volatile uint8_t sp;  // Stack Pointer
+  volatile uint8_t scriptLastRhs;
+  volatile uint8_t scriptCallArg;
+  volatile uint8_t scripts[NUM_SCRIPT_PAGES][SCRIPT_PAGE_SIZE];
   volatile uint8_t scriptStackIdx[SCRIPT_STACK_SIZE];
   volatile uint8_t scriptStackPage[SCRIPT_STACK_SIZE];
   volatile uint8_t scriptStackRhsArg[SCRIPT_STACK_SIZE];
   volatile uint8_t scriptStackCallArg[SCRIPT_STACK_SIZE];
-  volatile uint8_t sp;  // Stack Pointer
-  volatile uint8_t _internalFlags;
-  volatile uint8_t scriptLastRhs;
-  volatile uint8_t scriptCallArg;
-  // uint8_t _pad3[1];
   volatile uint8_t scriptWriteBuf[SCRIPT_WRITEBUF_SIZE];
 };
 
 #pragma pack(pop)
+
 }
 
 namespace MotorState {
-void syncMotorSettings(IMotor* m, volatile Moic::MotorBlock& mregs);
-void syncMotorState(IMotor* m, volatile Moic::MotorBlock& mregs);
-uint8_t enterScript(IMotor* m, volatile Moic::MotorBlock& mregs, uint8_t page, const uint8_t arg);
-void exitScript(IMotor* m, volatile Moic::MotorBlock& mregs, const uint8_t code);
-bool isMotorBusy(IMotor* m, volatile Moic::MotorBlock& mregs);
-bool isPageInStack(IMotor* m, volatile Moic::MotorBlock& mregs, const uint8_t page);
-bool isScriptActive(IMotor* m, volatile Moic::MotorBlock& mregs);
+void syncMotorSettings(IMotor* m, volatile Moic::MotorInterface& mregs);
+void syncMotorState(IMotor* m, volatile Moic::MotorInterface& mregs);
+uint8_t enterScript(IMotor* m, volatile Moic::MotorInterface& mregs, volatile Moic::MotorContext& ctx, uint8_t page, const uint8_t arg);
+void exitScript(IMotor* m, volatile Moic::MotorInterface& mregs, volatile Moic::MotorContext& ctx, const uint8_t code);
+bool isMotorBusy(IMotor* m, volatile Moic::MotorInterface& mregs);
+bool isPageInStack(IMotor* m, volatile Moic::MotorInterface& mregs, volatile Moic::MotorContext& ctx, const uint8_t page);
+bool isScriptActive(IMotor* m, volatile Moic::MotorInterface& mregs, volatile Moic::MotorContext& ctx);
 }
 #endif

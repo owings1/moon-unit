@@ -47,7 +47,7 @@ public:
     volatile uint8_t sysFlags;  // 0x01
     volatile uint16_t bootId;   // 0x02
     uint8_t _pad[4];
-    Moic::MotorBlock motors[MAX_MOTORS];
+    Moic::MotorInterface motors[MAX_MOTORS];
   };
 #pragma pack(pop)
 
@@ -56,7 +56,7 @@ public:
     uint8_t buffer[sizeof(DeviceMap)];
   };
 
-  I2CMotors(TwoWire& wire, IMotor** motors, uint8_t count);
+  I2CMotors(TwoWire& wire, IMotor** motors, Moic::MotorContext** contexts, uint8_t count);
 
   void setBootId(uint16_t id);
   void update();
@@ -72,6 +72,7 @@ public:
   IMotor** motors;
   volatile RegisterMap mem;
 private:
+  Moic::MotorContext** contexts;
   // @TEMPORARY: Optimization to avoid expensive volatile checks in update()
   // Bit 0-3 correspond to Motor 0-3. Set when script starts, cleared when it ends.
   volatile uint8_t _tmp_scriptActiveMask = 0; 

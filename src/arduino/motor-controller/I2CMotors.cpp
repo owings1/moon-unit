@@ -3,8 +3,8 @@
 #include <stdint.h>
 #include "I2CMotors.h"
 
-I2CMotors::I2CMotors(TwoWire& wire, IMotor** motors, uint8_t count)
-  : wire(wire), motors(motors), numMotors(min(I2CMotors::MAX_MOTORS, count)) {
+I2CMotors::I2CMotors(TwoWire& wire, IMotor** motors, Moic::MotorContext** contexts, uint8_t count)
+  : wire(wire), motors(motors),contexts(contexts), numMotors(min(MAX_MOTORS, count)) {
   memset((void*)mem.buffer, 0, sizeof(mem.buffer));
   setBootId((uint16_t)millis());
   for (uint8_t mIdx = 0; mIdx < numMotors; ++mIdx) {
@@ -38,7 +38,7 @@ void I2CMotors::handleRead() {
       }
     } else if (currentPage < SCRIPT_PAGE_START * (Moic::NUM_SCRIPT_PAGES + 1)) {
       const uint8_t sIdx = (currentPage / SCRIPT_PAGE_START) - 1;
-      wire.write(mem.regs.motors[mIdx].scripts[sIdx][ptr - MOTOR_BASE_ADDR]);
+      wire.write(contexts[mIdx]->scripts[sIdx][ptr - MOTOR_BASE_ADDR]);
     } else {
       wire.write(Moic::UNSET);
     }
@@ -68,10 +68,12 @@ void I2CMotors::handleWrite(int howMany) {
           mem.regs.repCode = Moic::INVALID_MOTOR;
         } else if (currentPage < SCRIPT_PAGE_START) {
           uint8_t offset = getStructOffset(ptr);
-          mem.regs.repCode = MotorActions::write(motors[mIdx], mem.regs.motors[mIdx], offset, incoming, true, true);
+          auto& mregs = mem.regs.motors[mIdx];
+          auto& ctx = *(contexts[mIdx]);
+          mem.regs.repCode = MotorActions::write(motors[mIdx], mregs, ctx, offset, incoming, true, true);
 
           // Update the fragile gatekeeper
-          if (MotorState::isScriptActive(motors[mIdx], mem.regs.motors[mIdx])) {
+          if (MotorState::isScriptActive(motors[mIdx], mregs, ctx)) {
             _tmp_scriptActiveMask |= (1 << mIdx);
           } else {
             // Also handle manual stops via I2C
@@ -81,11 +83,12 @@ void I2CMotors::handleWrite(int howMany) {
         } else if (currentPage < SCRIPT_PAGE_START * (Moic::NUM_SCRIPT_PAGES + 1)) {
           uint8_t sIdx = (currentPage / SCRIPT_PAGE_START) - 1;
           auto& mregs = mem.regs.motors[mIdx];
-          if (MotorState::isScriptActive(motors[mIdx], mregs) && MotorState::isPageInStack(motors[mIdx], mregs, sIdx)) {
+          auto& ctx = *(contexts[mIdx]);
+          if (MotorState::isScriptActive(motors[mIdx], mregs, ctx) && MotorState::isPageInStack(motors[mIdx], mregs, ctx, sIdx)) {
             // Prevent writing to running script
             mem.regs.repCode = Moic::MOTOR_BUSY;
           } else {
-            mregs.scripts[sIdx][ptr - MOTOR_BASE_ADDR] = incoming;
+            ctx.scripts[sIdx][ptr - MOTOR_BASE_ADDR] = incoming;
             mem.regs.repCode = Moic::OK;
           }
         } else {
