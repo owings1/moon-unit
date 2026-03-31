@@ -45,7 +45,31 @@ void setup1() {
   // Serial.begin(BAUD_RATE);
 }
 
+#include "MotorActions.h"
+
 void loop1() {
   mainI2cMotors.update();
-  delay(0x01);
+  // delay(0x01);
+    // 2. THE PROTO-MANAGER (Orchestration)
+  // We only run this every 1ms to keep Core 0 happy
+  static uint32_t lastVM = 0;
+  if (millis() - lastVM >= 1) {
+    lastVM = millis();
+
+    // Use a getter to check the fragile mask from I2CMotors
+    uint8_t mask = mainI2cMotors.getTmpScriptMask();
+    if (mask == 0) return;
+
+    for (uint8_t i = 0; i < mainI2cMotors.numMotors; i++) {
+      if ((mask >> i) & 1) {
+        // Run the VM
+        MotorActions::tickScript(mainI2cMotors.motors[i], mainI2cMotors.mem.regs.motors[i]);
+
+        // 3. Clear bit if script finished itself
+        if (!MotorState::isScriptActive(mainI2cMotors.motors[i], mainI2cMotors.mem.regs.motors[i])) {
+          mainI2cMotors.clearTmpScriptBit(i);
+        }
+      }
+    }
+  }
 }

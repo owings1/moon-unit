@@ -14,13 +14,16 @@ except ImportError:
   # Support generic environment
   def const(x: _T): return x
 
-MOTOR_BLOCK_SIZE = const(0x78)
+MAX_MOTORS = const(0x02)
+MOTOR_BLOCK_SIZE = const(0x40)
 SCRIPT_PAGE_SIZE = const(0xF8)
-NUM_SCRIPT_PAGES = const(0x0C)
-SCRIPT_STACK_SIZE = const(0x10)
+NUM_SCRIPT_PAGES = const(0x04)
+SCRIPT_STACK_SIZE = const(0x08)
 
 INDIRECT_OPCODE_FLAG = const(0x40)
 FARPTR_OPCODE_FLAG = const(0x80)
+FUNC_NEGATED_FLAG = const(0x80)
+FUNC_NEGATED_BIT = const(7)
 
 PAGE_REGISTER = const(0x04)
 SCRIPT_PAGE_START = const(0x10)
@@ -127,24 +130,24 @@ class Condition(namedtuple('Condition', ('func', 'rhs'))):
   rhs: int
 
   def __invert__(self):
-    return type(self)(self.func ^ 0x80, self.rhs)
+    return type(self)(self.func ^ FUNC_NEGATED_FLAG, self.rhs)
 
   @classmethod
   def forflag(cls, name: str, negate: bool = False):
     flag: Flag = getattr(Flags, name)
-    return cls(flag.attr.offset ^ (bool(negate) << 7), 1 << flag.bit)
+    return cls(flag.attr.offset ^ (bool(negate) << FUNC_NEGATED_BIT), 1 << flag.bit)
 
   @classmethod
   def argeql(cls, rhs: int, negate: bool = False):
-    return cls(FunId.EQL_CALLARG_RHS ^ (bool(negate) << 7), rhs)
+    return cls(FunId.EQL_CALLARG_RHS ^ (bool(negate) << FUNC_NEGATED_BIT), rhs)
 
   @classmethod
   def argand(cls, rhs: int, negate: bool = False):
-    return cls(FunId.AND_CALLARG_RHS ^ (bool(negate) << 7), rhs)
+    return cls(FunId.AND_CALLARG_RHS ^ (bool(negate) << FUNC_NEGATED_BIT), rhs)
 
   @classmethod
   def repeql(cls, rhs: int, negate: bool = False):
-    return cls(FunId.EQL_RETURNCODE_RHS ^ (bool(negate) << 7), rhs)
+    return cls(FunId.EQL_RETURNCODE_RHS ^ (bool(negate) << FUNC_NEGATED_BIT), rhs)
 
 class Script:
   def __init__(self) -> None:
@@ -162,13 +165,13 @@ class Script:
       raise ValueError(f'Duplicate label {name!r}')
     return self.labels.setdefault(name, self.size)
 
-  def add(self, op: str|bytes|int, *args) -> None:
+  def add(self, op: str|bytes|bytearray|int, *args) -> None:
     if not args:
-      if op == 'end':
-        op = Code.UNSET
       if isinstance(op, int):
+        if not (op == Code.OK or Code.USR1 <= op <= Code.UNSET):
+          raise ValueError(f'Unknown return code {op=}')
         op = op.to_bytes(1, 'little')
-      if isinstance(op, bytes):
+      if isinstance(op, (bytes, bytearray)):
         self.instructions.append(op)
         self._size += len(op)
     else:
@@ -221,7 +224,6 @@ class Script:
           opcode = attr.offset
       buf.append(opcode)
       buf.extend(struct.pack(b'<'+fmt, *args))
-    buf.append(Code.UNSET)
     return bytes(buf)
 
   def resolve(self, arg: str|int|float) -> int|float:

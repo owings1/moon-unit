@@ -17,7 +17,6 @@ public:
   static const uint8_t LOWER_BLOCK_SIZE = Moic::MOTOR_BLOCK_SIZE + MOTOR_BASE_ADDR;
   static const uint8_t TOTAL_BLOCK_SIZE = Moic::MOTOR_BLOCK_SIZE * 2 + MOTOR_BASE_ADDR;
   static const uint8_t SCRIPT_PAGE_START = 0x10;
-  // static const uint8_t MAX_MOTORS = 4;
   static const uint8_t MAX_MOTORS = 2;
 
   // Writable: 0x01 (sysFlags), 0x04 (PageReg)
@@ -58,24 +57,25 @@ public:
   };
 
   I2CMotors(TwoWire& wire, IMotor** motors, uint8_t count);
-  // -----------------
-  // I2CMotors(TwoWire& wire, Manager& manager);
-  // -----------------
 
   void setBootId(uint16_t id);
   void update();
 
   void handleRead();
   void handleWrite(int howMany);
-  // -----------------
-  const uint8_t numMotors;
-  // -----------------
 
-private:
-  // -----------------
+  const uint8_t numMotors;
+
+  uint8_t getTmpScriptMask();
+  void clearTmpScriptBit(const uint8_t mIdx);
+
   IMotor** motors;
   volatile RegisterMap mem;
-  // -----------------
+private:
+  // @TEMPORARY: Optimization to avoid expensive volatile checks in update()
+  // Bit 0-3 correspond to Motor 0-3. Set when script starts, cleared when it ends.
+  volatile uint8_t _tmp_scriptActiveMask = 0; 
+
   TwoWire& wire;
   volatile uint8_t currentPage = 0;
   volatile uint8_t ptr = 0;

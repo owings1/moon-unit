@@ -170,7 +170,7 @@ void tickScript(IMotor* m, volatile Moic::MotorBlock& mregs) {
   }
   uint8_t offset, count, code;
   if (MotorVM::processNext(mregs, offset, count, code)) {
-    if (count >= Moic::SCRIPT_WRITEBUF_SIZE) {
+    if (count > Moic::SCRIPT_WRITEBUF_SIZE) {
       MotorState::exitScript(m, mregs, Moic::OTHER_ERROR);
       return;
     }

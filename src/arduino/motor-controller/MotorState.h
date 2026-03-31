@@ -7,17 +7,10 @@
 #include "IMotor.h"
 
 namespace Moic {
-static const uint8_t MOTOR_BLOCK_SIZE = 0x78;
-// static const uint8_t SCRIPT_PAGE_SIZE = 0xF8;
-// static const uint8_t SCRIPT_PAGE_SIZE = 0x02;
-static const uint8_t SCRIPT_PAGE_SIZE = 0x80;
-// static const uint8_t NUM_SCRIPT_PAGES = 0x0C;
-// static const uint8_t NUM_SCRIPT_PAGES = 0x02;
+static const uint8_t MOTOR_BLOCK_SIZE = 0x40;
+static const uint8_t SCRIPT_PAGE_SIZE = 0xF8;
 static const uint8_t NUM_SCRIPT_PAGES = 0x04;
-// static const uint8_t SCRIPT_STACK_SIZE = 0x08;
-// static const uint8_t SCRIPT_STACK_SIZE = 0x02;
-static const uint8_t SCRIPT_STACK_SIZE = 0x04;
-// static const uint8_t SCRIPT_WRITEBUF_SIZE = 8;
+static const uint8_t SCRIPT_STACK_SIZE = 0x08;
 static const uint8_t SCRIPT_WRITEBUF_SIZE = 4;
 // Busy Protected:
 // current_position   | offset: 0x04 | span: 4 bytes
@@ -73,10 +66,7 @@ struct MotorBlock {
   volatile uint8_t cmdJump[2];      // +0x38
   uint8_t _pad2[2];
   volatile int32_t cmdMoveRev;      // +0x3C
-
-  // 0x40 - (Future)
-  uint8_t _unallocated[0x38];  // +0x40 - 0x77 future
-  // 0x78 - Script buffer
+  // --------------------
   volatile uint8_t scripts[NUM_SCRIPT_PAGES][SCRIPT_PAGE_SIZE];  // 248 bytes. 12 pages = 2976 bytes per motor
   volatile uint32_t _waitEndTime;
   volatile uint8_t scriptStackIdx[SCRIPT_STACK_SIZE];

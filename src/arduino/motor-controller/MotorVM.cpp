@@ -52,7 +52,6 @@ uint8_t condJump(volatile Moic::MotorBlock& mregs, volatile uint8_t* cmdBuf) {
   return Moic::OK;
 }
 
-
 bool processNext(volatile Moic::MotorBlock& mregs, uint8_t& offset, uint8_t& count, uint8_t& exitCode) {
   if (mregs.scriptPage >= Moic::NUM_SCRIPT_PAGES) {
     exitCode = Moic::OVERFLOW;
@@ -89,7 +88,7 @@ bool processNext(volatile Moic::MotorBlock& mregs, uint8_t& offset, uint8_t& cou
     exitCode = Moic::UNKNOWN_COMMAND;
     return false;
   }
-  if (dataLen >= Moic::SCRIPT_WRITEBUF_SIZE) {
+  if (dataLen > Moic::SCRIPT_WRITEBUF_SIZE) {
     exitCode = Moic::OTHER_ERROR;
     return false;
   }

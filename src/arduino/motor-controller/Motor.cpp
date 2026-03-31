@@ -78,9 +78,6 @@ bool Motor::busy() {
   return checkstate(BitIsMoving) || stepper.isRunning();
 }
 
-// bool Motor::scriptActive() {
-//   return checkstate(BitIsScriptActive);
-// }
 void Motor::setCurrentPosition(const int32_t value) {
   stepper.setCurrentPosition(value);
   _stateFlags |= 1 << BitIsManualPos;

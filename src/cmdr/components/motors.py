@@ -43,6 +43,7 @@ class Motor(DeviceComponent):
     boot_id=dict(src=-0x02, fmt=b'H'),
     state_flags={},
     script_repcode={},
+    script_page={},
     script_index={},
     target_position={},
     speed={},
@@ -103,14 +104,14 @@ class Motor(DeviceComponent):
     moic.Attributes.cond_jump,
     moic.Attributes.jump,
   ))
-  SLCINFO_PERSIST = MotorAttr.sliceinfo(ATTRMAP, 6, 6+12)
+  SLCINFO_PERSIST = MotorAttr.sliceinfo(ATTRMAP, 7, 7+12)
   PERSIST_NS = 0x9100
   PERSIST_VER = 0x0A
   init_defaults = OrderedDict(
     settings_flags=0x03,
     max_speed=2000.0,
     default_speed=2000.0,
-    homing_speed=4000.0,
+    homing_speed=3000.0,
     fixing_speed=500.0,
     acceleration=60_000.0,
     msteps_per_degree=10_000,
@@ -130,7 +131,7 @@ class Motor(DeviceComponent):
     refresh_interval: int = 500,
     **init_data
   ) -> None:
-    if not 1 <= id <= 4:
+    if not 1 <= id <= moic.MAX_MOTORS:
       raise ValueError(f'{id=}')
     super().__init__(bus, address)
     self.refresh_interval = refresh_interval
@@ -286,9 +287,9 @@ class Motor(DeviceComponent):
     return self.write('script_exec', 0, 0, **kw)
 
 class MotorScripts:
-  fixlib_page = 4
-  moicdb_page = 5
-  moicdb_slcinfo = MotorAttr.sliceinfo(Motor.ATTRMAP, 9, 9+6)
+  fixlib_page = 2
+  moicdb_page = 3
+  moicdb_slcinfo = MotorAttr.sliceinfo(Motor.ATTRMAP, 10, 10+6)
 
   def __init__(self, motor: Motor):
     self._static: dict[str, bytes] = {}
@@ -318,6 +319,8 @@ class MotorScripts:
       self.last_boot_id = self.motor['boot_id']
 
   def upload(self, page: int, content: bytes|bytearray):
+    if len(content) > moic.SCRIPT_PAGE_SIZE:
+      raise ValueError(f'Script length exceeds max {moic.SCRIPT_PAGE_SIZE}')
     self.motor.write('script_clear', page)
     buf = bytearray()
     buf.append(moic.MOTOR_BASE_ADDR)
@@ -329,7 +332,28 @@ class MotorScripts:
     code = self.rbuf[1]
     if code != Code.OK:
       raise WriteFailed(f'Failed writing script {page=}', code)
-    
+
+  def download(self, page: int) -> bytearray:
+    content = bytearray(moic.SCRIPT_PAGE_SIZE)
+    buf = bytearray()
+    buf.append(moic.MOTOR_BASE_ADDR)
+    with self.motor.device as device:
+      device.write(self.pagebufs[page])
+      device.write_then_readinto(buf, content)
+    return content
+
+  def pprintf(self, script: int|bytes|bytearray) -> str:
+    if isinstance(script, int):
+      script = self.download(script)
+    sq = deque((), 8)
+    for x in range(8):
+      it = (f'{hex(script[x*31+i])[2:]:0>2}' for i in range(31))
+      sq.append(' '.join(it))
+    return '\n'.join(sq)
+
+  def pprint(self, script: int|bytes|bytearray) -> None:
+    print(self.pprintf(script))
+
   @property
   def moicdb_content(self):
     return self.motor.packed[self.moicdb_slcinfo.slc]

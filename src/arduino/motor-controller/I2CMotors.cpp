@@ -5,8 +5,8 @@
 
 I2CMotors::I2CMotors(TwoWire& wire, IMotor** motors, uint8_t count)
   : wire(wire), motors(motors), numMotors(min(I2CMotors::MAX_MOTORS, count)) {
-  memset((void*) mem.buffer, 0, sizeof(mem.buffer));
-  setBootId((uint16_t) millis());
+  memset((void*)mem.buffer, 0, sizeof(mem.buffer));
+  setBootId((uint16_t)millis());
   for (uint8_t mIdx = 0; mIdx < numMotors; ++mIdx) {
     MotorState::syncMotorSettings(motors[mIdx], mem.regs.motors[mIdx]);
     MotorState::syncMotorState(motors[mIdx], mem.regs.motors[mIdx]);
@@ -18,11 +18,6 @@ void I2CMotors::setBootId(uint16_t id) {
 }
 
 void I2CMotors::update() {
-  for (uint8_t mIdx = 0; mIdx < numMotors; ++mIdx) {
-    // if (motors[mIdx]->isScriptRunning) {
-      MotorActions::tickScript(motors[mIdx], mem.regs.motors[mIdx]);
-    // }
-  }
   memSyncInterval();
 }
 
@@ -36,7 +31,7 @@ void I2CMotors::handleRead() {
     } else if (currentPage < SCRIPT_PAGE_START) {
       if (ptr < TOTAL_BLOCK_SIZE) {
         const uint8_t offset = getStructOffset(ptr);
-        uint8_t* motorData = (uint8_t*) &mem.regs.motors[mIdx];
+        uint8_t* motorData = (uint8_t*)&mem.regs.motors[mIdx];
         wire.write(motorData[offset]);
       } else {
         wire.write(Moic::UNSET);
@@ -74,6 +69,15 @@ void I2CMotors::handleWrite(int howMany) {
         } else if (currentPage < SCRIPT_PAGE_START) {
           uint8_t offset = getStructOffset(ptr);
           mem.regs.repCode = MotorActions::write(motors[mIdx], mem.regs.motors[mIdx], offset, incoming, true, true);
+
+          // Update the fragile gatekeeper
+          if (MotorState::isScriptActive(motors[mIdx], mem.regs.motors[mIdx])) {
+            _tmp_scriptActiveMask |= (1 << mIdx);
+          } else {
+            // Also handle manual stops via I2C
+            _tmp_scriptActiveMask &= ~(1 << mIdx);
+          }
+
         } else if (currentPage < SCRIPT_PAGE_START * (Moic::NUM_SCRIPT_PAGES + 1)) {
           uint8_t sIdx = (currentPage / SCRIPT_PAGE_START) - 1;
           auto& mregs = mem.regs.motors[mIdx];
@@ -97,6 +101,12 @@ void I2CMotors::handleWrite(int howMany) {
   masterWriting = false;
 }
 
+uint8_t I2CMotors::getTmpScriptMask() {
+  return _tmp_scriptActiveMask;
+}
+void I2CMotors::clearTmpScriptBit(const uint8_t mIdx) {
+  _tmp_scriptActiveMask &= ~(1 << mIdx);
+}
 
 void I2CMotors::memSyncInterval() {
   if (masterWriting) {

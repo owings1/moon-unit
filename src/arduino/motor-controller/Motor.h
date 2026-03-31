@@ -46,7 +46,6 @@ public:
   void setSettingsFlags(const uint8_t) override;
   void setScriptActive(const bool) override;
   void setDelayActive(const bool) override;
-  // bool scriptActive() override;
 
   void begin();
   void readLimitSwitches();
