@@ -3,13 +3,16 @@
 #include <stdint.h>
 #include "I2CMotors.h"
 
-I2CMotors::I2CMotors(TwoWire& wire, IMotor** motors, Moic::MotorContext** contexts, uint8_t count)
-  : wire(wire), motors(motors),contexts(contexts), numMotors(min(MAX_MOTORS, count)) {
+I2CMotors::I2CMotors(TwoWire& wire, Moic::ManagedMotor** mms, uint8_t count)
+  : wire(wire), mms(mms), numMotors(min(MAX_MOTORS, count)) {
   memset((void*)mem.buffer, 0, sizeof(mem.buffer));
   setBootId((uint16_t)millis());
+
   for (uint8_t mIdx = 0; mIdx < numMotors; ++mIdx) {
-    MotorState::syncMotorSettings(motors[mIdx], mem.regs.motors[mIdx]);
-    MotorState::syncMotorState(motors[mIdx], mem.regs.motors[mIdx]);
+    if (mms[mIdx] && mms[mIdx]->m && mms[mIdx]->mregs) { 
+      MotorState::syncMotorSettings(mms[mIdx]->m, *(mms[mIdx]->mregs));
+      MotorState::syncMotorState(mms[mIdx]->m, *(mms[mIdx]->mregs));
+    }
   }
 }
 
@@ -31,14 +34,14 @@ void I2CMotors::handleRead() {
     } else if (currentPage < SCRIPT_PAGE_START) {
       if (ptr < TOTAL_BLOCK_SIZE) {
         const uint8_t offset = getStructOffset(ptr);
-        uint8_t* motorData = (uint8_t*)&mem.regs.motors[mIdx];
+        uint8_t* motorData = (uint8_t*)(mms[mIdx]->mregs);
         wire.write(motorData[offset]);
       } else {
         wire.write(Moic::UNSET);
       }
     } else if (currentPage < SCRIPT_PAGE_START * (Moic::NUM_SCRIPT_PAGES + 1)) {
       const uint8_t sIdx = (currentPage / SCRIPT_PAGE_START) - 1;
-      wire.write(contexts[mIdx]->scripts[sIdx][ptr - MOTOR_BASE_ADDR]);
+      wire.write(mms[mIdx]->ctx->scripts[sIdx][ptr - MOTOR_BASE_ADDR]);
     } else {
       wire.write(Moic::UNSET);
     }
@@ -68,23 +71,12 @@ void I2CMotors::handleWrite(int howMany) {
           mem.regs.repCode = Moic::INVALID_MOTOR;
         } else if (currentPage < SCRIPT_PAGE_START) {
           uint8_t offset = getStructOffset(ptr);
-          auto& mregs = mem.regs.motors[mIdx];
-          auto& ctx = *(contexts[mIdx]);
-          mem.regs.repCode = MotorActions::write(motors[mIdx], mregs, ctx, offset, incoming, true, true);
-
-          // Update the fragile gatekeeper
-          if (MotorState::isScriptActive(motors[mIdx], mregs, ctx)) {
-            _tmp_scriptActiveMask |= (1 << mIdx);
-          } else {
-            // Also handle manual stops via I2C
-            _tmp_scriptActiveMask &= ~(1 << mIdx);
-          }
-
+          mem.regs.repCode = mms[mIdx]->write(offset, incoming, true, true);
         } else if (currentPage < SCRIPT_PAGE_START * (Moic::NUM_SCRIPT_PAGES + 1)) {
           uint8_t sIdx = (currentPage / SCRIPT_PAGE_START) - 1;
-          auto& mregs = mem.regs.motors[mIdx];
-          auto& ctx = *(contexts[mIdx]);
-          if (MotorState::isScriptActive(motors[mIdx], mregs, ctx) && MotorState::isPageInStack(motors[mIdx], mregs, ctx, sIdx)) {
+          auto& mregs = *(mms[mIdx]->mregs);
+          auto& ctx = *(mms[mIdx]->ctx);
+          if (MotorState::isScriptActive(mms[mIdx]->m, mregs, ctx) && MotorState::isPageInStack(mms[mIdx]->m, mregs, ctx, sIdx)) {
             // Prevent writing to running script
             mem.regs.repCode = Moic::MOTOR_BUSY;
           } else {
@@ -104,13 +96,6 @@ void I2CMotors::handleWrite(int howMany) {
   masterWriting = false;
 }
 
-uint8_t I2CMotors::getTmpScriptMask() {
-  return _tmp_scriptActiveMask;
-}
-void I2CMotors::clearTmpScriptBit(const uint8_t mIdx) {
-  _tmp_scriptActiveMask &= ~(1 << mIdx);
-}
-
 void I2CMotors::memSyncInterval() {
   if (masterWriting) {
     return;
@@ -120,14 +105,16 @@ void I2CMotors::memSyncInterval() {
   if (now - lastFastSync >= FAST_SYNC_MS) {
     lastFastSync = now;
     for (uint8_t mIdx = 0; mIdx < numMotors; ++mIdx) {
-      MotorState::syncMotorState(motors[mIdx], mem.regs.motors[mIdx]);
+      auto& mregs = *(mms[mIdx]->mregs);
+      MotorState::syncMotorState(mms[mIdx]->m, mregs);
     }
   }
   // 2. Slow Sync (Settings/Config) - Every 500ms
   if (now - lastSlowSync >= SLOW_SYNC_MS) {
     lastSlowSync = now;
     for (uint8_t mIdx = 0; mIdx < numMotors; ++mIdx) {
-      MotorState::syncMotorSettings(motors[mIdx], mem.regs.motors[mIdx]);
+      auto& mregs = *(mms[mIdx]->mregs);
+      MotorState::syncMotorSettings(mms[mIdx]->m, mregs);
     }
   }
 }

@@ -130,65 +130,6 @@ uint8_t onCondJump(IMotor* m, volatile Moic::MotorInterface& mregs, volatile Moi
   return code;
 }
 
-uint8_t write(IMotor* m, volatile Moic::MotorInterface& mregs, volatile Moic::MotorContext& ctx, const uint8_t offset, const uint8_t incoming, const bool enforceBusy, const bool enforceScriptLock) {
-  static bool initialized = []() {
-    for (const auto& entry : ACTION_TABLE) {
-      ACTION_LOOKUP[entry.offset + entry.size - 1] = &entry;
-    }
-    return true;
-  }();
-  if (offset >= Moic::MOTOR_BLOCK_SIZE) {
-    return Moic::UNKNOWN_COMMAND;
-  }
-  if (
-    enforceBusy && ((Moic::MOTOR_BUSY_MASK >> offset) & 1) && MotorState::isMotorBusy(m, mregs) ||
-    enforceScriptLock && ((Moic::SCRIPT_LOCK_MASK >> offset) & 1) && MotorState::isScriptActive(m, mregs, ctx)
-  ) {
-    // In case of prior partial write
-    MotorState::syncMotorSettings(m, mregs);
-    MotorState::syncMotorState(m, mregs);
-    return Moic::MOTOR_BUSY;
-  }
-  // Get a pointer to the start of this specific motor's data in the buffer
-  // This translates struct-relative 'offset' to the correct absolute buffer index
-  uint8_t* motorData = (uint8_t*)&mregs;
-  motorData[offset] = incoming;
-  uint8_t repCode = Moic::OK;
-  if (offset < Moic::MOTOR_BLOCK_SIZE) {
-    const RegMapping* entry = ACTION_LOOKUP[offset];
-    if (entry) {
-      repCode = entry->handler(m, mregs, ctx);
-      MotorState::syncMotorState(m, mregs);
-    }
-  }
-  return repCode;
-}
-
-void tickScript(IMotor* m, volatile Moic::MotorInterface& mregs, volatile Moic::MotorContext& ctx) {
-  if (!MotorState::isScriptActive(m, mregs, ctx) || MotorState::isMotorBusy(m, mregs)) {
-    return;
-  }
-  uint8_t offset, count, code;
-  if (MotorVM::processNext(mregs, ctx, offset, count, code)) {
-    if (count > Moic::SCRIPT_WRITEBUF_SIZE) {
-      MotorState::exitScript(m, mregs, ctx, Moic::OTHER_ERROR);
-      return;
-    }
-    for (uint8_t i = 0; i < count; ++i) {
-      code = write(m, mregs, ctx, offset + i, ctx.scriptWriteBuf[i], true, false);
-      if (code != Moic::OK) {
-        MotorState::exitScript(m, mregs, ctx, code);
-        return;
-      }
-      if (!MotorState::isScriptActive(m, mregs, ctx)) {
-        return;
-      }
-    }
-  } else {
-    MotorState::exitScript(m, mregs, ctx, code);
-  }
-}
-
 }
 
 void clearTrigger(volatile uint8_t* buf, uint8_t size) {

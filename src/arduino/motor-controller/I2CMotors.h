@@ -9,6 +9,7 @@
 #include "MoicProtocol.h"
 #include "MotorState.h"
 #include "MotorActions.h"
+#include "MotorManager.h"
 
 class I2CMotors {
 public:
@@ -41,13 +42,11 @@ public:
 
 
 #pragma pack(push, 1)
-
   struct DeviceMap {
     volatile uint8_t repCode;   // 0x00
     volatile uint8_t sysFlags;  // 0x01
     volatile uint16_t bootId;   // 0x02
     uint8_t _pad[4];
-    Moic::MotorInterface motors[MAX_MOTORS];
   };
 #pragma pack(pop)
 
@@ -56,7 +55,7 @@ public:
     uint8_t buffer[sizeof(DeviceMap)];
   };
 
-  I2CMotors(TwoWire& wire, IMotor** motors, Moic::MotorContext** contexts, uint8_t count);
+  I2CMotors(TwoWire& wire, Moic::ManagedMotor** mms, uint8_t count);
 
   void setBootId(uint16_t id);
   void update();
@@ -65,18 +64,9 @@ public:
   void handleWrite(int howMany);
 
   const uint8_t numMotors;
-
-  uint8_t getTmpScriptMask();
-  void clearTmpScriptBit(const uint8_t mIdx);
-
-  IMotor** motors;
   volatile RegisterMap mem;
 private:
-  Moic::MotorContext** contexts;
-  // @TEMPORARY: Optimization to avoid expensive volatile checks in update()
-  // Bit 0-3 correspond to Motor 0-3. Set when script starts, cleared when it ends.
-  volatile uint8_t _tmp_scriptActiveMask = 0; 
-
+  Moic::ManagedMotor** mms;
   TwoWire& wire;
   volatile uint8_t currentPage = 0;
   volatile uint8_t ptr = 0;

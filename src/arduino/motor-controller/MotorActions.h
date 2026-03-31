@@ -26,9 +26,6 @@ uint8_t onCondCall(IMotor* m, volatile Moic::MotorInterface& mregs, volatile Moi
 uint8_t onCondJump(IMotor* m, volatile Moic::MotorInterface& mregs, volatile Moic::MotorContext& ctx);
 uint8_t onCmdJump(IMotor* m, volatile Moic::MotorInterface& mregs, volatile Moic::MotorContext& ctx);
 uint8_t onMoveRev(IMotor* m, volatile Moic::MotorInterface& mregs, volatile Moic::MotorContext& ctx);
-void tickScript(IMotor* m, volatile Moic::MotorInterface& mregs, volatile Moic::MotorContext& ctx);
-uint8_t write(IMotor* m, volatile Moic::MotorInterface& mregs, volatile Moic::MotorContext& ctx, const uint8_t offset, const uint8_t incoming, const bool enforceBusy, const bool enforceScriptLock);
-}
 struct RegMapping {
   uint8_t offset;
   uint8_t size;
@@ -55,8 +52,8 @@ const RegMapping ACTION_TABLE[] = {
   { offsetof(Moic::MotorInterface, cmdMoveRev), 4, MotorActions::onMoveRev },
 };
 
-// const uint8_t MOTOR_REGS_COUNT = sizeof(ACTION_TABLE) / sizeof(RegMapping);
 // Array of 120 pointers (one for every possible struct offset)
 static const RegMapping* ACTION_LOOKUP[Moic::MOTOR_BLOCK_SIZE] = { nullptr };
+}
 void clearTrigger(volatile uint8_t* buf, uint8_t size);
 #endif
