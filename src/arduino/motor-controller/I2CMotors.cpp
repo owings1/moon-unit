@@ -19,7 +19,9 @@ void I2CMotors::setBootId(uint16_t id) {
 
 void I2CMotors::update() {
   for (uint8_t mIdx = 0; mIdx < numMotors; ++mIdx) {
-    MotorActions::tickScript(motors[mIdx], mem.regs.motors[mIdx]);
+    // if (motors[mIdx]->isScriptRunning) {
+      MotorActions::tickScript(motors[mIdx], mem.regs.motors[mIdx]);
+    // }
   }
   memSyncInterval();
 }

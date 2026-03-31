@@ -8,10 +8,17 @@
 
 namespace Moic {
 static const uint8_t MOTOR_BLOCK_SIZE = 0x78;
-static const uint8_t SCRIPT_PAGE_SIZE = 0xF8;
-static const uint8_t NUM_SCRIPT_PAGES = 12;
-static const uint8_t SCRIPT_STACK_SIZE = 0x10;
-static const uint8_t SCRIPT_WRITEBUF_SIZE = 8;
+// static const uint8_t SCRIPT_PAGE_SIZE = 0xF8;
+// static const uint8_t SCRIPT_PAGE_SIZE = 0x02;
+static const uint8_t SCRIPT_PAGE_SIZE = 0x80;
+// static const uint8_t NUM_SCRIPT_PAGES = 0x0C;
+// static const uint8_t NUM_SCRIPT_PAGES = 0x02;
+static const uint8_t NUM_SCRIPT_PAGES = 0x04;
+// static const uint8_t SCRIPT_STACK_SIZE = 0x08;
+// static const uint8_t SCRIPT_STACK_SIZE = 0x02;
+static const uint8_t SCRIPT_STACK_SIZE = 0x04;
+// static const uint8_t SCRIPT_WRITEBUF_SIZE = 8;
+static const uint8_t SCRIPT_WRITEBUF_SIZE = 4;
 // Busy Protected:
 // current_position   | offset: 0x04 | span: 4 bytes
 // settings_flags     | offset: 0x10 | span: 1 bytes

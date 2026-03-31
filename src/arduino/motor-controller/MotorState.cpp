@@ -42,6 +42,7 @@ uint8_t enterScript(IMotor* m, volatile Moic::MotorBlock& mregs, uint8_t page, c
   mregs.scriptRepCode = Moic::OK;
   mregs.scriptCallArg = arg;
   mregs.scriptLastRhs = 0;
+  // m->isScriptRunning = true;
   m->setScriptActive(true);
   mregs._internalFlags |= 1 << Moic::BitIsScriptActive;
   return Moic::OK;
@@ -49,6 +50,7 @@ uint8_t enterScript(IMotor* m, volatile Moic::MotorBlock& mregs, uint8_t page, c
 void exitScript(IMotor* m, volatile Moic::MotorBlock& mregs, const uint8_t code) {
   mregs.sp = 0;
   mregs.scriptRepCode = code;
+  // m->isScriptRunning = false;
   m->setScriptActive(false);
   mregs._internalFlags &= ~(1 << Moic::BitIsScriptActive);
   mregs._waitEndTime = 0;

@@ -53,6 +53,7 @@ bool Motor::run() {
 bool Motor::move(const int32_t value) {
   if (canMove(value)) {
     stepper.move(value);
+    _stateFlags |= 1 << BitIsMoving;
     if (value != 0) {
       _enable();
     }
@@ -74,9 +75,12 @@ bool Motor::stop() {
 }
 
 bool Motor::busy() {
-  return stepper.isRunning() || checkstate(BitIsMoving);
+  return checkstate(BitIsMoving) || stepper.isRunning();
 }
 
+// bool Motor::scriptActive() {
+//   return checkstate(BitIsScriptActive);
+// }
 void Motor::setCurrentPosition(const int32_t value) {
   stepper.setCurrentPosition(value);
   _stateFlags |= 1 << BitIsManualPos;

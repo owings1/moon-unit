@@ -21,7 +21,16 @@ IMotor* imotors[] = {&m1, &m2};
 I2CMotors mainI2cMotors = I2CMotors(I2C_MAIN, imotors, 2);
 
 void setup() { for (auto& m : motors) m->begin(); }
-void loop() { for (auto& m : motors) m->run(); }
+// void loop() { for (auto& m : motors) m->run(); }
+void loop() {
+  bool isrun = false;
+  for (auto& m : motors) {
+    isrun = m->run() || isrun;
+  }
+  if (!isrun) {
+    for (auto& m : motors) m->readLimitSwitches();
+  }
+}
 void mainRequestEvent() { mainI2cMotors.handleRead(); }
 void mainReceiveEvent(int howMany) { mainI2cMotors.handleWrite(howMany); }
 
@@ -33,10 +42,10 @@ void setup1() {
   I2C_MAIN.onRequest(mainRequestEvent);
   I2C_MAIN.onReceive(mainReceiveEvent);
   I2C_MAIN.begin(I2C_ADDRESS);
-  Serial.begin(BAUD_RATE);
+  // Serial.begin(BAUD_RATE);
 }
 
 void loop1() {
-  for (auto& m : motors) m->readLimitSwitches();
   mainI2cMotors.update();
+  delay(0x01);
 }

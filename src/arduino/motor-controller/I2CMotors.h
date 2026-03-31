@@ -1,3 +1,4 @@
+#include <sys/_stdint.h>
 #ifndef I2C_MOTORS_H
 #define I2C_MOTORS_H
 #include <stddef.h>
@@ -16,7 +17,8 @@ public:
   static const uint8_t LOWER_BLOCK_SIZE = Moic::MOTOR_BLOCK_SIZE + MOTOR_BASE_ADDR;
   static const uint8_t TOTAL_BLOCK_SIZE = Moic::MOTOR_BLOCK_SIZE * 2 + MOTOR_BASE_ADDR;
   static const uint8_t SCRIPT_PAGE_START = 0x10;
-  static const uint8_t MAX_MOTORS = 4;
+  // static const uint8_t MAX_MOTORS = 4;
+  static const uint8_t MAX_MOTORS = 2;
 
   // Writable: 0x01 (sysFlags), 0x04 (PageReg)
   static const uint8_t DEVICE_WRITE_MASK = 0x12;
@@ -56,19 +58,26 @@ public:
   };
 
   I2CMotors(TwoWire& wire, IMotor** motors, uint8_t count);
+  // -----------------
+  // I2CMotors(TwoWire& wire, Manager& manager);
+  // -----------------
 
   void setBootId(uint16_t id);
   void update();
 
   void handleRead();
   void handleWrite(int howMany);
+  // -----------------
   const uint8_t numMotors;
+  // -----------------
 
 private:
-  TwoWire& wire;
+  // -----------------
   IMotor** motors;
-  volatile uint8_t currentPage = 0;
   volatile RegisterMap mem;
+  // -----------------
+  TwoWire& wire;
+  volatile uint8_t currentPage = 0;
   volatile uint8_t ptr = 0;
   volatile bool masterWriting = false;
   uint32_t lastFastSync = 0;
