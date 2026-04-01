@@ -1,3 +1,4 @@
+#include <sys/_stdint.h>
 #ifndef MOTOR_MANAGER_H
 #define MOTOR_MANAGER_H
 #include <stddef.h>
@@ -6,23 +7,74 @@
 #include "MoicProtocol.h"
 #include "IMotor.h"
 #include "MotorState.h"
-#include "MotorActions.h"
 
 namespace Moic {
 
 class ManagedMotor {
 public:
   ManagedMotor(IMotor* m, volatile MotorInterface& mregs, volatile MotorContext& ctx);
-  uint8_t write(const uint8_t offset, const uint8_t incoming, const bool enforceBusy, const bool enforceScriptLock);
+  uint8_t write(const uint8_t offset, const uint8_t incoming, const uint8_t source);
   void tick();
+  bool busy();
+  bool scriptActive();
+  uint8_t enterScript(uint8_t page, const uint8_t arg);
+  void exitScript(const uint8_t code);
+  bool isPageInStack(const uint8_t page);
   IMotor* m;
   volatile MotorInterface* mregs;
   volatile MotorContext* ctx;
-  const bool& scriptActive;
+  // TODO: Make private?
+  void syncMotorSettings();
+  // TODO: Make private?
+  void syncMotorState();
 private:
   bool _scriptActive = false;
+  uint8_t checkWriteable(const uint8_t offset, const uint8_t source);
 };
 
+const uint8_t OFFSET_WRITEMASKS[0x40] = {
+  0x00, 0x00, 0x00, 0x00, 0x03, 0x03, 0x03, 0x03,
+  0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+  0x03, 0x03, 0x03, 0x03, 0x03, 0x03, 0x03, 0x03,
+  0x03, 0x03, 0x03, 0x03, 0x03, 0x03, 0x03, 0x03,
+  0x03, 0x03, 0x03, 0x03, 0x03, 0x03, 0x03, 0x03,
+  0x83, 0x02, 0x02, 0x02, 0x00, 0x00, 0x00, 0x00,
+  0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01,
+  0x01, 0x01, 0x01, 0x01, 0x03, 0x03, 0x03, 0x03,
 };
+}
+
+// current_position   | 0x04 | 4 bytes
+// settings_flags     | 0x10 | 1 bytes
+// enable_delay_ms    | 0x11 | 1 bytes
+// sleep_timeout_ms   | 0x12 | 2 bytes
+// max_speed          | 0x14 | 4 bytes
+// acceleration       | 0x18 | 4 bytes
+// move               | 0x1C | 4 bytes
+// move_to            | 0x20 | 4 bytes
+// delay              | 0x24 | 4 bytes
+// stop               | 0x28 | 1 bytes
+// call               | 0x30 | 2 bytes
+// cond_call          | 0x32 | 4 bytes
+// cond_jump          | 0x36 | 4 bytes
+// jump               | 0x3A | 2 bytes
+// move_rev           | 0x3C | 4 bytes
+// const uint64_t VMEXC_WRITE_MASK = 0xFFFF01FFFFFF00F0;
+// current_position   | 0x04 | 4 bytes
+// settings_flags     | 0x10 | 1 bytes
+// enable_delay_ms    | 0x11 | 1 bytes
+// sleep_timeout_ms   | 0x12 | 2 bytes
+// max_speed          | 0x14 | 4 bytes
+// acceleration       | 0x18 | 4 bytes
+// move               | 0x1C | 4 bytes
+// move_to            | 0x20 | 4 bytes
+// delay              | 0x24 | 4 bytes
+// stop               | 0x28 | 1 bytes
+// script_clear       | 0x29 | 1 bytes
+// script_exec        | 0x2A | 2 bytes
+// move_rev           | 0x3C | 4 bytes
+// const uint64_t BUSIO_WRITE_MASK = 0xF0000FFFFFFF00F0;
+// stop               | 0x28 | 1 bytes
+// const uint64_t BUSY_WRITE_MASK = 0x0000010000000000;
 
 #endif

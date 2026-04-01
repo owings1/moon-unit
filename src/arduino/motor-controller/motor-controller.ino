@@ -68,7 +68,7 @@ void loop1() {
     lastVM = millis();
 
     for (uint8_t i = 0; i < 2; ++i) {
-      if (mms[i]->scriptActive) {
+      if (mms[i]->scriptActive()) {
         mms[i]->tick();
       }
     }

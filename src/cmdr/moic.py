@@ -19,6 +19,7 @@ MOTOR_BLOCK_SIZE = const(0x40)
 SCRIPT_PAGE_SIZE = const(0xF8)
 NUM_SCRIPT_PAGES = const(0x04)
 SCRIPT_STACK_SIZE = const(0x08)
+BUSY_EXEMPT_MASK = const(0x80)
 
 INDIRECT_OPCODE_FLAG = const(0x40)
 FARPTR_OPCODE_FLAG = const(0x80)
@@ -29,45 +30,120 @@ PAGE_REGISTER = const(0x04)
 SCRIPT_PAGE_START = const(0x10)
 MOTOR_BASE_ADDR = const(0x08)
 
-class Attribute(namedtuple('Attribute', ('offset', 'fmt', 'size'))):
+class WriteSource:
+  VMEXC = 0x00
+  BUSIO = 0x01
+
+  @classmethod
+  def attrs(cls, source: int) -> list[Attribute]:
+    return sorted((
+      attr for attr in attrsmap.values()
+      if attr.writewhen & (1 << source)),
+      key=lambda x: x.offset)
+
+  @classmethod
+  def mask(cls, source: int) -> int:
+    mask = 0
+    for attr in cls.attrs(source):
+      mask |= attr.offsets_mask()
+    return mask
+
+  @classmethod
+  def maskinfos(cls) -> list[str]:
+    names = tuple(x for x in dir(cls) if x.upper() == x)
+    values = list(getattr(cls, x) for x in names)
+    values.append(7)
+    masks = list(map(cls.mask, values))
+    varnames = list(f'{name}_write_mask'.upper() for name in names)
+    varnames.append('busy_write_mask'.upper())
+    hexstrs = list(f'0x{x:016X}' for x in masks)
+    cpplines = list(
+      f'const uint64_t {varname} = {hexstr};'
+      for (varname, hexstr) in zip(varnames, hexstrs))
+    def attrlines(source):
+      for attr in cls.attrs(source):
+        yield f'// {attr.textrow()}'
+    attrsblocks = ('\n'.join(attrlines(source)) for source in values)
+    entries = list(zip(values, attrsblocks, cpplines))
+    entries.sort(key=lambda x: x[0])
+    return ['\n'.join(x[1:]) for x in entries]
+
+class WriteWhen:
+  NEVER = 0x00
+  SRC_VMEXC = 1 << WriteSource.VMEXC
+  SRC_BUSIO = 1 << WriteSource.BUSIO
+  SRC_ANY = SRC_VMEXC|SRC_BUSIO
+  BUSY = 0x80
+  ALWAYS = SRC_ANY|BUSY
+
+class Attribute(namedtuple('Attribute', ('offset', 'fmt', 'size', 'writewhen'))):
   offset: int
   fmt: bytes
   size: int
+  writewhen: int
 
   @property
   def name(self) -> str:
     return revoffs[self.offset]
+
+  def offsets(self) -> range:
+    return range(self.offset, self.offset + self.size)
+
+  def offsets_mask(self) -> int:
+    mask = 0
+    for offset in self.offsets():
+      mask |= 1 << offset
+    return mask
+
+  def textrow(self) -> str:
+    return ' | '.join((
+      f'{self.name:18}',
+      f'0x{self.offset:02X}',
+      f'{self.size} bytes'))
 
 class Flag(namedtuple('Flag', ('bit', 'attr'))):
   bit: int
   attr: Attribute
 
 class Attributes:
-  state_flags = Attribute(0x00, b'B', 1)#
-  script_page = Attribute(0x01, b'B', 1)#
-  script_index = Attribute(0x02, b'B', 1)#
-  script_repcode = Attribute(0x03, b'B', 1)#
-  current_position = Attribute(0x04, b'l', 4)
-  target_position = Attribute(0x08, b'l', 4)#
-  speed = Attribute(0x0C, b'f', 4)#
-  settings_flags = Attribute(0x10, b'B', 1)
-  enable_delay_ms = Attribute(0x11, b'B', 1)
-  sleep_timeout_ms = Attribute(0x12, b'H', 2)
-  max_speed = Attribute(0x14, b'f', 4)
-  acceleration = Attribute(0x18, b'f', 4)
-  move = Attribute(0x1C, b'l', 4)
-  move_to = Attribute(0x20, b'l', 4)
-  delay = Attribute(0x24, b'L', 4)
-  stop = Attribute(0x28, b'x', 1)
-  script_clear = Attribute(0x29, b'B', 1)#
-  script_exec = Attribute(0x2A, b'2B', 2)#
-  wait_end_time = Attribute(0x2C, b'L', 4)#
-  call = Attribute(0x30, b'2B', 2)
-  cond_call = Attribute(0x32, b'4B', 4)
-  cond_jump = Attribute(0x36, b'4B', 4)
-  jump = Attribute(0x3A, b'2B', 2)
-  move_rev = Attribute(0x3C, b'l', 4)
+  state_flags = Attribute(0x00, b'B', 1, WriteWhen.NEVER)
+  script_page = Attribute(0x01, b'B', 1, WriteWhen.NEVER)
+  script_index = Attribute(0x02, b'B', 1, WriteWhen.NEVER)
+  script_repcode = Attribute(0x03, b'B', 1, WriteWhen.NEVER)
+  current_position = Attribute(0x04, b'l', 4, WriteWhen.SRC_ANY)
+  target_position = Attribute(0x08, b'l', 4, WriteWhen.NEVER)
+  speed = Attribute(0x0C, b'f', 4, WriteWhen.NEVER)
+  settings_flags = Attribute(0x10, b'B', 1, WriteWhen.SRC_ANY)
+  enable_delay_ms = Attribute(0x11, b'B', 1, WriteWhen.SRC_ANY)
+  sleep_timeout_ms = Attribute(0x12, b'H', 2, WriteWhen.SRC_ANY)
+  max_speed = Attribute(0x14, b'f', 4, WriteWhen.SRC_ANY)
+  acceleration = Attribute(0x18, b'f', 4, WriteWhen.SRC_ANY)
+  move = Attribute(0x1C, b'l', 4, WriteWhen.SRC_ANY)
+  move_to = Attribute(0x20, b'l', 4, WriteWhen.SRC_ANY)
+  delay = Attribute(0x24, b'L', 4, WriteWhen.SRC_ANY)
+  stop = Attribute(0x28, b'x', 1, WriteWhen.ALWAYS)
+  script_clear = Attribute(0x29, b'B', 1, WriteWhen.SRC_BUSIO)
+  script_exec = Attribute(0x2A, b'2B', 2, WriteWhen.SRC_BUSIO)
+  wait_end_time = Attribute(0x2C, b'L', 4, WriteWhen.NEVER)
+  call = Attribute(0x30, b'2B', 2, WriteWhen.SRC_VMEXC)
+  cond_call = Attribute(0x32, b'4B', 4, WriteWhen.SRC_VMEXC)
+  cond_jump = Attribute(0x36, b'4B', 4, WriteWhen.SRC_VMEXC)
+  jump = Attribute(0x3A, b'2B', 2, WriteWhen.SRC_VMEXC)
+  move_rev = Attribute(0x3C, b'l', 4, WriteWhen.SRC_ANY)
 
+  @classmethod
+  def offsets_writemasks(cls) -> str:
+    masks = []
+    for attr in attrsmap.values():
+      masks.extend((offset, attr.writewhen) for offset in attr.offsets())
+    masks.sort(key=lambda x: x[0])
+    numstrs = [f'0x{x[1]:02X},' for x in masks]
+    chunks = [numstrs[i:i+8] for i in range(0, 0x40, 8)]
+    varname = 'OFFSET_WRITEMASKS'
+    decl = f'static const uint8_t {varname}[0x40] = {{%s}};'
+    body = '\n'.join((f'  {" ".join(chunk)}' for chunk in chunks))
+    return decl % body.join(2*'\n')
+    
 attrsmap: dict[str, Attribute] = {
   name: attr for (name, attr) in
   ((name, getattr(Attributes, name)) for name in dir(Attributes))
@@ -76,8 +152,8 @@ attrsmap: dict[str, Attribute] = {
 revoffs: dict[int, str] = {attr.offset: name for name, attr in attrsmap.items()}
 
 revops: dict[int, Attribute] = {
-  key: attrsmap[revoffs[key]] for key in
-  set(revoffs).difference((0x00, 0x01, 0x02, 0x03, 0x08, 0x0C, 0x29, 0x2A, 0x2C))}
+  attr.offset: attr for attr in attrsmap.values()
+  if attr.writewhen & WriteWhen.SRC_VMEXC}
 
 opsmap: dict[str, Attribute] = {attr.name: attr for attr in revops.values()}
 

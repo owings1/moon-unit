@@ -1,3 +1,4 @@
+#include <sys/_stdint.h>
 #ifndef MOIC_PROTOCOL_H
 #define MOIC_PROTOCOL_H
 #include <stddef.h>
@@ -37,5 +38,11 @@ enum FunId : uint8_t {
 enum InternalFlagBit : uint8_t {
   BitIsScriptActive = 0,
 };
+
+enum WriteSource : uint8_t {
+  VMEXC = 0x00,
+  BUSIO = 0x01,
+};
 }
+
 #endif

@@ -3,130 +3,130 @@
 #include "MotorActions.h"
 
 namespace MotorActions {
-uint8_t onCurrentPosition(IMotor* m, volatile Moic::MotorInterface& mregs, volatile Moic::MotorContext& ctx) {
-  m->setCurrentPosition(mregs.currentPosition);
-  mregs.currentPosition = m->currentPosition();
+uint8_t onCurrentPosition(Moic::ManagedMotor& mm) {
+  mm.m->setCurrentPosition(mm.mregs->currentPosition);
+  mm.mregs->currentPosition = mm.m->currentPosition();
   return Moic::OK;
 }
-uint8_t onSettingsFlags(IMotor* m, volatile Moic::MotorInterface& mregs, volatile Moic::MotorContext& ctx) {
-  m->setSettingsFlags(mregs.settingsFlags);
-  mregs.settingsFlags = m->settingsFlags();
+uint8_t onSettingsFlags(Moic::ManagedMotor& mm) {
+  mm.m->setSettingsFlags(mm.mregs->settingsFlags);
+  mm.mregs->settingsFlags = mm.m->settingsFlags();
   return Moic::OK;
 }
-uint8_t onEnableDelayMs(IMotor* m, volatile Moic::MotorInterface& mregs, volatile Moic::MotorContext& ctx) {
-  m->setEnableDelayMs(mregs.enableDelayMs);
-  mregs.enableDelayMs = m->enableDelayMs();
+uint8_t onEnableDelayMs(Moic::ManagedMotor& mm) {
+  mm.m->setEnableDelayMs(mm.mregs->enableDelayMs);
+  mm.mregs->enableDelayMs = mm.m->enableDelayMs();
   return Moic::OK;
 }
-uint8_t onSleepTimeout(IMotor* m, volatile Moic::MotorInterface& mregs, volatile Moic::MotorContext& ctx) {
-  m->setSleepTimeoutMs(mregs.sleepTimeoutMs);
-  mregs.sleepTimeoutMs = m->sleepTimeoutMs();
+uint8_t onSleepTimeout(Moic::ManagedMotor& mm) {
+  mm.m->setSleepTimeoutMs(mm.mregs->sleepTimeoutMs);
+  mm.mregs->sleepTimeoutMs = mm.m->sleepTimeoutMs();
   return Moic::OK;
 }
-uint8_t onMaxSpeed(IMotor* m, volatile Moic::MotorInterface& mregs, volatile Moic::MotorContext& ctx) {
-  m->setMaxSpeed(mregs.maxSpeed);
-  mregs.maxSpeed = m->maxSpeed();
+uint8_t onMaxSpeed(Moic::ManagedMotor& mm) {
+  mm.m->setMaxSpeed(mm.mregs->maxSpeed);
+  mm.mregs->maxSpeed = mm.m->maxSpeed();
   return Moic::OK;
 }
-uint8_t onAcceleration(IMotor* m, volatile Moic::MotorInterface& mregs, volatile Moic::MotorContext& ctx) {
-  m->setAcceleration(mregs.acceleration);
-  mregs.acceleration = m->acceleration();
+uint8_t onAcceleration(Moic::ManagedMotor& mm) {
+  mm.m->setAcceleration(mm.mregs->acceleration);
+  mm.mregs->acceleration = mm.m->acceleration();
   return Moic::OK;
 }
-uint8_t onMove(IMotor* m, volatile Moic::MotorInterface& mregs, volatile Moic::MotorContext& ctx) {
-  const uint8_t code = m->move(mregs.cmdMove) ? Moic::OK : Moic::COMMAND_IGNORED;
-  mregs.cmdMove = 0;
+uint8_t onMove(Moic::ManagedMotor& mm) {
+  const uint8_t code = mm.m->move(mm.mregs->cmdMove) ? Moic::OK : Moic::COMMAND_IGNORED;
+  mm.mregs->cmdMove = 0;
   return code;
 }
-uint8_t onMoveRev(IMotor* m, volatile Moic::MotorInterface& mregs, volatile Moic::MotorContext& ctx) {
-  const uint8_t code = m->move(-mregs.cmdMoveRev) ? Moic::OK : Moic::COMMAND_IGNORED;
-  mregs.cmdMoveRev = 0;
+uint8_t onMoveRev(Moic::ManagedMotor& mm) {
+  const uint8_t code = mm.m->move(-mm.mregs->cmdMoveRev) ? Moic::OK : Moic::COMMAND_IGNORED;
+  mm.mregs->cmdMoveRev = 0;
   return code;
 }
-uint8_t onMoveTo(IMotor* m, volatile Moic::MotorInterface& mregs, volatile Moic::MotorContext& ctx) {
-  const uint8_t code = m->move(mregs.cmdMoveTo - m->currentPosition()) ? Moic::OK : Moic::COMMAND_IGNORED;
-  mregs.cmdMoveTo = 0;
+uint8_t onMoveTo(Moic::ManagedMotor& mm) {
+  const uint8_t code = mm.m->move(mm.mregs->cmdMoveTo - mm.m->currentPosition()) ? Moic::OK : Moic::COMMAND_IGNORED;
+  mm.mregs->cmdMoveTo = 0;
   return code;
 }
-uint8_t onDelay(IMotor* m, volatile Moic::MotorInterface& mregs, volatile Moic::MotorContext& ctx) {
-  if (mregs.cmdDelay > 0) {
-    mregs.waitEndTime = millis() + mregs.cmdDelay;
-    m->setDelayActive(true);
+uint8_t onDelay(Moic::ManagedMotor& mm) {
+  if (mm.mregs->cmdDelay > 0) {
+    mm.mregs->waitEndTime = millis() + mm.mregs->cmdDelay;
+    mm.m->setDelayActive(true);
   } else {
-    mregs.waitEndTime = 0;
-    m->setDelayActive(false);
+    mm.mregs->waitEndTime = 0;
+    mm.m->setDelayActive(false);
   }
-  mregs.cmdDelay = 0;
+  mm.mregs->cmdDelay = 0;
   return Moic::OK;
 }
-uint8_t onStop(IMotor* m, volatile Moic::MotorInterface& mregs, volatile Moic::MotorContext& ctx) {
-  uint8_t code = m->stop() ? Moic::OK : Moic::COMMAND_IGNORED;
-  if (MotorState::isScriptActive(m, mregs, ctx)) {
-    MotorState::exitScript(m, mregs, ctx, Moic::CANCELED);
+uint8_t onStop(Moic::ManagedMotor& mm) {
+  uint8_t code = mm.m->stop() ? Moic::OK : Moic::COMMAND_IGNORED;
+  if (mm.scriptActive()) {
+    mm.exitScript(Moic::CANCELED);
     code = Moic::OK;
   }
-  mregs.stateFlags = m->stateFlags();
-  mregs.cmdStop = 0;
+  mm.mregs->stateFlags = mm.m->stateFlags();
+  mm.mregs->cmdStop = 0;
   return code;
 }
-uint8_t onScriptClear(IMotor* m, volatile Moic::MotorInterface& mregs, volatile Moic::MotorContext& ctx) {
+uint8_t onScriptClear(Moic::ManagedMotor& mm) {
   uint8_t code = Moic::OK;
-  if (mregs.cmdScriptClear < Moic::NUM_SCRIPT_PAGES) {
-    if (MotorState::isPageInStack(m, mregs, ctx, mregs.cmdScriptClear)) {
+  if (mm.mregs->cmdScriptClear < Moic::NUM_SCRIPT_PAGES) {
+    if (mm.isPageInStack(mm.mregs->cmdScriptClear)) {
       // Prevent clearing running script
       code = Moic::MOTOR_BUSY;
     } else {
-      memset((void*)ctx.scripts[mregs.cmdScriptClear], 0, Moic::SCRIPT_PAGE_SIZE);
+      memset((void*)mm.ctx->scripts[mm.mregs->cmdScriptClear], 0, Moic::SCRIPT_PAGE_SIZE);
     }
   } else {
     code = Moic::OVERFLOW;
   }
-  mregs.cmdScriptClear = 0;
+  mm.mregs->cmdScriptClear = 0;
   return code;
 }
-uint8_t onScriptExec(IMotor* m, volatile Moic::MotorInterface& mregs, volatile Moic::MotorContext& ctx) {
-  const uint8_t code = MotorState::enterScript(m, mregs, ctx, mregs.cmdScriptExec[0], mregs.cmdScriptExec[1]);
-  clearTrigger(mregs.cmdScriptExec, 2);
+uint8_t onScriptExec(Moic::ManagedMotor& mm) {
+  const uint8_t code = mm.enterScript(mm.mregs->cmdScriptExec[0], mm.mregs->cmdScriptExec[1]);
+  clearTrigger(mm.mregs->cmdScriptExec, 2);
   return code;
 }
-uint8_t onCmdCall(IMotor* m, volatile Moic::MotorInterface& mregs, volatile Moic::MotorContext& ctx) {
+uint8_t onCmdCall(Moic::ManagedMotor& mm) {
   uint8_t code = Moic::OK;
-  if (!MotorState::isScriptActive(m, mregs, ctx)) {
+  if (!mm.scriptActive()) {
     code = Moic::UNKNOWN_COMMAND;
   } else {
-    code = MotorVM::call(mregs, ctx, mregs.cmdCall);
+    code = MotorVM::call(*(mm.mregs), *(mm.ctx), mm.mregs->cmdCall);
   }
-  clearTrigger(mregs.cmdCall, 2);
+  clearTrigger(mm.mregs->cmdCall, 2);
   return code;
 }
-uint8_t onCmdJump(IMotor* m, volatile Moic::MotorInterface& mregs, volatile Moic::MotorContext& ctx) {
+uint8_t onCmdJump(Moic::ManagedMotor& mm) {
   uint8_t code = Moic::OK;
-  if (!MotorState::isScriptActive(m, mregs, ctx)) {
+  if (!mm.scriptActive()) {
     code = Moic::UNKNOWN_COMMAND;
   } else {
-    code = MotorVM::jump(mregs, ctx, mregs.cmdJump);
+    code = MotorVM::jump(*(mm.mregs), *(mm.ctx), mm.mregs->cmdJump);
   }
-  clearTrigger(mregs.cmdJump, 2);
+  clearTrigger(mm.mregs->cmdJump, 2);
   return code;
 }
-uint8_t onCondCall(IMotor* m, volatile Moic::MotorInterface& mregs, volatile Moic::MotorContext& ctx) {
+uint8_t onCondCall(Moic::ManagedMotor& mm) {
   uint8_t code = Moic::OK;
-  if (!MotorState::isScriptActive(m, mregs, ctx)) {
+  if (!mm.scriptActive()) {
     code = Moic::UNKNOWN_COMMAND;
   } else {
-    code = MotorVM::condCall(mregs, ctx, mregs.cmdCondCall);
+    code = MotorVM::condCall(*(mm.mregs), *(mm.ctx), mm.mregs->cmdCondCall);
   }
-  clearTrigger(mregs.cmdCondCall, 4);
+  clearTrigger(mm.mregs->cmdCondCall, 4);
   return code;
 }
-uint8_t onCondJump(IMotor* m, volatile Moic::MotorInterface& mregs, volatile Moic::MotorContext& ctx) {
+uint8_t onCondJump(Moic::ManagedMotor& mm) {
   uint8_t code = Moic::OK;
-  if (!MotorState::isScriptActive(m, mregs, ctx)) {
+  if (!mm.scriptActive()) {
     code = Moic::UNKNOWN_COMMAND;
   } else {
-    code = MotorVM::condJump(mregs, ctx, mregs.cmdCondJump);
+    code = MotorVM::condJump(*(mm.mregs), *(mm.ctx), mm.mregs->cmdCondJump);
   }
-  clearTrigger(mregs.cmdCondJump, 4);
+  clearTrigger(mm.mregs->cmdCondJump, 4);
   return code;
 }
 

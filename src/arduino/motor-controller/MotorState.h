@@ -12,30 +12,7 @@ static const uint8_t SCRIPT_PAGE_SIZE = 0xF8;
 static const uint8_t NUM_SCRIPT_PAGES = 0x04;
 static const uint8_t SCRIPT_STACK_SIZE = 0x08;
 static const uint8_t SCRIPT_WRITEBUF_SIZE = 4;
-// Busy Protected:
-// current_position   | offset: 0x04 | span: 4 bytes
-// settings_flags     | offset: 0x10 | span: 1 bytes
-// max_speed          | offset: 0x14 | span: 4 bytes
-// acceleration       | offset: 0x18 | span: 4 bytes
-// move               | offset: 0x1c | span: 4 bytes
-// move_to            | offset: 0x20 | span: 4 bytes
-// delay              | offset: 0x24 | span: 4 bytes
-// script_exec        | offset: 0x2a | span: 2 bytes
-// move_rev           | offset: 0x3c | span: 4 bytes
-static const uint64_t MOTOR_BUSY_MASK = 0xF0000CFFFFF100F0ULL;
-// Script Protected:
-// current_position   | offset: 0x04 | span: 4 bytes
-// settings_flags     | offset: 0x10 | span: 1 bytes
-// enable_delay_ms    | offset: 0x11 | span: 1 bytes
-// sleep_timeout_ms   | offset: 0x12 | span: 2 bytes
-// max_speed          | offset: 0x14 | span: 4 bytes
-// acceleration       | offset: 0x18 | span: 4 bytes
-// move               | offset: 0x1c | span: 4 bytes
-// move_to            | offset: 0x20 | span: 4 bytes
-// delay              | offset: 0x24 | span: 4 bytes
-// script_exec        | offset: 0x2a | span: 2 bytes
-// move_rev           | offset: 0x3c | span: 4 bytes
-static const uint64_t SCRIPT_LOCK_MASK = 0xF0000CFFFFFF00F0ULL;
+static const uint8_t BUSY_EXEMPT_MASK = 0x80;
 #pragma pack(push, 1)
 struct MotorInterface {
   // 0x00 - Telemetry (Aligned)
@@ -81,15 +58,5 @@ struct MotorContext {
 
 #pragma pack(pop)
 
-}
-
-namespace MotorState {
-void syncMotorSettings(IMotor* m, volatile Moic::MotorInterface& mregs);
-void syncMotorState(IMotor* m, volatile Moic::MotorInterface& mregs);
-uint8_t enterScript(IMotor* m, volatile Moic::MotorInterface& mregs, volatile Moic::MotorContext& ctx, uint8_t page, const uint8_t arg);
-void exitScript(IMotor* m, volatile Moic::MotorInterface& mregs, volatile Moic::MotorContext& ctx, const uint8_t code);
-bool isMotorBusy(IMotor* m, volatile Moic::MotorInterface& mregs);
-bool isPageInStack(IMotor* m, volatile Moic::MotorInterface& mregs, volatile Moic::MotorContext& ctx, const uint8_t page);
-bool isScriptActive(IMotor* m, volatile Moic::MotorInterface& mregs, volatile Moic::MotorContext& ctx);
 }
 #endif
