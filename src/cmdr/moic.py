@@ -23,6 +23,7 @@ BUSY_EXEMPT_MASK = const(0x80)
 
 INDIRECT_OPCODE_FLAG = const(0x40)
 FARPTR_OPCODE_FLAG = const(0x80)
+CONTROL_EXCODE = const(0x40|0x80)
 FUNC_NEGATED_FLAG = const(0x80)
 FUNC_NEGATED_BIT = const(7)
 
@@ -125,11 +126,7 @@ class Attributes:
   script_clear = Attribute(0x29, b'B', 1, WriteWhen.SRC_BUSIO)
   script_exec = Attribute(0x2A, b'2B', 2, WriteWhen.SRC_BUSIO)
   wait_end_time = Attribute(0x2C, b'L', 4, WriteWhen.NEVER)
-  call = Attribute(0x30, b'2B', 2, WriteWhen.SRC_VMEXC)
-  cond_call = Attribute(0x32, b'4B', 4, WriteWhen.SRC_VMEXC)
-  cond_jump = Attribute(0x36, b'4B', 4, WriteWhen.SRC_VMEXC)
-  jump = Attribute(0x3A, b'2B', 2, WriteWhen.SRC_VMEXC)
-  move_rev = Attribute(0x3C, b'l', 4, WriteWhen.SRC_ANY)
+  move_rev = Attribute(0x30, b'l', 4, WriteWhen.SRC_ANY)
 
   @classmethod
   def offsets_writemasks(cls) -> str:
@@ -157,6 +154,32 @@ revops: dict[int, Attribute] = {
 
 opsmap: dict[str, Attribute] = {attr.name: attr for attr in revops.values()}
 
+class CtlOp(namedtuple('CtlOp', ('esc', 'code', 'fmt', 'size'))):
+  esc: int
+  code: int
+  fmt: bytes
+  size: int
+  @property
+  def name(self) -> str:
+    return revctls[self.code]
+  
+class CtlOps:
+  call = CtlOp(CONTROL_EXCODE, 0x30, b'2B', 2)
+  cond_call = CtlOp(CONTROL_EXCODE, 0x32, b'4B', 4)
+  cond_jump = CtlOp(CONTROL_EXCODE, 0x36, b'4B', 4)
+  jump = CtlOp(CONTROL_EXCODE, 0x3A, b'2B', 2)
+
+ctlopsmap: dict[str, CtlOp] = {
+  f':{name}': ctlop for (name, ctlop) in
+  ((name, getattr(CtlOps, name)) for name in dir(CtlOps))
+  if isinstance(ctlop, CtlOp)}
+
+revctls: dict[int, str] = {ctlop.code: name for name, ctlop in ctlopsmap.items()}
+
+revops[CONTROL_EXCODE] = {
+  ctlop.code: ctlopsmap[revctls[ctlop.code]] for ctlop in ctlopsmap.values()}
+opsmap.update((ctlop.name, ctlop) for ctlop in ctlopsmap.values())
+
 class Flags:
   is_limit_cw = Flag(0, Attributes.state_flags)
   is_limit_acw = Flag(1, Attributes.state_flags)
@@ -173,10 +196,10 @@ class FunId:
   AND_STATEFLAGS_RHS = Attributes.state_flags.offset
   EQL_RETURNCODE_RHS = Attributes.script_repcode.offset
   AND_SETTINGSFLAGS_RHS = Attributes.settings_flags.offset
-  EQL_LASTCONDARG_RHS = Attributes.cond_call.offset
-  AND_LASTCONDARG_RHS = Attributes.cond_call.offset + 1
-  EQL_CALLARG_RHS = Attributes.call.offset
-  AND_CALLARG_RHS = Attributes.call.offset + 1
+  EQL_LASTCONDARG_RHS = CtlOps.cond_call.code
+  AND_LASTCONDARG_RHS = CtlOps.cond_call.code + 1
+  EQL_CALLARG_RHS = CtlOps.call.code
+  AND_CALLARG_RHS = CtlOps.call.code + 1
   ALWAYS_TRUE = 0xFF >> 1
 
 class Code:
@@ -231,6 +254,7 @@ class Script:
     self.instructions: list[tuple[str, tuple[Any, ...]]|bytes] = []
     self.labels: dict[str, int] = {}
     self._size = 0
+    self.compiler = Compiler()
 
   @property
   def size(self) -> int:
@@ -254,7 +278,9 @@ class Script:
     else:
       self.instructions.append((op, args))
       if isinstance(op, int):
-        if op & FARPTR_OPCODE_FLAG:
+        if op == CONTROL_EXCODE:
+          oplen = revops[op][args[0]].size + 1
+        elif op & FARPTR_OPCODE_FLAG:
           oplen = 2
         elif op & INDIRECT_OPCODE_FLAG:
           oplen = 1
@@ -267,44 +293,18 @@ class Script:
           oplen = 1
         else:
           oplen = opsmap[op].size
+          if op.startswith(':'):
+            oplen += 1
       self._size += 1 + oplen
 
   def compile(self, resolver: Callable|None = None) -> bytes:
     "Resolve labels and pack bytes."
-    buf = bytearray()
-    for instruction in self.instructions:
-      if isinstance(instruction, bytes):
-        buf.extend(instruction)
-        continue
-      op, args = instruction
-      if resolver:
-        args = map(resolver, args)
-      args = map(self.resolve, args)
-      if isinstance(op, int):
-        if op & FARPTR_OPCODE_FLAG:
-          fmt = b'BB'
-        elif op & INDIRECT_OPCODE_FLAG:
-          fmt = b'B'
-        else:
-          fmt = revops[op].fmt
-        opcode = op
-      else:
-        if op.endswith('**'):
-          fmt = b'BB'
-          opcode = opsmap[op[:-2]].offset | FARPTR_OPCODE_FLAG
-        elif op.endswith('*'):
-          fmt = b'B'
-          opcode = opsmap[op[:-1]].offset | INDIRECT_OPCODE_FLAG
-        else:
-          attr = opsmap[op]
-          fmt = attr.fmt
-          opcode = attr.offset
-      buf.append(opcode)
-      buf.extend(struct.pack(b'<'+fmt, *args))
-    return bytes(buf)
+    return self.compiler.compile(self, resolver=resolver or self.resolve)
 
   def resolve(self, arg: str|int|float) -> int|float:
     if isinstance(arg, str):
+      if arg.startswith(':') and arg in ctlopsmap:
+        return ctlopsmap[arg].code
       # Resolve Label strings to absolute byte offsets
       return self.labels[arg]
     return arg
@@ -335,14 +335,14 @@ class If:
 
   def __enter__(self):
     # If NOT condition, jump to the ELSE marker
-    self.script.add(Attributes.cond_jump.offset, *~self.condition, Code.UNSET, self.else_label)
+    self.script.add(*CtlOps.cond_jump[:2], *~self.condition, Code.UNSET, self.else_label)
     return self
 
   def else_(self):
     "Transition point between True and False branches."
     self._has_run_else = True
     # True block is finished; jump over the upcoming Else block
-    self.script.add(Attributes.jump.offset, Code.UNSET, self.exit_label)
+    self.script.add(*CtlOps.jump[:2], Code.UNSET, self.exit_label)
     # Mark where the Else block starts
     self.script.label(self.else_label)
 
@@ -363,10 +363,68 @@ class While:
   def __enter__(self):
     self.script.label(self.start_label)
     # 'If NOT (condition), Jump to Exit'
-    self.script.add(Attributes.cond_jump.offset, *~self.condition, Code.UNSET, self.exit_label)
+    self.script.add(*CtlOps.cond_jump[:2], *~self.condition, Code.UNSET, self.exit_label)
     return self
 
   def __exit__(self, exc_type, exc_val, exc_tb):
-    self.script.add(Attributes.jump.offset, Code.UNSET, self.start_label)
+    self.script.add(*CtlOps.jump[:2], Code.UNSET, self.start_label)
     self.script.label(self.exit_label)
 
+
+class Compiler:
+  def __init__(self, resolver: Callable|None = None):
+    self.resolver = resolver
+  def compile(self, script: Script, resolver: Callable|None = None):
+    self.resolver = resolver or self.resolver
+    self.script = script
+    self.executable = bytearray()
+    for i, instruction in enumerate(script.instructions):
+      self.i = i
+      self.instruction = instruction
+      try:
+        self.last_compiled = self.executable.extend(self.compile_instruction(instruction))
+      except Exception as err:
+        print(f'{err!r} {i=} {instruction=}')
+        raise
+    return bytes(self.executable)
+
+  def compile_instruction(self, instruction: tuple[str, tuple[Any, ...]]|bytes) -> bytes:
+    self.instruction = instruction
+    if isinstance(instruction, bytes):
+      return instruction
+    self.buf = bytearray()
+    self.op, self.args = self.instruction
+    if self.resolver:
+      self.args = map(self.resolver, self.args)
+    if isinstance(self.op, int):
+      if self.op == CONTROL_EXCODE:
+        self.args = tuple(self.args)
+        self.ctlop = revops[self.op][self.args[0]]
+        self.fmt = b'B' + self.ctlop.fmt
+      elif self.op & FARPTR_OPCODE_FLAG:
+        self.fmt = b'BB'
+      elif self.op & INDIRECT_OPCODE_FLAG:
+        self.fmt = b'B'
+      else:
+        self.fmt = revops[self.op].fmt
+      self.opcode = self.op
+    else:
+      if self.op.endswith('**'):
+        self.fmt = b'BB'
+        self.opcode = opsmap[self.op[:-2]].offset | FARPTR_OPCODE_FLAG
+      elif self.op.endswith('*'):
+        self.fmt = b'B'
+        self.opcode = opsmap[self.op[:-1]].offset | INDIRECT_OPCODE_FLAG
+      else:
+        if self.op in ctlopsmap:
+          self.ctlop = ctlopsmap[self.op]
+          self.buf.append(self.ctlop.esc)
+          self.fmt = self.ctlop.fmt
+          self.opcode = self.ctlop.code
+        else:
+          self.attr = opsmap[self.op]
+          self.fmt = self.attr.fmt
+          self.opcode = self.attr.offset
+    self.buf.append(self.opcode)
+    self.buf.extend(struct.pack(b'<'+self.fmt, *self.args))
+    return bytes(self.buf)

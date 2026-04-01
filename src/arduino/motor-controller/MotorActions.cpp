@@ -89,46 +89,6 @@ uint8_t onScriptExec(Moic::ManagedMotor& mm) {
   clearTrigger(mm.mregs->cmdScriptExec, 2);
   return code;
 }
-uint8_t onCmdCall(Moic::ManagedMotor& mm) {
-  uint8_t code = Moic::OK;
-  if (!mm.scriptActive()) {
-    code = Moic::UNKNOWN_COMMAND;
-  } else {
-    code = MotorVM::call(mm, mm.mregs->cmdCall);
-  }
-  clearTrigger(mm.mregs->cmdCall, 2);
-  return code;
-}
-uint8_t onCmdJump(Moic::ManagedMotor& mm) {
-  uint8_t code = Moic::OK;
-  if (!mm.scriptActive()) {
-    code = Moic::UNKNOWN_COMMAND;
-  } else {
-    code = MotorVM::jump(mm, mm.mregs->cmdJump);
-  }
-  clearTrigger(mm.mregs->cmdJump, 2);
-  return code;
-}
-uint8_t onCondCall(Moic::ManagedMotor& mm) {
-  uint8_t code = Moic::OK;
-  if (!mm.scriptActive()) {
-    code = Moic::UNKNOWN_COMMAND;
-  } else {
-    code = MotorVM::condCall(mm, mm.mregs->cmdCondCall);
-  }
-  clearTrigger(mm.mregs->cmdCondCall, 4);
-  return code;
-}
-uint8_t onCondJump(Moic::ManagedMotor& mm) {
-  uint8_t code = Moic::OK;
-  if (!mm.scriptActive()) {
-    code = Moic::UNKNOWN_COMMAND;
-  } else {
-    code = MotorVM::condJump(mm, mm.mregs->cmdCondJump);
-  }
-  clearTrigger(mm.mregs->cmdCondJump, 4);
-  return code;
-}
 
 }
 

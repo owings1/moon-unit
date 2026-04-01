@@ -37,11 +37,8 @@ struct MotorInterface {
   volatile uint8_t cmdScriptClear;  // +0x29
   volatile uint8_t cmdScriptExec[2];// +0x2A
   volatile uint32_t waitEndTime;    // +0x2C
-  volatile uint8_t cmdCall[2];      // +0x30
-  volatile uint8_t cmdCondCall[4];  // +0x32
-  volatile uint8_t cmdCondJump[4];  // +0x36
-  volatile uint8_t cmdJump[2];      // +0x3A
-  volatile int32_t cmdMoveRev;      // +0x3C
+  volatile int32_t cmdMoveRev;      // +0x30
+  uint8_t _pad0[0x0C];
 };
 struct VMStack {
   volatile uint8_t page;

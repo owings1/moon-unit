@@ -78,26 +78,23 @@ uint8_t ManagedMotor::enterScript(uint8_t page, const uint8_t arg) {
     return OVERFLOW;
   }
   _scriptActive = true;
-  mregs->scriptPage = page;
-  mregs->scriptIdx = 0;
-  mregs->scriptRepCode = OK;
   vmctx->page = page;
   vmctx->idx = 0;
+  vmctx->exitCode = OK;
+  syncScriptState();
   vmctx->callArg = arg;
   vmctx->rhsArg = 0;
   vmctx->count = 0;
   vmctx->sp = 0;
-  vmctx->exitCode = OK;
   m->setScriptActive(true);
   return OK;
 }
 
 void ManagedMotor::exitScript(const uint8_t code) {
   _scriptActive = false;
+  vmctx->exitCode = code;
+  syncScriptState();
   vmctx->sp = 0;
-  mregs->scriptPage = vmctx->page;
-  mregs->scriptIdx = vmctx->idx;
-  mregs->scriptRepCode = code;
   m->setScriptActive(false);
   mregs->waitEndTime = 0;
   m->setDelayActive(false);
@@ -105,7 +102,7 @@ void ManagedMotor::exitScript(const uint8_t code) {
 }
 
 bool ManagedMotor::isPageInStack(const uint8_t page) {
-  if (!_scriptActive) {
+  if (!scriptActive()) {
     return false;
   }
   if (page == mregs->scriptPage || page == vmctx->page) {

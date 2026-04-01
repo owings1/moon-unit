@@ -93,10 +93,6 @@ class Motor(DeviceComponent):
     moic.Attributes.delay,
     moic.Attributes.script_clear,
     moic.Attributes.script_exec,
-    moic.Attributes.call,
-    moic.Attributes.cond_call,
-    moic.Attributes.cond_jump,
-    moic.Attributes.jump,
   ))
   SLCINFO_PERSIST = MotorAttr.sliceinfo(ATTRMAP, 7, 7+12)
   PERSIST_NS = 0x9100
@@ -348,6 +344,31 @@ class MotorScripts:
   def pprint(self, script: int|bytes|bytearray) -> None:
     print(self.pprintf(script))
 
+  def trace(self):
+    def snipfmt(snipt):
+      return ' '.join(f'0x{x:<02X}' for x in snipt)
+    m = self.motor
+    page, idx, code = m['script_page'], m['script_index'], m['script_repcode']
+    content = self.download(page)
+    label = moic.codes[code]
+    value = content[idx]
+    opobj = moic.ctlopsmap.get(value) or moic.revops.get(value)
+    size = 1
+    if isinstance(opobj, dict) and idx < len(content):
+      opobj = opobj[content[idx+1]]
+      size += 1
+    opname = opobj.name if opobj else None
+    instr = content[idx:(idx+opobj.size+size) if opobj else 6]
+    prev = content[max(0, idx - 5):idx]
+    return dict(
+      page=str(page),
+      index=f'0x{idx:<02X}',
+      code=f'0x{code:02X} {label}',
+      value=f'0x{value:<02X}',
+      instruction=snipfmt(instr),
+      opname=str(opname),
+      previous=snipfmt(prev))
+    
   @property
   def moicdb_content(self):
     return self.motor.packed[self.moicdb_slcinfo.slc]
@@ -369,16 +390,16 @@ class MotorScripts:
     with lib.if_flag('limits_enabled', negate=True):
       lib.add(Code.USR1)
     with lib.if_argand(1):
-      lib.add('call', __, 'subroutine:home')
+      lib.add(':call', __, 'subroutine:home')
       with lib.if_repeql(Code.USR2):
-        lib.add('call', __, 'subroutine:cleanup')
+        lib.add(':call', __, 'subroutine:cleanup')
         lib.add(Code.USR2)
     with lib.if_argand(2):
-      lib.add('call', __, 'subroutine:end')
+      lib.add(':call', __, 'subroutine:end')
       with lib.if_repeql(Code.USR2):
-        lib.add('call', __, 'subroutine:cleanup')
+        lib.add(':call', __, 'subroutine:cleanup')
         lib.add(Code.USR2)
-    lib.add('call', __, 'subroutine:cleanup')
+    lib.add(':call', __, 'subroutine:cleanup')
     lib.add(Code.UNSET)
     
     for label, direction in (('home', 'acw'), ('end', 'cw')):

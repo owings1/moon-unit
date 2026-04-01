@@ -22,10 +22,6 @@ uint8_t onDelay(Moic::ManagedMotor& mm);
 uint8_t onStop(Moic::ManagedMotor& mm);
 uint8_t onScriptClear(Moic::ManagedMotor& mm);
 uint8_t onScriptExec(Moic::ManagedMotor& mm);
-uint8_t onCmdCall(Moic::ManagedMotor& mm);
-uint8_t onCondCall(Moic::ManagedMotor& mm);
-uint8_t onCondJump(Moic::ManagedMotor& mm);
-uint8_t onCmdJump(Moic::ManagedMotor& mm);
 uint8_t onMoveRev(Moic::ManagedMotor& mm);
 struct RegMapping {
   uint8_t offset;
@@ -46,10 +42,6 @@ const RegMapping ACTION_TABLE[] = {
   { offsetof(Moic::MotorInterface, cmdStop), 1, onStop },
   { offsetof(Moic::MotorInterface, cmdScriptClear), 1, onScriptClear },
   { offsetof(Moic::MotorInterface, cmdScriptExec), 2, onScriptExec },
-  { offsetof(Moic::MotorInterface, cmdCall), 2, onCmdCall },
-  { offsetof(Moic::MotorInterface, cmdCondCall), 4, onCondCall },
-  { offsetof(Moic::MotorInterface, cmdCondJump), 4, onCondJump },
-  { offsetof(Moic::MotorInterface, cmdJump), 2, onCmdJump },
   { offsetof(Moic::MotorInterface, cmdMoveRev), 4, onMoveRev },
 };
 

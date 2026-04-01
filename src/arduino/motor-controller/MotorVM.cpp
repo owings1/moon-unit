@@ -56,7 +56,7 @@ uint8_t condJump(Moic::ManagedMotor& mm, volatile uint8_t* cmdBuf) {
 bool processNext(Moic::ManagedMotor& mm) {
   auto& vmctx = *(mm.vmctx);
   const uint8_t scriptPage = vmctx.page;
-  const uint8_t startIdx = vmctx.idx;
+  uint8_t startIdx = vmctx.idx;
   if (scriptPage >= Moic::NUM_SCRIPT_PAGES) {
     vmctx.exitCode = Moic::OVERFLOW;
     return false;
@@ -67,7 +67,7 @@ bool processNext(Moic::ManagedMotor& mm) {
   }
   // Get OpCode (Struct Offset)
   volatile uint8_t* scriptBase = vmctx.scripts[scriptPage];
-  const uint8_t op = scriptBase[startIdx];
+  uint8_t op = scriptBase[startIdx];
   if (op == Moic::OK || op >= Moic::USR1) {  // End markers
     // OK 0x00 or UNSET 0xFF are treated as OK 0x00.
     // Anything USR1 0xFA to USR5 0xFE are passed on as is to
@@ -84,10 +84,29 @@ bool processNext(Moic::ManagedMotor& mm) {
       return false;
     }
   }
+  // Control escape code for execution flow constructs such as loops.
+  const bool isCtl = op == CONTROL_EXCODE;
+  if (isCtl) {
+    if (startIdx + 1 >= Moic::SCRIPT_PAGE_SIZE) {
+      vmctx.exitCode = Moic::OVERFLOW;
+      return false;
+    }
+    startIdx += 1;
+    op = scriptBase[startIdx];
+    vmctx.idx += 1;
+  }
   const bool isFar = op & FARPTR_OPCODE_FLAG;
   const bool isInd = op & INDIRECT_OPCODE_FLAG;
+  if (isFar && isInd) {
+    // Behavior undefined when both flags are set, because the upper range
+    // overlaps with USR return codes, and the 0xC0 case would reduce to 0x00 OK.
+    // So we explicitly reject both flags to avoid ambiguity. This allows us to
+    // use literal 0xC0 as the control escape code CONTROL_EXCODE.
+    vmctx.exitCode = Moic::UNKNOWN_COMMAND;
+    return false;
+  }
   const uint8_t directOp = op & ~(INDIRECT_OPCODE_FLAG | FARPTR_OPCODE_FLAG);
-  const uint8_t dataLen = getOpCodeDataLength(directOp);
+  const uint8_t dataLen = getOpCodeDataLength(directOp, isCtl);
   if (dataLen == 0) {
     vmctx.exitCode = Moic::UNKNOWN_COMMAND;
     return false;
@@ -119,7 +138,6 @@ bool processNext(Moic::ManagedMotor& mm) {
       return false;
     }
   }
-  // We feed bytes one-by-one to handleMotorWrite to reuse all logic
   for (uint8_t i = 0; i < dataLen; i++) {
     uint8_t incoming;
     if (isFar) {
@@ -131,11 +149,35 @@ bool processNext(Moic::ManagedMotor& mm) {
     }
     vmctx.writeBuf[i] = incoming;
   }
-  vmctx.count = dataLen;
-  vmctx.offset = directOp;
+  if (isCtl) {
+    vmctx.count = 0;
+    const uint8_t code = processControl(mm, op);
+    if (code != Moic::OK) {
+      vmctx.exitCode = code;
+      return false;
+    }
+  } else {
+    vmctx.count = dataLen;
+    vmctx.offset = directOp;
+  }
   return true;
 }
 
+}
+
+uint8_t processControl(Moic::ManagedMotor& mm, const uint8_t ctlop) {
+  switch (ctlop) {
+    case Moic::CALL:
+      return MotorVM::call(mm, mm.vmctx->writeBuf);
+    case Moic::COND_CALL:
+      return MotorVM::condCall(mm, mm.vmctx->writeBuf);
+    case Moic::COND_JUMP:
+      return MotorVM::condJump(mm, mm.vmctx->writeBuf);
+    case Moic::JUMP:
+      return MotorVM::jump(mm, mm.vmctx->writeBuf);
+    default:
+      return Moic::UNKNOWN_COMMAND;
+  }
 }
 
 void scriptStackPop(Moic::ManagedMotor& mm, const uint8_t code) {
@@ -218,27 +260,36 @@ int8_t scriptCondition(Moic::ManagedMotor& mm, const uint8_t func, const uint8_t
   }
   return result ^ negate;
 }
-uint8_t getOpCodeDataLength(const uint8_t offset) {
-  switch (offset) {
-    case offsetof(Moic::MotorInterface, currentPosition):
-    case offsetof(Moic::MotorInterface, maxSpeed):
-    case offsetof(Moic::MotorInterface, acceleration):
-    case offsetof(Moic::MotorInterface, cmdMove):
-    case offsetof(Moic::MotorInterface, cmdMoveRev):
-    case offsetof(Moic::MotorInterface, cmdMoveTo):
-    case offsetof(Moic::MotorInterface, cmdDelay):
-    case offsetof(Moic::MotorInterface, cmdCondCall):
-    case offsetof(Moic::MotorInterface, cmdCondJump):
-      return 4;
-    case offsetof(Moic::MotorInterface, sleepTimeoutMs):
-    case offsetof(Moic::MotorInterface, cmdCall):
-    case offsetof(Moic::MotorInterface, cmdJump):
-      return 2;
-    case offsetof(Moic::MotorInterface, settingsFlags):
-    case offsetof(Moic::MotorInterface, enableDelayMs):
-    case offsetof(Moic::MotorInterface, cmdStop):
-      return 1;
-    default:
-      return 0;
+uint8_t getOpCodeDataLength(const uint8_t offset, const bool isCtl) {
+  if (isCtl) {
+    switch (offset) {
+      case Moic::COND_CALL:
+      case Moic::COND_JUMP:
+        return 4;
+      case Moic::CALL:
+      case Moic::JUMP:
+        return 2;
+      default:
+        return 0;
+    }
+  } else {
+    switch (offset) {
+      case offsetof(Moic::MotorInterface, currentPosition):
+      case offsetof(Moic::MotorInterface, maxSpeed):
+      case offsetof(Moic::MotorInterface, acceleration):
+      case offsetof(Moic::MotorInterface, cmdMove):
+      case offsetof(Moic::MotorInterface, cmdMoveRev):
+      case offsetof(Moic::MotorInterface, cmdMoveTo):
+      case offsetof(Moic::MotorInterface, cmdDelay):
+        return 4;
+      case offsetof(Moic::MotorInterface, sleepTimeoutMs):
+        return 2;
+      case offsetof(Moic::MotorInterface, settingsFlags):
+      case offsetof(Moic::MotorInterface, enableDelayMs):
+      case offsetof(Moic::MotorInterface, cmdStop):
+        return 1;
+      default:
+        return 0;
+    }
   }
 }
