@@ -3,68 +3,70 @@
 
 namespace MotorVM {
 
-uint8_t jump(volatile Moic::MotorInterface& mregs, volatile Moic::MotorContext& ctx, volatile uint8_t* cmdBuf) {
+uint8_t jump(Moic::ManagedMotor& mm, volatile uint8_t* cmdBuf) {
+  auto& vmctx = *(mm.vmctx);
   uint8_t page = cmdBuf[0];
   const uint8_t sIdx = cmdBuf[1];
   if (page == Moic::UNSET) {
-    page = mregs.scriptPage;
+    page = vmctx.page;
   }
   if (page >= Moic::NUM_SCRIPT_PAGES || sIdx >= Moic::SCRIPT_PAGE_SIZE) {
     return Moic::OVERFLOW;
   }
-  mregs.scriptPage = page;
-  mregs.scriptIdx = sIdx;
+  vmctx.page = page;
+  vmctx.idx = sIdx;
   return Moic::OK;
 }
 
-uint8_t call(volatile Moic::MotorInterface& mregs, volatile Moic::MotorContext& ctx, volatile uint8_t* cmdBuf) {
+uint8_t call(Moic::ManagedMotor& mm, volatile uint8_t* cmdBuf) {
   uint8_t page = cmdBuf[0];
   const uint8_t sIdx = cmdBuf[1];
   if (page == Moic::UNSET) {
-    page = mregs.scriptPage;
+    page = mm.vmctx->page;
   }
-  return scriptStackPush(mregs, ctx, page, sIdx);
+  return scriptStackPush(mm, page, sIdx);
 }
 
-uint8_t condCall(volatile Moic::MotorInterface& mregs, volatile Moic::MotorContext& ctx, volatile uint8_t* cmdBuf) {
+uint8_t condCall(Moic::ManagedMotor& mm, volatile uint8_t* cmdBuf) {
   const uint8_t func = cmdBuf[0];
   const uint8_t rhs = cmdBuf[1];
-  const int8_t result = scriptCondition(mregs, ctx, func, rhs);
+  const int8_t result = scriptCondition(mm, func, rhs);
   if (result < 0) {
     return Moic::UNKNOWN_COMMAND;
   }
   if (result > 0) {
-    return call(mregs, ctx, &cmdBuf[2]);
+    return call(mm, &cmdBuf[2]);
   }
   return Moic::OK;
 }
 
-uint8_t condJump(volatile Moic::MotorInterface& mregs, volatile Moic::MotorContext& ctx, volatile uint8_t* cmdBuf) {
+uint8_t condJump(Moic::ManagedMotor& mm, volatile uint8_t* cmdBuf) {
   const uint8_t func = cmdBuf[0];
   const uint8_t rhs = cmdBuf[1];
-  const int8_t result = scriptCondition(mregs, ctx, func, rhs);
+  const int8_t result = scriptCondition(mm, func, rhs);
   if (result < 0) {
     return Moic::UNKNOWN_COMMAND;
   }
   if (result > 0) {
-    return jump(mregs, ctx, &cmdBuf[2]);
+    return jump(mm, &cmdBuf[2]);
   }
   return Moic::OK;
 }
 
-bool processNext(volatile Moic::MotorInterface& mregs, volatile Moic::MotorContext& ctx, uint8_t& offset, uint8_t& count, uint8_t& exitCode) {
-  const uint8_t scriptPage = mregs.scriptPage;
-  const uint8_t startIdx = mregs.scriptIdx;
+bool processNext(Moic::ManagedMotor& mm) {
+  auto& vmctx = *(mm.vmctx);
+  const uint8_t scriptPage = vmctx.page;
+  const uint8_t startIdx = vmctx.idx;
   if (scriptPage >= Moic::NUM_SCRIPT_PAGES) {
-    exitCode = Moic::OVERFLOW;
+    vmctx.exitCode = Moic::OVERFLOW;
     return false;
   }
   if (startIdx >= Moic::SCRIPT_PAGE_SIZE) {
-    exitCode = Moic::OVERFLOW;
+    vmctx.exitCode = Moic::OVERFLOW;
     return false;
   }
   // Get OpCode (Struct Offset)
-  volatile uint8_t* scriptBase = ctx.scripts[scriptPage];
+  volatile uint8_t* scriptBase = vmctx.scripts[scriptPage];
   const uint8_t op = scriptBase[startIdx];
   if (op == Moic::OK || op >= Moic::USR1) {  // End markers
     // OK 0x00 or UNSET 0xFF are treated as OK 0x00.
@@ -73,12 +75,12 @@ bool processNext(volatile Moic::MotorInterface& mregs, volatile Moic::MotorConte
     // functions with EQL_RETURNCODE_RHS 0x03. A subroutine can
     // use this as a return code to the caller.
     const uint8_t code = (op == Moic::OK || op == Moic::UNSET) ? Moic::OK : op;
-    if (ctx.sp > 0) {
-      scriptStackPop(mregs, ctx, code);
-      count = 0;
+    if (vmctx.sp > 0) {
+      scriptStackPop(mm, code);
+      vmctx.count = 0;
       return true;
     } else {
-      exitCode = code;
+      vmctx.exitCode = code;
       return false;
     }
   }
@@ -87,33 +89,33 @@ bool processNext(volatile Moic::MotorInterface& mregs, volatile Moic::MotorConte
   const uint8_t directOp = op & ~(INDIRECT_OPCODE_FLAG | FARPTR_OPCODE_FLAG);
   const uint8_t dataLen = getOpCodeDataLength(directOp);
   if (dataLen == 0) {
-    exitCode = Moic::UNKNOWN_COMMAND;
+    vmctx.exitCode = Moic::UNKNOWN_COMMAND;
     return false;
   }
   if (dataLen > Moic::SCRIPT_WRITEBUF_SIZE) {
-    exitCode = Moic::OTHER_ERROR;
+    vmctx.exitCode = Moic::OTHER_ERROR;
     return false;
   }
   const uint8_t operandLen = isFar ? 2 : (isInd ? 1 : dataLen);
   const uint8_t totalCmdLen = 1 + operandLen;
   if (startIdx + totalCmdLen >= Moic::SCRIPT_PAGE_SIZE) {
-    exitCode = Moic::OVERFLOW;
+    vmctx.exitCode = Moic::OVERFLOW;
     return false;
   }
   // Consume from buffer (Advance BEFORE execution)
-  mregs.scriptIdx += totalCmdLen;
+  vmctx.idx += totalCmdLen;
   uint8_t ptrOffset, farPage;
   if (isFar) {
     farPage = scriptBase[startIdx + 1];
     ptrOffset = scriptBase[startIdx + 2];
     if (farPage >= Moic::NUM_SCRIPT_PAGES || ((uint16_t)ptrOffset) + dataLen >= Moic::SCRIPT_PAGE_SIZE) {
-      exitCode = Moic::OVERFLOW;
+      vmctx.exitCode = Moic::OVERFLOW;
       return false;
     }
   } else if (isInd) {
     ptrOffset = scriptBase[startIdx + 1];
     if (((uint16_t)ptrOffset) + dataLen > 0x1B) {
-      exitCode = Moic::UNINVITED_POINTER;
+      vmctx.exitCode = Moic::UNINVITED_POINTER;
       return false;
     }
   }
@@ -121,52 +123,57 @@ bool processNext(volatile Moic::MotorInterface& mregs, volatile Moic::MotorConte
   for (uint8_t i = 0; i < dataLen; i++) {
     uint8_t incoming;
     if (isFar) {
-      incoming = ctx.scripts[farPage][ptrOffset + i];
+      incoming = vmctx.scripts[farPage][ptrOffset + i];
     } else if (isInd) {
-      incoming = ((uint8_t*)&mregs)[ptrOffset + i];
+      incoming = ((uint8_t*)mm.mregs)[ptrOffset + i];
     } else {
       incoming = scriptBase[startIdx + i + 1];
     }
-    ctx.scriptWriteBuf[i] = incoming;
+    vmctx.writeBuf[i] = incoming;
   }
-  count = dataLen;
-  offset = directOp;
+  vmctx.count = dataLen;
+  vmctx.offset = directOp;
   return true;
 }
 
 }
 
-void scriptStackPop(volatile Moic::MotorInterface& mregs, volatile Moic::MotorContext& ctx, const uint8_t code) {
-  if (ctx.sp <= 0) {
+void scriptStackPop(Moic::ManagedMotor& mm, const uint8_t code) {
+  auto& vmctx = *(mm.vmctx);
+  if (vmctx.sp <= 0) {
     return;
   }
-  ctx.sp--;
-  mregs.scriptRepCode = code;
-  mregs.scriptPage = ctx.scriptStackPage[ctx.sp];
-  mregs.scriptIdx = ctx.scriptStackIdx[ctx.sp];
-  ctx.scriptLastRhs = ctx.scriptStackRhsArg[ctx.sp];
-  ctx.scriptCallArg = ctx.scriptStackCallArg[ctx.sp];
+  vmctx.sp--;
+  vmctx.exitCode = code;
+  auto& stack = vmctx.stack[vmctx.sp];
+  vmctx.page = stack.page;
+  vmctx.idx = stack.idx;
+  vmctx.rhsArg = stack.rhsArg;
+  vmctx.callArg = stack.callArg;
 }
 
-uint8_t scriptStackPush(volatile Moic::MotorInterface& mregs, volatile Moic::MotorContext& ctx, uint8_t page, const uint8_t sIdx) {
+uint8_t scriptStackPush(Moic::ManagedMotor& mm, uint8_t page, const uint8_t sIdx) {
+  auto& vmctx = *(mm.vmctx);
   if (page == Moic::UNSET) {
-    page = mregs.scriptPage;
+    page = vmctx.page;
   }
-  if (page >= Moic::NUM_SCRIPT_PAGES || sIdx >= Moic::SCRIPT_PAGE_SIZE || ctx.sp >= Moic::SCRIPT_STACK_SIZE) {
+  if (page >= Moic::NUM_SCRIPT_PAGES || sIdx >= Moic::SCRIPT_PAGE_SIZE || vmctx.sp >= Moic::SCRIPT_STACK_SIZE) {
     return Moic::OVERFLOW;
   }
-  ctx.scriptStackIdx[ctx.sp] = mregs.scriptIdx;
-  ctx.scriptStackPage[ctx.sp] = mregs.scriptPage;
-  ctx.scriptStackRhsArg[ctx.sp] = ctx.scriptLastRhs;
-  ctx.scriptStackCallArg[ctx.sp] = ctx.scriptCallArg;
-  ctx.sp++;
-  mregs.scriptPage = page;
-  mregs.scriptIdx = sIdx;
-  ctx.scriptCallArg = ctx.scriptLastRhs;
+  auto& stack = vmctx.stack[vmctx.sp];
+  stack.page = vmctx.page;
+  stack.idx = vmctx.idx;
+  stack.rhsArg = vmctx.rhsArg;
+  stack.callArg = vmctx.callArg;
+  vmctx.sp++;
+  vmctx.page = page;
+  vmctx.idx = sIdx;
+  vmctx.callArg = vmctx.rhsArg;
   return Moic::OK;
 }
 
-int8_t scriptCondition(volatile Moic::MotorInterface& mregs, volatile Moic::MotorContext& ctx, const uint8_t func, const uint8_t rhs) {
+int8_t scriptCondition(Moic::ManagedMotor& mm, const uint8_t func, const uint8_t rhs) {
+  auto& vmctx = *(mm.vmctx);
   // Bit 7 of the function code signifies negation.
   const bool negate = func & 0x80;
   bool result = false;
@@ -176,38 +183,38 @@ int8_t scriptCondition(volatile Moic::MotorInterface& mregs, volatile Moic::Moto
       result = true;
       break;
     case Moic::AND_STATEFLAGS_RHS:
-      result = mregs.stateFlags & rhs;
+      result = mm.mregs->stateFlags & rhs;
       break;
     case Moic::AND_SETTINGSFLAGS_RHS:
-      result = mregs.settingsFlags & rhs;
+      result = mm.mregs->settingsFlags & rhs;
       break;
     case Moic::EQL_RETURNCODE_RHS:
-      result = mregs.scriptRepCode == rhs;
+      result = vmctx.exitCode == rhs;
       break;
     // The RHS value of the previous condition check can be evaluated
     // with EQL_LASTCONDARG_RHS 0x30 or AND_LASTCONDARG_RHS 0x31. This
     // can be used with ALWAYS_TRUE to pass an argument to a subroutine.
     case Moic::EQL_LASTCONDARG_RHS:
-      result = ctx.scriptLastRhs == rhs;
+      result = vmctx.rhsArg == rhs;
       break;
     case Moic::AND_LASTCONDARG_RHS:
-      result = ctx.scriptLastRhs & rhs;
+      result = vmctx.rhsArg & rhs;
       break;
     // The CALLARG is set to the last RHS value when the stack is pushed
     // and remains immutable for that context, until it is restored to its
     // previous value when the stack is popped.
     case Moic::EQL_CALLARG_RHS:
-      result = ctx.scriptCallArg == rhs;
+      result = vmctx.callArg == rhs;
       break;
     case Moic::AND_CALLARG_RHS:
-      result = ctx.scriptCallArg & rhs;
+      result = vmctx.callArg & rhs;
       break;
     default:
       return -1;
   }
   if (funId < Moic::EQL_LASTCONDARG_RHS || funId > Moic::AND_LASTCONDARG_RHS) {
     // Only update the register if the operation wasn't a 'Read' of the register
-    ctx.scriptLastRhs = rhs;
+    vmctx.rhsArg = rhs;
   }
   return result ^ negate;
 }

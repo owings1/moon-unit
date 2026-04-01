@@ -76,7 +76,7 @@ uint8_t onScriptClear(Moic::ManagedMotor& mm) {
       // Prevent clearing running script
       code = Moic::MOTOR_BUSY;
     } else {
-      memset((void*)mm.ctx->scripts[mm.mregs->cmdScriptClear], 0, Moic::SCRIPT_PAGE_SIZE);
+      memset((void*)mm.vmctx->scripts[mm.mregs->cmdScriptClear], 0, Moic::SCRIPT_PAGE_SIZE);
     }
   } else {
     code = Moic::OVERFLOW;
@@ -94,7 +94,7 @@ uint8_t onCmdCall(Moic::ManagedMotor& mm) {
   if (!mm.scriptActive()) {
     code = Moic::UNKNOWN_COMMAND;
   } else {
-    code = MotorVM::call(*(mm.mregs), *(mm.ctx), mm.mregs->cmdCall);
+    code = MotorVM::call(mm, mm.mregs->cmdCall);
   }
   clearTrigger(mm.mregs->cmdCall, 2);
   return code;
@@ -104,7 +104,7 @@ uint8_t onCmdJump(Moic::ManagedMotor& mm) {
   if (!mm.scriptActive()) {
     code = Moic::UNKNOWN_COMMAND;
   } else {
-    code = MotorVM::jump(*(mm.mregs), *(mm.ctx), mm.mregs->cmdJump);
+    code = MotorVM::jump(mm, mm.mregs->cmdJump);
   }
   clearTrigger(mm.mregs->cmdJump, 2);
   return code;
@@ -114,7 +114,7 @@ uint8_t onCondCall(Moic::ManagedMotor& mm) {
   if (!mm.scriptActive()) {
     code = Moic::UNKNOWN_COMMAND;
   } else {
-    code = MotorVM::condCall(*(mm.mregs), *(mm.ctx), mm.mregs->cmdCondCall);
+    code = MotorVM::condCall(mm, mm.mregs->cmdCondCall);
   }
   clearTrigger(mm.mregs->cmdCondCall, 4);
   return code;
@@ -124,7 +124,7 @@ uint8_t onCondJump(Moic::ManagedMotor& mm) {
   if (!mm.scriptActive()) {
     code = Moic::UNKNOWN_COMMAND;
   } else {
-    code = MotorVM::condJump(*(mm.mregs), *(mm.ctx), mm.mregs->cmdCondJump);
+    code = MotorVM::condJump(mm, mm.mregs->cmdCondJump);
   }
   clearTrigger(mm.mregs->cmdCondJump, 4);
   return code;

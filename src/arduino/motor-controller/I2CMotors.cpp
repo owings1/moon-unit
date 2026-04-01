@@ -24,8 +24,7 @@ void I2CMotors::update() {
 
 void I2CMotors::handleRead() {
   if (ptr < MOTOR_BASE_ADDR) {
-    uint8_t* regsbuf = (uint8_t*)&regs;
-    wire.write(regsbuf[ptr]);
+    wire.write(((uint8_t*)&regs)[ptr]);
   } else {
     const uint8_t mIdx = getMidx(currentPage, ptr);
     if (mIdx >= numMotors) {
@@ -39,7 +38,7 @@ void I2CMotors::handleRead() {
       }
     } else if (currentPage < SCRIPT_PAGE_START * (Moic::NUM_SCRIPT_PAGES + 1)) {
       const uint8_t sIdx = (currentPage / SCRIPT_PAGE_START) - 1;
-      wire.write(mms[mIdx]->ctx->scripts[sIdx][ptr - MOTOR_BASE_ADDR]);
+      wire.write(mms[mIdx]->vmctx->scripts[sIdx][ptr - MOTOR_BASE_ADDR]);
     } else {
       wire.write(Moic::UNSET);
     }
@@ -76,7 +75,7 @@ void I2CMotors::handleWrite(int howMany) {
             // Prevent writing to running script
             regs.repCode = Moic::MOTOR_BUSY;
           } else {
-            mms[mIdx]->ctx->scripts[sIdx][ptr - MOTOR_BASE_ADDR] = incoming;
+            mms[mIdx]->vmctx->scripts[sIdx][ptr - MOTOR_BASE_ADDR] = incoming;
             regs.repCode = Moic::OK;
           }
         } else {

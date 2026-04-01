@@ -35,10 +35,6 @@ enum FunId : uint8_t {
   ALWAYS_TRUE = 0x7F,
 };
 
-enum InternalFlagBit : uint8_t {
-  BitIsScriptActive = 0,
-};
-
 enum WriteSource : uint8_t {
   VMEXC = 0x00,
   BUSIO = 0x01,

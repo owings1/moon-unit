@@ -12,7 +12,7 @@ namespace Moic {
 
 class ManagedMotor {
 public:
-  ManagedMotor(IMotor* m, volatile MotorInterface& mregs, volatile MotorContext& ctx);
+  ManagedMotor(IMotor* m);
   uint8_t write(const uint8_t offset, const uint8_t incoming, const uint8_t source);
   void tick();
   bool busy();
@@ -22,14 +22,16 @@ public:
   bool isPageInStack(const uint8_t page);
   IMotor* m;
   volatile MotorInterface* mregs;
-  volatile MotorContext* ctx;
+  volatile VMContext* vmctx;
   // TODO: Make private?
   void syncMotorSettings();
   // TODO: Make private?
   void syncMotorState();
 private:
+  volatile MotorInterface _mregs;
+  volatile VMContext _vmctx;
   bool _scriptActive = false;
-  uint8_t checkWriteable(const uint8_t offset, const uint8_t source);
+  void syncScriptState();
 };
 
 const uint8_t OFFSET_WRITEMASKS[0x40] = {

@@ -18,18 +18,10 @@ AccelStepper s2(AccelStepper::FULL2WIRE, D8, D7, NOPIN, NOPIN);
 Motor m1(s1, {D0, D16, D15 });
 Motor m2(s2, {D9, D17, D18 });
 Motor* motors[] = {&m1, &m2};
-IMotor* imotors[] = {&m1, &m2};
-
-// Moic::MotorInterface* contexts[] = {&motorContexts[0], &motorContexts[1]};
-// Moic::MotorContext* contexts[] = {&motorContexts[0], &motorContexts[1]};
-
-volatile Moic::MotorInterface motorInterfaces[2];
-volatile Moic::MotorContext motorContexts[2];
-Moic::ManagedMotor mm1(imotors[0], motorInterfaces[0], motorContexts[0]);
-Moic::ManagedMotor mm2(imotors[1], motorInterfaces[1], motorContexts[1]);
+Moic::ManagedMotor mm1(&m1);
+Moic::ManagedMotor mm2(&m2);
 Moic::ManagedMotor* mms[] = {&mm1, &mm2};
 I2CMotors mainI2cMotors = I2CMotors(I2C_MAIN, mms, 2);
-// I2CMotors mainI2cMotors = I2CMotors(I2C_MAIN, imotors, contexts, 2);
 
 void setup() { for (auto& m : motors) m->begin(); }
 // void loop() { for (auto& m : motors) m->run(); }

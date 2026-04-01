@@ -43,19 +43,25 @@ struct MotorInterface {
   volatile uint8_t cmdJump[2];      // +0x3A
   volatile int32_t cmdMoveRev;      // +0x3C
 };
-struct MotorContext {
-  volatile uint8_t _internalFlags;
-  volatile uint8_t sp;  // Stack Pointer
-  volatile uint8_t scriptLastRhs;
-  volatile uint8_t scriptCallArg;
-  volatile uint8_t scripts[NUM_SCRIPT_PAGES][SCRIPT_PAGE_SIZE];
-  volatile uint8_t scriptStackIdx[SCRIPT_STACK_SIZE];
-  volatile uint8_t scriptStackPage[SCRIPT_STACK_SIZE];
-  volatile uint8_t scriptStackRhsArg[SCRIPT_STACK_SIZE];
-  volatile uint8_t scriptStackCallArg[SCRIPT_STACK_SIZE];
-  volatile uint8_t scriptWriteBuf[SCRIPT_WRITEBUF_SIZE];
+struct VMStack {
+  volatile uint8_t page;
+  volatile uint8_t idx;
+  volatile uint8_t rhsArg;
+  volatile uint8_t callArg;
 };
-
+struct VMContext {
+  volatile uint8_t page;
+  volatile uint8_t idx;
+  volatile uint8_t rhsArg;
+  volatile uint8_t callArg;
+  volatile uint8_t sp;      // Stack Pointer
+  volatile uint8_t offset;  // offset for write() callback
+  volatile uint8_t count;   // byte count stored in writeBuf for write() callback
+  volatile uint8_t exitCode;
+  volatile uint8_t scripts[NUM_SCRIPT_PAGES][SCRIPT_PAGE_SIZE];
+  volatile VMStack stack[SCRIPT_STACK_SIZE];
+  volatile uint8_t writeBuf[SCRIPT_WRITEBUF_SIZE];
+};
 #pragma pack(pop)
 
 }

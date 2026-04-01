@@ -3,14 +3,16 @@
 #include "MotorActions.h"
 
 namespace Moic {
-ManagedMotor::ManagedMotor(IMotor* m, volatile MotorInterface& mregs, volatile MotorContext& ctx)
-  : m(m), mregs(&mregs), ctx(&ctx) {
+ManagedMotor::ManagedMotor(IMotor* m)
+  : m(m), mregs(&_mregs), vmctx(&_vmctx) {
   static bool initialized = []() {
     for (const auto& entry : MotorActions::ACTION_TABLE) {
       MotorActions::ACTION_LOOKUP[entry.offset + entry.size - 1] = &entry;
     }
     return true;
   }();
+  memset((void*)&_mregs, 0, sizeof(MotorInterface));
+  memset((void*)&_vmctx, 0, sizeof(VMContext));
 }
 
 bool ManagedMotor::scriptActive() {
@@ -18,33 +20,30 @@ bool ManagedMotor::scriptActive() {
 }
 
 void ManagedMotor::tick() {
-  if (!scriptActive()) {
+  if (!scriptActive() || busy()) {
     return;
   }
-  uint8_t offset, count, code;
-  if (MotorVM::processNext(*(mregs), *(ctx), offset, count, code)) {
-    if (count > SCRIPT_WRITEBUF_SIZE) {
-      exitScript(OTHER_ERROR);
-      _scriptActive = false;
+  if (!MotorVM::processNext(*(this))) {
+    exitScript(vmctx->exitCode);
+    return;
+  }
+  const uint8_t count = vmctx->count;
+  if (count > SCRIPT_WRITEBUF_SIZE) {
+    exitScript(OTHER_ERROR);
+    return;
+  }
+  const uint8_t offset = vmctx->offset;
+  for (uint8_t i = 0; i < count; ++i) {
+    uint8_t code = write(offset + i, vmctx->writeBuf[i], VMEXC);
+    if (code != OK) {
+      exitScript(code);
       return;
     }
-    for (uint8_t i = 0; i < count; ++i) {
-      code = write(offset + i, ctx->scriptWriteBuf[i], VMEXC);
-      if (code != OK) {
-        exitScript(code);
-        _scriptActive = false;
-        return;
-      }
-      _scriptActive = (ctx->_internalFlags >> BitIsScriptActive) & 1;
-      if (!_scriptActive) {
-        return;
-      }
+    if (!scriptActive()) {
+      return;
     }
-    _scriptActive = true;
-  } else {
-    exitScript(code);
-    _scriptActive = false;
   }
+  syncScriptState();
 }
 
 uint8_t ManagedMotor::write(const uint8_t offset, const uint8_t incoming, const uint8_t source) {
@@ -78,38 +77,42 @@ uint8_t ManagedMotor::enterScript(uint8_t page, const uint8_t arg) {
   if (page >= NUM_SCRIPT_PAGES) {
     return OVERFLOW;
   }
+  _scriptActive = true;
   mregs->scriptPage = page;
   mregs->scriptIdx = 0;
   mregs->scriptRepCode = OK;
-  ctx->scriptCallArg = arg;
-  ctx->scriptLastRhs = 0;
+  vmctx->page = page;
+  vmctx->idx = 0;
+  vmctx->callArg = arg;
+  vmctx->rhsArg = 0;
+  vmctx->count = 0;
+  vmctx->sp = 0;
+  vmctx->exitCode = OK;
   m->setScriptActive(true);
-  ctx->_internalFlags |= 1 << BitIsScriptActive;
-  _scriptActive = true;
   return OK;
 }
 
 void ManagedMotor::exitScript(const uint8_t code) {
-  ctx->sp = 0;
+  _scriptActive = false;
+  vmctx->sp = 0;
+  mregs->scriptPage = vmctx->page;
+  mregs->scriptIdx = vmctx->idx;
   mregs->scriptRepCode = code;
   m->setScriptActive(false);
-  ctx->_internalFlags &= ~(1 << BitIsScriptActive);
-  _scriptActive = false;
   mregs->waitEndTime = 0;
   m->setDelayActive(false);
   mregs->stateFlags = m->stateFlags();
 }
 
 bool ManagedMotor::isPageInStack(const uint8_t page) {
-  _scriptActive = (ctx->_internalFlags >> BitIsScriptActive) & 1;
   if (!_scriptActive) {
     return false;
   }
-  if (page == mregs->scriptPage) {
+  if (page == mregs->scriptPage || page == vmctx->page) {
     return true;
   }
-  for (uint8_t i = 0; i < ctx->sp; ++i) {
-    if (page == ctx->scriptStackPage[i]) {
+  for (uint8_t i = 0; i < vmctx->sp; ++i) {
+    if (page == vmctx->stack[i].page) {
       return true;
     }
   }
@@ -148,6 +151,11 @@ void ManagedMotor::syncMotorState() {
       m->setDelayActive(false);
     }
   }
+}
+void ManagedMotor::syncScriptState() {
+  mregs->scriptPage = vmctx->page;
+  mregs->scriptIdx = vmctx->idx;
+  mregs->scriptRepCode = vmctx->exitCode;
 }
 
 };
