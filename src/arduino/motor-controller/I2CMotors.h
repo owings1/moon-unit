@@ -15,11 +15,14 @@
 class I2CMotors {
 public:
   static const uint8_t PAGE_REGISTER = 0x04;
+  // Constraint: Needs to be no more than (0x100 - SCRIPT_PAGE_SIZE)
+  //             to support global registers on all pages.
   static const uint8_t MOTOR_BASE_ADDR = 0x08;
   static const uint8_t LOWER_BLOCK_SIZE = Moic::MOTOR_BLOCK_SIZE + MOTOR_BASE_ADDR;
   static const uint8_t TOTAL_BLOCK_SIZE = Moic::MOTOR_BLOCK_SIZE * 2 + MOTOR_BASE_ADDR;
   static const uint8_t SCRIPT_PAGE_START = 0x10;
   static const uint8_t SCRIPT_PAGE_END = SCRIPT_PAGE_START * (Moic::NUM_SCRIPT_PAGES + 1);
+  // Constraint: Must be less than 0x10
   static const uint8_t MAX_MOTORS = 8;
 
   // Writable: 0x01 (sysFlags), 0x04 (PageReg)
@@ -42,6 +45,7 @@ public:
     volatile float stdev_jitter;   // µs
   };
 #pragma pack(pop)
+  // Constraint: Must be greater than TOTAL_BLOCK_SIZE
   static const uint8_t PERF_BLOCK_START = 0xD0;
   static const uint8_t PERF_BLOCK_END = PERF_BLOCK_START + sizeof(PerfData);
 

@@ -8,16 +8,25 @@
 
 namespace Moic {
 static const uint8_t MOTOR_BLOCK_SIZE = 0x40;
+// Constraint: Needs to be no more than (0x100 - MOTOR_BASE_ADDR)
+//             to support global registers on all pages.
 static const uint8_t SCRIPT_PAGE_SIZE = 0xF8;
+// Constraint: Needs to be no more than 0x0D for I2C paging logic.
 static const uint8_t NUM_SCRIPT_PAGES = 0x08;
+// Constraint: Needs to be less than (0x80 - VARPTR_START) to support
+//             var ptr references with INDIRECT_OPCODE_FLAG 0x40 but
+//             without FARPTR_OPCODE_FLAG 0x80.
 static const uint8_t NUM_SCRIPT_GLOBAL_VARS = 0x04;
 static const uint8_t SCRIPT_STACK_SIZE = 0x08;
+// Constraint: Must be greater than max return value of getOpCodeDataLength()
 static const uint8_t SCRIPT_WRITEBUF_SIZE = 8;
 static const uint8_t BUSY_EXEMPT_MASK = 0x80;
 static const uint8_t INDIRECT_OPCODE_FLAG = 0x40;
 static const uint8_t FARPTR_OPCODE_FLAG = 0x80;
 static const uint8_t CONTROL_EXCODE = 0xC0;
+// Constraint: Must be less than VARPTR_START
 static const uint8_t INDPTR_END = 0x1C;
+// Constraint: Must be greater than INDPTR_END
 static const uint8_t VARPTR_START = 0x60;
 #pragma pack(push, 1)
 struct MotorInterface {

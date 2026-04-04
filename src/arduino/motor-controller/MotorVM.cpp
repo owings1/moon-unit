@@ -244,69 +244,37 @@ uint8_t condJump(Moic::ManagedMotor& mm, volatile uint8_t* cmdBuf) {
   return Moic::OK;
 }
 
-uint8_t processControl(Moic::ManagedMotor& mm, const uint8_t ctlop) {
-  switch (ctlop) {
-    case Moic::SET_VAR:
-      return setVar(mm, mm.vmctx->writeBuf);
-    case Moic::VAR_MATH1:
-      return varMath1(mm, mm.vmctx->writeBuf);
-    case Moic::VAR_MATH2:
-      return varMath2(mm, mm.vmctx->writeBuf);
-    case Moic::CALL:
-      return call(mm, mm.vmctx->writeBuf);
-    case Moic::COND_CALL:
-      return condCall(mm, mm.vmctx->writeBuf);
-    case Moic::COND_JUMP:
-      return condJump(mm, mm.vmctx->writeBuf);
-    case Moic::JUMP:
-      return jump(mm, mm.vmctx->writeBuf);
+uint8_t applyMath1(const uint8_t mathOper, volatile int32_t &value) {
+  switch (mathOper) {
+    case Moic::MATH1_INC:
+      value += 1;
+      break;
+    case Moic::MATH1_DEC:
+      value -= 1;
+      break;
+    case Moic::MATH1_NEG:
+      value *= -1;
+      break;
     default:
-      return Moic::UNKNOWN_CTLOP;
+      return Moic::INVALID_MATHOPER;
   }
+  return Moic::OK;
 }
 
-uint8_t getCtlPfxLen(const uint8_t ctlop) {
-  switch (ctlop) {
-    case Moic::VAR_MATH2:
-      return 2;
-    case Moic::SET_VAR:
-      return 1;
+uint8_t applyMath2(const uint8_t mathOper, volatile int32_t &value, const int32_t rhs) {
+  switch (mathOper) {
+    case Moic::MATH2_ADD:
+      value += rhs;
+      break;
+    case Moic::MATH2_SUB:
+      value -= rhs;
+      break;
+    case Moic::MATH2_MUL:
+      value *= rhs;
+      break;
     default:
-      return 0;
+      return Moic::INVALID_MATHOPER;
   }
-}
-
-void popStack(Moic::ManagedMotor& mm, const uint8_t code) {
-  auto& vmctx = *(mm.vmctx);
-  if (vmctx.sp <= 0) {
-    return;
-  }
-  vmctx.sp--;
-  vmctx.exitCode = code;
-  auto& stack = vmctx.stack[vmctx.sp];
-  vmctx.page = stack.page;
-  vmctx.idx = stack.idx;
-  vmctx.rhsArg = stack.rhsArg;
-  vmctx.callArg = stack.callArg;
-}
-
-uint8_t pushStack(Moic::ManagedMotor& mm, uint8_t page, const uint8_t sIdx) {
-  auto& vmctx = *(mm.vmctx);
-  if (page == Moic::UNSET) {
-    page = vmctx.page;
-  }
-  if (page >= Moic::NUM_SCRIPT_PAGES || sIdx >= Moic::SCRIPT_PAGE_SIZE || vmctx.sp >= Moic::SCRIPT_STACK_SIZE) {
-    return Moic::OVERFLOW;
-  }
-  auto& stack = vmctx.stack[vmctx.sp];
-  stack.page = vmctx.page;
-  stack.idx = vmctx.idx;
-  stack.rhsArg = vmctx.rhsArg;
-  stack.callArg = vmctx.callArg;
-  vmctx.sp++;
-  vmctx.page = page;
-  vmctx.idx = sIdx;
-  vmctx.callArg = vmctx.rhsArg;
   return Moic::OK;
 }
 
@@ -357,6 +325,27 @@ int8_t condition(Moic::ManagedMotor& mm, const uint8_t func, const uint8_t rhs) 
   return result ^ negate;
 }
 
+uint8_t processControl(Moic::ManagedMotor& mm, const uint8_t ctlop) {
+  switch (ctlop) {
+    case Moic::SET_VAR:
+      return setVar(mm, mm.vmctx->writeBuf);
+    case Moic::VAR_MATH1:
+      return varMath1(mm, mm.vmctx->writeBuf);
+    case Moic::VAR_MATH2:
+      return varMath2(mm, mm.vmctx->writeBuf);
+    case Moic::CALL:
+      return call(mm, mm.vmctx->writeBuf);
+    case Moic::COND_CALL:
+      return condCall(mm, mm.vmctx->writeBuf);
+    case Moic::COND_JUMP:
+      return condJump(mm, mm.vmctx->writeBuf);
+    case Moic::JUMP:
+      return jump(mm, mm.vmctx->writeBuf);
+    default:
+      return Moic::UNKNOWN_CTLOP;
+  }
+}
+
 uint8_t getOpCodeDataLength(const uint8_t offset, const bool isCtl) {
   if (isCtl) {
     switch (offset) {
@@ -396,6 +385,17 @@ uint8_t getOpCodeDataLength(const uint8_t offset, const bool isCtl) {
   }
 }
 
+uint8_t getCtlPfxLen(const uint8_t ctlop) {
+  switch (ctlop) {
+    case Moic::VAR_MATH2:
+      return 2;
+    case Moic::SET_VAR:
+      return 1;
+    default:
+      return 0;
+  }
+}
+
 bool isFloatOp(const uint8_t op) {
   switch (op) {
     case offsetof(Moic::MotorInterface, maxSpeed):
@@ -406,36 +406,36 @@ bool isFloatOp(const uint8_t op) {
   }
 }
 
-uint8_t applyMath1(const uint8_t mathOper, volatile int32_t &value) {
-  switch (mathOper) {
-    case Moic::MATH1_INC:
-      value += 1;
-      break;
-    case Moic::MATH1_DEC:
-      value -= 1;
-      break;
-    case Moic::MATH1_NEG:
-      value *= -1;
-      break;
-    default:
-      return Moic::INVALID_MATHOPER;
+void popStack(Moic::ManagedMotor& mm, const uint8_t code) {
+  auto& vmctx = *(mm.vmctx);
+  if (vmctx.sp <= 0) {
+    return;
   }
-  return Moic::OK;
+  vmctx.sp--;
+  vmctx.exitCode = code;
+  auto& stack = vmctx.stack[vmctx.sp];
+  vmctx.page = stack.page;
+  vmctx.idx = stack.idx;
+  vmctx.rhsArg = stack.rhsArg;
+  vmctx.callArg = stack.callArg;
 }
 
-uint8_t applyMath2(const uint8_t mathOper, volatile int32_t &value, const int32_t rhs) {
-  switch (mathOper) {
-    case Moic::MATH2_ADD:
-      value += rhs;
-      break;
-    case Moic::MATH2_SUB:
-      value -= rhs;
-      break;
-    case Moic::MATH2_MUL:
-      value *= rhs;
-      break;
-    default:
-      return Moic::INVALID_MATHOPER;
+uint8_t pushStack(Moic::ManagedMotor& mm, uint8_t page, const uint8_t sIdx) {
+  auto& vmctx = *(mm.vmctx);
+  if (page == Moic::UNSET) {
+    page = vmctx.page;
   }
+  if (page >= Moic::NUM_SCRIPT_PAGES || sIdx >= Moic::SCRIPT_PAGE_SIZE || vmctx.sp >= Moic::SCRIPT_STACK_SIZE) {
+    return Moic::OVERFLOW;
+  }
+  auto& stack = vmctx.stack[vmctx.sp];
+  stack.page = vmctx.page;
+  stack.idx = vmctx.idx;
+  stack.rhsArg = vmctx.rhsArg;
+  stack.callArg = vmctx.callArg;
+  vmctx.sp++;
+  vmctx.page = page;
+  vmctx.idx = sIdx;
+  vmctx.callArg = vmctx.rhsArg;
   return Moic::OK;
 }
