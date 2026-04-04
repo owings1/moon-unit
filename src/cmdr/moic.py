@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import array
 import struct
 from collections import namedtuple
 
@@ -53,7 +54,7 @@ class WriteSource:
   def maskinfos(cls) -> list[str]:
     names = tuple(x for x in dir(cls) if x.upper() == x)
     values = list(getattr(cls, x) for x in names)
-    values.append(7)
+    values.append(7) # Bit 7 is busy exempt
     masks = list(map(cls.mask, values))
     varnames = list(f'{name}_write_mask'.upper() for name in names)
     varnames.append('busy_write_mask'.upper())
@@ -130,11 +131,11 @@ class Attributes:
 
   @classmethod
   def offsets_writemasks(cls) -> str:
-    masks = []
+    masks = array.array('B', (0 for _ in range(0x40)))
     for attr in attrsmap.values():
-      masks.extend((offset, attr.writewhen) for offset in attr.offsets())
-    masks.sort(key=lambda x: x[0])
-    numstrs = [f'0x{x[1]:02X},' for x in masks]
+      for offset in attr.offsets():
+        masks[offset] = attr.writewhen
+    numstrs = [f'0x{x:02X},' for x in masks]
     chunks = [numstrs[i:i+8] for i in range(0, 0x40, 8)]
     varname = 'OFFSET_WRITEMASKS'
     decl = f'static const uint8_t {varname}[0x40] = {{%s}};'
@@ -213,6 +214,9 @@ class Code:
   UNINVITED_POINTER = 0x2F
   READONLY_ATTRIBUTE = 0x30
   OVERFLOW = 0x31
+  UNKNOWN_CTLOP = 0x32
+  INVALID_OPFLAG = 0x33
+  INVALID_FUNID = 0x34
   USR1 = 0xFA
   USR2 = 0xFB
   USR3 = 0xFC

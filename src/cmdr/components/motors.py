@@ -7,7 +7,7 @@ from collections import OrderedDict, deque
 import busio
 import moic
 from moic import Code
-from utils import Pkr
+from utils import Pkr, ysleep
 
 from . import CompAttr, DeviceComponent, ActDef, FlagDef
 
@@ -62,6 +62,12 @@ class Motor(DeviceComponent):
     sleep_timeout_ms=dict(writeable=True),
     # --- debug
     wait_end_time={},
+    # --- perf
+    sysflags=dict(fmt=b'B', src=-0x01, writeable=True),
+    perf_count=dict(fmt=b'L', src=-0xD0),
+    max_jitter=dict(fmt=b'L', src=-0xD4),
+    avg_jitter=dict(fmt=b'f', src=-0xD8),
+    stdev_jitter=dict(fmt=b'f', src=-0xDC),
   ))
   FLAGMAP = OrderedDict((x[0], FlagDef(*x)) for x in (
     ('is_limit_cw', 'state_flags', 0x0, 0x1),
@@ -85,6 +91,7 @@ class Motor(DeviceComponent):
     ('home_end', '_act_home_end', ''),
     ('limits_on', '_act_limits_on', ''),
     ('limits_off', '_act_limits_off', ''),
+    ('perf_test', '_routine_perf_test', ''),
     moic.Attributes.move,
     moic.Attributes.move_rev,
     moic.Attributes.move_to,
@@ -95,8 +102,8 @@ class Motor(DeviceComponent):
     moic.Attributes.script_exec,
   ))
   SLCINFO_PERSIST = MotorAttr.sliceinfo(ATTRMAP, 7, 7+12)
-  PERSIST_NS = 0x9100
-  PERSIST_VER = 0x0A
+  # PERSIST_NS = 0x9100
+  PERSIST_VER = 0x0C
   init_defaults = OrderedDict(
     settings_flags=0x03,
     max_speed=2000.0,
@@ -276,7 +283,11 @@ class Motor(DeviceComponent):
     self.scripts.upload(0, s.compile())
     return self.write('script_exec', 0, 0, **kw)
 
+  def _routine_perf_test(self):
+    return PerfTestRoutine(self)
+
 class MotorScripts:
+  perflib_page = 1
   fixlib_page = 2
   moicdb_page = 3
   moicdb_slcinfo = MotorAttr.sliceinfo(Motor.ATTRMAP, 10, 10+6)
@@ -295,23 +306,25 @@ class MotorScripts:
     self._execargs: dict[str, tuple[int, int]] = dict(
       home=(self.fixlib_page, 1),
       end=(self.fixlib_page, 2),
-      home_end=(self.fixlib_page, 3),)
+      home_end=(self.fixlib_page, 3),
+      perf_test=(self.perflib_page, 0))
 
-  def exec(self, name: str):
+  def exec(self, name: str, **kw):
     page, arg = self._execargs[name]
-    self.sync()
-    return self.motor.write('script_exec', page, arg)
+    self.sync(**kw)
+    return self.motor.write('script_exec', page, arg, **kw)
 
-  def sync(self):
-    self.upload(self.moicdb_page, self.moicdb_content)
+  def sync(self, **kw):
+    self.upload(self.moicdb_page, self.moicdb_content, **kw)
     if self.motor['boot_id'] != self.last_boot_id:
-      self.upload(self.fixlib_page, self.fixlib_content)
+      self.upload(self.fixlib_page, self.fixlib_content, **kw)
+      self.upload(self.perflib_page, self.perflib_content, **kw)
       self.last_boot_id = self.motor['boot_id']
 
-  def upload(self, page: int, content: bytes|bytearray):
+  def upload(self, page: int, content: bytes|bytearray, **kw):
     if len(content) > moic.SCRIPT_PAGE_SIZE:
       raise ValueError(f'Script length exceeds max {moic.SCRIPT_PAGE_SIZE}')
-    self.motor.write('script_clear', page)
+    self.motor.write('script_clear', page, **kw)
     buf = bytearray()
     buf.append(moic.MOTOR_BASE_ADDR)
     buf.extend(content)
@@ -380,6 +393,13 @@ class MotorScripts:
     except KeyError:
       return self._static.setdefault('fixlib', self.fixlib_generate())
 
+  @property
+  def perflib_content(self):
+    try:
+      return self._static['perflib']
+    except KeyError:
+      return self._static.setdefault('perflib', self.perflib_generate())
+
   def fixlib_generate(self):
     dbpg = self.moicdb_page
     ptr = self.moicdb_ptridx
@@ -416,10 +436,11 @@ class MotorScripts:
         lib.add(Code.USR2)
       with lib.while_flag(flag):
         lib.add(f'{mvback}**', dbpg, ptr('backing_steps'))
-        lib.add(f'{mvback}**', dbpg, ptr('backing_steps'))
+        lib.add('delay', 10)
       lib.add('max_speed**', dbpg, ptr('fixing_speed'))
       with lib.while_flag(flag, negate=True):
         lib.add(f'{mvfix}**', dbpg, ptr('backing_steps'))
+        lib.add('delay', 10)
       if label == 'home':
         lib.add('current_position', 0)
       lib.add(Code.UNSET)
@@ -436,6 +457,36 @@ class MotorScripts:
     if 0 <= idx < slcinfo.slc.stop:
       return idx
     raise ValueError(f'Not in moicdb slice: {name}')
+
+  def perflib_generate(self):
+    dbpg = self.moicdb_page
+    ptr = self.moicdb_ptridx
+    __ = Code.UNSET
+    lib = moic.Script()
+    lib.add('max_speed**', dbpg, ptr('homing_speed'))
+    for _ in range(2):
+      lib.add(':call', __, 'subroutine:pulse512')
+    lib.add('max_speed**', dbpg, ptr('default_speed'))
+    lib.add(Code.UNSET)
+    lib.label('subroutine:pulse512')
+    for _ in range(8):
+      lib.add(':call', __, 'subroutine:pulse64')
+    lib.add(Code.UNSET)
+    lib.label('subroutine:pulse64')
+    for _ in range(8):
+      lib.add(':call', __, 'subroutine:pulse8')
+    lib.add(Code.UNSET)
+    lib.label('subroutine:pulse8')
+    for _ in range(8):
+      lib.add(':call', __, 'subroutine:pulse1')
+    lib.add(Code.UNSET)
+    lib.label('subroutine:pulse1')
+    lib.add('move', 100)
+    lib.add('delay', 5)
+    lib.add('move_rev', 100)
+    lib.add('delay', 5)
+    lib.add(Code.UNSET)
+    return lib.compile()
 
 class MotorError(Exception):
   errcode = Code.OTHER_ERROR
@@ -460,13 +511,11 @@ class MotorRoutine:
   error = None
   errcode = None 
   canceled = False
-  overrides: dict[str, Any]
 
-  def __init__(self, motor: Motor, it: Generator[None]):
+  def __init__(self, motor: Motor):
     self.motor = motor
-    self.it = it
     self.status_text = 'Created'
-    self.overrides = OrderedDict()
+    self.it = self.gen()
 
   def __next__(self):
     try:
@@ -516,5 +565,35 @@ class MotorRoutine:
     self.motor.read('state_flags')
     return self.motor['is_moving']
 
+  def busy(self):
+    self.motor.read('state_flags')
+    return self.motor['is_moving'] or self.motor['is_script_active'] or self.motor['is_delay_active']
+    
   def write(self, name: str, *v) -> int:
     return self.motor.write(name, *v, unsafe=True)
+
+  def gen(self):
+    yield
+
+  def script_exec(self, name: str):
+    m = self.motor
+    m.scripts.exec(name, unsafe=True)
+    yield
+    while self.busy():
+      yield
+    m.read('script_repcode')
+    if m['script_repcode'] != Code.OK:
+      raise RoutineError(f'Script {name} failed', m['script_repcode'])
+  
+class PerfTestRoutine(MotorRoutine):
+  def gen(self):
+    self.write('sysflags', 0)
+    yield from self.script_exec('home')
+    self.write('move', 10000)
+    yield
+    while self.busy():
+      yield
+    self.write('sysflags', 1 << 4)
+    yield from ysleep(0.01)
+    yield from self.script_exec('perf_test')
+    self.write('sysflags', 0)

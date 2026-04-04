@@ -3,6 +3,121 @@
 
 namespace MotorVM {
 
+bool tick(Moic::ManagedMotor& mm) {
+  auto& vmctx = *(mm.vmctx);
+  const uint8_t page = vmctx.page;
+  uint8_t idx = vmctx.idx;
+  if (page >= Moic::NUM_SCRIPT_PAGES) {
+    vmctx.exitCode = Moic::OVERFLOW;
+    return false;
+  }
+  if (idx >= Moic::SCRIPT_PAGE_SIZE) {
+    vmctx.exitCode = Moic::OVERFLOW;
+    return false;
+  }
+  // Get OpCode (Struct Offset)
+  volatile uint8_t* script = vmctx.scripts[page];
+  uint8_t op = script[idx];
+  if (op == Moic::OK || op >= Moic::USR1) {  // End markers
+    // OK 0x00 or UNSET 0xFF are treated as OK 0x00.
+    // Anything USR1 0xFA to USR5 0xFE are passed on as is to
+    // the scriptRepCode, which can be evaluated in conditional
+    // functions with EQL_RETURNCODE_RHS 0x03. A subroutine can
+    // use this as a return code to the caller.
+    const uint8_t code = (op == Moic::OK || op == Moic::UNSET) ? Moic::OK : op;
+    if (vmctx.sp > 0) {
+      popStack(mm, code);
+      vmctx.count = 0;
+      return true;
+    } else {
+      vmctx.exitCode = code;
+      return false;
+    }
+  }
+  // Control escape code for execution flow constructs such as loops.
+  const bool isCtl = op == CONTROL_EXCODE;
+  if (isCtl) {
+    if (((uint16_t)idx) + 1 >= Moic::SCRIPT_PAGE_SIZE) {
+      vmctx.exitCode = Moic::OVERFLOW;
+      return false;
+    }
+    idx += 1;
+    op = script[idx];
+    vmctx.idx += 1;
+  }
+  const bool isFar = op & FARPTR_OPCODE_FLAG;
+  const bool isInd = op & INDIRECT_OPCODE_FLAG;
+  if (isFar && isInd) {
+    // Behavior undefined when both flags are set, because the upper range
+    // overlaps with USR return codes, and the 0xC0 case would reduce to 0x00 OK.
+    // So we explicitly reject both flags to avoid ambiguity. This allows us to
+    // use literal 0xC0 as the control escape code CONTROL_EXCODE.
+    vmctx.exitCode = Moic::INVALID_OPFLAG;
+    return false;
+  }
+  const uint8_t directOp = op & ~(INDIRECT_OPCODE_FLAG | FARPTR_OPCODE_FLAG);
+  const uint8_t dataLen = getOpCodeDataLength(directOp, isCtl);
+  if (dataLen == 0) {
+    if (isCtl) {
+      vmctx.exitCode = Moic::UNKNOWN_CTLOP;
+    } else {
+      vmctx.exitCode = Moic::UNKNOWN_COMMAND;
+    }
+    return false;
+  }
+  if (dataLen > Moic::SCRIPT_WRITEBUF_SIZE) {
+    vmctx.exitCode = Moic::OTHER_ERROR;
+    return false;
+  }
+  const uint8_t operandLen = isFar ? 2 : (isInd ? 1 : dataLen);
+  const uint8_t totalCmdLen = 1 + operandLen;
+  if (((uint16_t)idx) + totalCmdLen >= Moic::SCRIPT_PAGE_SIZE) {
+    vmctx.exitCode = Moic::OVERFLOW;
+    return false;
+  }
+  // Consume from buffer (Advance BEFORE execution)
+  vmctx.idx += totalCmdLen;
+  uint8_t ptrOffset, farPage;
+  if (isFar) {
+    farPage = script[idx + 1];
+    ptrOffset = script[idx + 2];
+    if (farPage >= Moic::NUM_SCRIPT_PAGES || ((uint16_t)ptrOffset) + dataLen >= Moic::SCRIPT_PAGE_SIZE) {
+      vmctx.exitCode = Moic::OVERFLOW;
+      return false;
+    }
+  } else if (isInd) {
+    ptrOffset = script[idx + 1];
+    if (((uint16_t)ptrOffset) + dataLen > 0x1B) {
+      vmctx.exitCode = Moic::UNINVITED_POINTER;
+      return false;
+    }
+  }
+  for (uint8_t i = 0; i < dataLen; i++) {
+    uint8_t incoming;
+    if (isFar) {
+      incoming = vmctx.scripts[farPage][ptrOffset + i];
+    } else if (isInd) {
+      incoming = ((uint8_t*)mm.mregs)[ptrOffset + i];
+    } else {
+      incoming = script[idx + i + 1];
+    }
+    vmctx.writeBuf[i] = incoming;
+  }
+  if (isCtl) {
+    vmctx.count = 0;
+    const uint8_t code = processControl(mm, op);
+    if (code != Moic::OK) {
+      vmctx.exitCode = code;
+      return false;
+    }
+  } else {
+    vmctx.count = dataLen;
+    vmctx.offset = directOp;
+  }
+  return true;
+}
+
+}
 uint8_t jump(Moic::ManagedMotor& mm, volatile uint8_t* cmdBuf) {
   auto& vmctx = *(mm.vmctx);
   uint8_t page = cmdBuf[0];
@@ -24,15 +139,15 @@ uint8_t call(Moic::ManagedMotor& mm, volatile uint8_t* cmdBuf) {
   if (page == Moic::UNSET) {
     page = mm.vmctx->page;
   }
-  return scriptStackPush(mm, page, sIdx);
+  return pushStack(mm, page, sIdx);
 }
 
 uint8_t condCall(Moic::ManagedMotor& mm, volatile uint8_t* cmdBuf) {
   const uint8_t func = cmdBuf[0];
   const uint8_t rhs = cmdBuf[1];
-  const int8_t result = scriptCondition(mm, func, rhs);
+  const int8_t result = condition(mm, func, rhs);
   if (result < 0) {
-    return Moic::UNKNOWN_COMMAND;
+    return Moic::INVALID_FUNID;
   }
   if (result > 0) {
     return call(mm, &cmdBuf[2]);
@@ -43,9 +158,9 @@ uint8_t condCall(Moic::ManagedMotor& mm, volatile uint8_t* cmdBuf) {
 uint8_t condJump(Moic::ManagedMotor& mm, volatile uint8_t* cmdBuf) {
   const uint8_t func = cmdBuf[0];
   const uint8_t rhs = cmdBuf[1];
-  const int8_t result = scriptCondition(mm, func, rhs);
+  const int8_t result = condition(mm, func, rhs);
   if (result < 0) {
-    return Moic::UNKNOWN_COMMAND;
+    return Moic::INVALID_FUNID;
   }
   if (result > 0) {
     return jump(mm, &cmdBuf[2]);
@@ -53,134 +168,22 @@ uint8_t condJump(Moic::ManagedMotor& mm, volatile uint8_t* cmdBuf) {
   return Moic::OK;
 }
 
-bool processNext(Moic::ManagedMotor& mm) {
-  auto& vmctx = *(mm.vmctx);
-  const uint8_t scriptPage = vmctx.page;
-  uint8_t startIdx = vmctx.idx;
-  if (scriptPage >= Moic::NUM_SCRIPT_PAGES) {
-    vmctx.exitCode = Moic::OVERFLOW;
-    return false;
-  }
-  if (startIdx >= Moic::SCRIPT_PAGE_SIZE) {
-    vmctx.exitCode = Moic::OVERFLOW;
-    return false;
-  }
-  // Get OpCode (Struct Offset)
-  volatile uint8_t* scriptBase = vmctx.scripts[scriptPage];
-  uint8_t op = scriptBase[startIdx];
-  if (op == Moic::OK || op >= Moic::USR1) {  // End markers
-    // OK 0x00 or UNSET 0xFF are treated as OK 0x00.
-    // Anything USR1 0xFA to USR5 0xFE are passed on as is to
-    // the scriptRepCode, which can be evaluated in conditional
-    // functions with EQL_RETURNCODE_RHS 0x03. A subroutine can
-    // use this as a return code to the caller.
-    const uint8_t code = (op == Moic::OK || op == Moic::UNSET) ? Moic::OK : op;
-    if (vmctx.sp > 0) {
-      scriptStackPop(mm, code);
-      vmctx.count = 0;
-      return true;
-    } else {
-      vmctx.exitCode = code;
-      return false;
-    }
-  }
-  // Control escape code for execution flow constructs such as loops.
-  const bool isCtl = op == CONTROL_EXCODE;
-  if (isCtl) {
-    if (startIdx + 1 >= Moic::SCRIPT_PAGE_SIZE) {
-      vmctx.exitCode = Moic::OVERFLOW;
-      return false;
-    }
-    startIdx += 1;
-    op = scriptBase[startIdx];
-    vmctx.idx += 1;
-  }
-  const bool isFar = op & FARPTR_OPCODE_FLAG;
-  const bool isInd = op & INDIRECT_OPCODE_FLAG;
-  if (isFar && isInd) {
-    // Behavior undefined when both flags are set, because the upper range
-    // overlaps with USR return codes, and the 0xC0 case would reduce to 0x00 OK.
-    // So we explicitly reject both flags to avoid ambiguity. This allows us to
-    // use literal 0xC0 as the control escape code CONTROL_EXCODE.
-    vmctx.exitCode = Moic::UNKNOWN_COMMAND;
-    return false;
-  }
-  const uint8_t directOp = op & ~(INDIRECT_OPCODE_FLAG | FARPTR_OPCODE_FLAG);
-  const uint8_t dataLen = getOpCodeDataLength(directOp, isCtl);
-  if (dataLen == 0) {
-    vmctx.exitCode = Moic::UNKNOWN_COMMAND;
-    return false;
-  }
-  if (dataLen > Moic::SCRIPT_WRITEBUF_SIZE) {
-    vmctx.exitCode = Moic::OTHER_ERROR;
-    return false;
-  }
-  const uint8_t operandLen = isFar ? 2 : (isInd ? 1 : dataLen);
-  const uint8_t totalCmdLen = 1 + operandLen;
-  if (startIdx + totalCmdLen >= Moic::SCRIPT_PAGE_SIZE) {
-    vmctx.exitCode = Moic::OVERFLOW;
-    return false;
-  }
-  // Consume from buffer (Advance BEFORE execution)
-  vmctx.idx += totalCmdLen;
-  uint8_t ptrOffset, farPage;
-  if (isFar) {
-    farPage = scriptBase[startIdx + 1];
-    ptrOffset = scriptBase[startIdx + 2];
-    if (farPage >= Moic::NUM_SCRIPT_PAGES || ((uint16_t)ptrOffset) + dataLen >= Moic::SCRIPT_PAGE_SIZE) {
-      vmctx.exitCode = Moic::OVERFLOW;
-      return false;
-    }
-  } else if (isInd) {
-    ptrOffset = scriptBase[startIdx + 1];
-    if (((uint16_t)ptrOffset) + dataLen > 0x1B) {
-      vmctx.exitCode = Moic::UNINVITED_POINTER;
-      return false;
-    }
-  }
-  for (uint8_t i = 0; i < dataLen; i++) {
-    uint8_t incoming;
-    if (isFar) {
-      incoming = vmctx.scripts[farPage][ptrOffset + i];
-    } else if (isInd) {
-      incoming = ((uint8_t*)mm.mregs)[ptrOffset + i];
-    } else {
-      incoming = scriptBase[startIdx + i + 1];
-    }
-    vmctx.writeBuf[i] = incoming;
-  }
-  if (isCtl) {
-    vmctx.count = 0;
-    const uint8_t code = processControl(mm, op);
-    if (code != Moic::OK) {
-      vmctx.exitCode = code;
-      return false;
-    }
-  } else {
-    vmctx.count = dataLen;
-    vmctx.offset = directOp;
-  }
-  return true;
-}
-
-}
-
 uint8_t processControl(Moic::ManagedMotor& mm, const uint8_t ctlop) {
   switch (ctlop) {
     case Moic::CALL:
-      return MotorVM::call(mm, mm.vmctx->writeBuf);
+      return call(mm, mm.vmctx->writeBuf);
     case Moic::COND_CALL:
-      return MotorVM::condCall(mm, mm.vmctx->writeBuf);
+      return condCall(mm, mm.vmctx->writeBuf);
     case Moic::COND_JUMP:
-      return MotorVM::condJump(mm, mm.vmctx->writeBuf);
+      return condJump(mm, mm.vmctx->writeBuf);
     case Moic::JUMP:
-      return MotorVM::jump(mm, mm.vmctx->writeBuf);
+      return jump(mm, mm.vmctx->writeBuf);
     default:
-      return Moic::UNKNOWN_COMMAND;
+      return Moic::UNKNOWN_CTLOP;
   }
 }
 
-void scriptStackPop(Moic::ManagedMotor& mm, const uint8_t code) {
+void popStack(Moic::ManagedMotor& mm, const uint8_t code) {
   auto& vmctx = *(mm.vmctx);
   if (vmctx.sp <= 0) {
     return;
@@ -194,7 +197,7 @@ void scriptStackPop(Moic::ManagedMotor& mm, const uint8_t code) {
   vmctx.callArg = stack.callArg;
 }
 
-uint8_t scriptStackPush(Moic::ManagedMotor& mm, uint8_t page, const uint8_t sIdx) {
+uint8_t pushStack(Moic::ManagedMotor& mm, uint8_t page, const uint8_t sIdx) {
   auto& vmctx = *(mm.vmctx);
   if (page == Moic::UNSET) {
     page = vmctx.page;
@@ -214,7 +217,7 @@ uint8_t scriptStackPush(Moic::ManagedMotor& mm, uint8_t page, const uint8_t sIdx
   return Moic::OK;
 }
 
-int8_t scriptCondition(Moic::ManagedMotor& mm, const uint8_t func, const uint8_t rhs) {
+int8_t condition(Moic::ManagedMotor& mm, const uint8_t func, const uint8_t rhs) {
   auto& vmctx = *(mm.vmctx);
   // Bit 7 of the function code signifies negation.
   const bool negate = func & 0x80;

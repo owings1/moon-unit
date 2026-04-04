@@ -23,7 +23,7 @@ void ManagedMotor::tick() {
   if (!scriptActive() || busy()) {
     return;
   }
-  if (!MotorVM::processNext(*(this))) {
+  if (!MotorVM::tick(*(this))) {
     exitScript(vmctx->exitCode);
     return;
   }
