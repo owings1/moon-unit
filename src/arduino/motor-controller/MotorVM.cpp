@@ -5,20 +5,16 @@ namespace MotorVM {
 
 bool tick(Moic::ManagedMotor& mm) {
   auto& vmctx = *(mm.vmctx);
-  const uint8_t page = vmctx.page;
+  if (vmctx.page >= Moic::NUM_SCRIPT_PAGES || vmctx.idx >= Moic::SCRIPT_PAGE_SIZE) {
+    vmctx.exitCode = Moic::OVERFLOW;
+    return false;
+  }
+
   uint8_t idx = vmctx.idx;
-  if (page >= Moic::NUM_SCRIPT_PAGES) {
-    vmctx.exitCode = Moic::OVERFLOW;
-    return false;
-  }
-  if (idx >= Moic::SCRIPT_PAGE_SIZE) {
-    vmctx.exitCode = Moic::OVERFLOW;
-    return false;
-  }
-  // Get OpCode (Struct Offset)
-  volatile uint8_t* script = vmctx.scripts[page];
-  uint8_t op = script[idx];
-  if (op == Moic::OK || op >= Moic::USR1) {  // End markers
+  uint8_t op = vmctx.scripts[vmctx.page][idx];
+
+  // 1. Terminal / Return Logic
+  if (op == Moic::OK || op >= Moic::USR1) {
     // OK 0x00 or UNSET 0xFF are treated as OK 0x00.
     // Anything USR1 0xFA to USR5 0xFE are passed on as is to
     // the scriptRepCode, which can be evaluated in conditional
@@ -34,20 +30,21 @@ bool tick(Moic::ManagedMotor& mm) {
       return false;
     }
   }
-  // Control escape code for execution flow constructs such as loops.
-  const bool isCtl = op == CONTROL_EXCODE;
+
+  // 2. Control Escape Handling
+  const bool isCtl = (op == CONTROL_EXCODE);
   if (isCtl) {
-    if (((uint16_t)idx) + 1 >= Moic::SCRIPT_PAGE_SIZE) {
+    if (idx + 1 >= Moic::SCRIPT_PAGE_SIZE) {
       vmctx.exitCode = Moic::OVERFLOW;
       return false;
     }
-    idx += 1;
-    op = script[idx];
-    vmctx.idx += 1;
+    // Skip 0xC0 and get the actual control opcode
+    idx++;
+    op = vmctx.scripts[vmctx.page][idx];
   }
-  const bool isFar = op & FARPTR_OPCODE_FLAG;
-  const bool isInd = op & INDIRECT_OPCODE_FLAG;
-  if (isFar && isInd) {
+
+  // 3. Decoding & Flag Validation
+  if ((op & FARPTR_OPCODE_FLAG) && (op & INDIRECT_OPCODE_FLAG)) {
     // Behavior undefined when both flags are set, because the upper range
     // overlaps with USR return codes, and the 0xC0 case would reduce to 0x00 OK.
     // So we explicitly reject both flags to avoid ambiguity. This allows us to
@@ -55,69 +52,83 @@ bool tick(Moic::ManagedMotor& mm) {
     vmctx.exitCode = Moic::INVALID_OPFLAG;
     return false;
   }
+
   const uint8_t directOp = op & ~(INDIRECT_OPCODE_FLAG | FARPTR_OPCODE_FLAG);
   const uint8_t dataLen = getOpCodeDataLength(directOp, isCtl);
-  if (dataLen == 0) {
-    if (isCtl) {
-      vmctx.exitCode = Moic::UNKNOWN_CTLOP;
-    } else {
-      vmctx.exitCode = Moic::UNKNOWN_COMMAND;
-    }
+
+  if (dataLen == 0 || dataLen > Moic::SCRIPT_WRITEBUF_SIZE) {
+    vmctx.exitCode = isCtl ? Moic::UNKNOWN_CTLOP : Moic::UNKNOWN_COMMAND;
     return false;
   }
-  if (dataLen > Moic::SCRIPT_WRITEBUF_SIZE) {
-    vmctx.exitCode = Moic::OTHER_ERROR;
-    return false;
-  }
-  const uint8_t operandLen = isFar ? 2 : (isInd ? 1 : dataLen);
-  const uint8_t totalCmdLen = 1 + operandLen;
-  if (((uint16_t)idx) + totalCmdLen >= Moic::SCRIPT_PAGE_SIZE) {
+
+  // 4. Operand Resolution
+  const uint8_t operandSize = (op & FARPTR_OPCODE_FLAG) ? 2 : ((op & INDIRECT_OPCODE_FLAG) ? 1 : dataLen);
+  if ((uint16_t)idx + 1 + operandSize >= Moic::SCRIPT_PAGE_SIZE) {
     vmctx.exitCode = Moic::OVERFLOW;
     return false;
   }
-  // Consume from buffer (Advance BEFORE execution)
-  vmctx.idx += totalCmdLen;
-  uint8_t ptrOffset, farPage;
-  if (isFar) {
-    farPage = script[idx + 1];
-    ptrOffset = script[idx + 2];
-    if (farPage >= Moic::NUM_SCRIPT_PAGES || ((uint16_t)ptrOffset) + dataLen >= Moic::SCRIPT_PAGE_SIZE) {
-      vmctx.exitCode = Moic::OVERFLOW;
-      return false;
-    }
-  } else if (isInd) {
-    ptrOffset = script[idx + 1];
-    if (((uint16_t)ptrOffset) + dataLen > 0x1B) {
-      vmctx.exitCode = Moic::UNINVITED_POINTER;
-      return false;
-    }
+
+  const uint8_t resErr = resolveOperands(mm, op, dataLen, idx);
+  if (resErr != Moic::OK) {
+    vmctx.exitCode = resErr;
+    return false;
   }
-  for (uint8_t i = 0; i < dataLen; i++) {
-    uint8_t incoming;
-    if (isFar) {
-      incoming = vmctx.scripts[farPage][ptrOffset + i];
-    } else if (isInd) {
-      incoming = ((uint8_t*)mm.mregs)[ptrOffset + i];
-    } else {
-      incoming = script[idx + i + 1];
-    }
-    vmctx.writeBuf[i] = incoming;
-  }
+
+  // 5. PC Advancement
+  // If we used a control escape, we must skip the escape byte too
+  const uint8_t instructionSize = isCtl ? (2 + operandSize) : (1 + operandSize);
+  vmctx.idx += instructionSize;
+
+  // 6. Execution
   if (isCtl) {
     vmctx.count = 0;
-    const uint8_t code = processControl(mm, op);
-    if (code != Moic::OK) {
-      vmctx.exitCode = code;
+    const uint8_t ctlErr = processControl(mm, op);
+    if (ctlErr != Moic::OK) {
+      vmctx.exitCode = ctlErr;
       return false;
     }
   } else {
     vmctx.count = dataLen;
     vmctx.offset = directOp;
   }
+
   return true;
 }
 
 }
+
+uint8_t resolveOperands(Moic::ManagedMotor& mm, const uint8_t op, const uint8_t dataLen, const uint8_t idx) {
+  auto& vmctx = *(mm.vmctx);
+  volatile uint8_t* script = vmctx.scripts[vmctx.page];
+  const bool isFar = op & MotorVM::FARPTR_OPCODE_FLAG;
+  const bool isInd = op & MotorVM::INDIRECT_OPCODE_FLAG;
+
+  if (isFar) {
+    const uint8_t farPage = script[idx + 1];
+    const uint8_t ptrOffset = script[idx + 2];
+    if (farPage >= Moic::NUM_SCRIPT_PAGES || (uint16_t)ptrOffset + dataLen > Moic::SCRIPT_PAGE_SIZE) {
+      return Moic::OVERFLOW;
+    }
+    for (uint8_t i = 0; i < dataLen; i++) {
+      vmctx.writeBuf[i] = vmctx.scripts[farPage][ptrOffset + i];
+    }
+  } else if (isInd) {
+    const uint8_t ptrOffset = script[idx + 1];
+    if ((uint16_t)ptrOffset + dataLen > 0x1B) {
+      return Moic::UNINVITED_POINTER;
+    }
+    for (uint8_t i = 0; i < dataLen; i++) {
+      vmctx.writeBuf[i] = ((uint8_t*)mm.mregs)[ptrOffset + i];
+    }
+  } else {
+    for (uint8_t i = 0; i < dataLen; i++) {
+      vmctx.writeBuf[i] = script[idx + i + 1];
+    }
+  }
+  return Moic::OK;
+}
+
+
 uint8_t jump(Moic::ManagedMotor& mm, volatile uint8_t* cmdBuf) {
   auto& vmctx = *(mm.vmctx);
   uint8_t page = cmdBuf[0];

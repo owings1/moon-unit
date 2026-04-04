@@ -29,10 +29,8 @@ I2CMotors mainI2cMotors = I2CMotors(I2C_MAIN, mms, 2);
 void setup() {
   for (auto& m : motors) m->begin();
 }
-// void loop() { for (auto& m : motors) m->run(); }
 void loop() {
   static uint32_t lastMicros = 0;
-
   uint32_t now = micros();
   uint32_t delta = now - lastMicros;
   bool isrun = false;
@@ -68,8 +66,6 @@ void setup1() {
 #include "MotorActions.h"
 
 void loop1() {
-  // delay(0x01);
-  // 2. THE PROTO-MANAGER (Orchestration)
   // We only run this every 1ms to keep Core 0 happy
   static uint32_t lastPerfSync = 0;
   static uint32_t lastVM = 0;

@@ -14,6 +14,7 @@ static const uint8_t CONTROL_EXCODE = 0xC0;
 
 bool tick(Moic::ManagedMotor& mm);
 }
+uint8_t resolveOperands(Moic::ManagedMotor& mm, const uint8_t op, const uint8_t dataLen, const uint8_t idx);
 uint8_t jump(Moic::ManagedMotor& mm, volatile uint8_t* cmdBuf);
 uint8_t call(Moic::ManagedMotor& mm, volatile uint8_t* cmdBuf);
 uint8_t condCall(Moic::ManagedMotor& mm, volatile uint8_t* cmdBuf);
