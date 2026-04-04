@@ -70,7 +70,8 @@ bool tick(Moic::ManagedMotor& mm) {
     vmctx.exitCode = Moic::OVERFLOW;
     return false;
   }
-  const uint8_t resErr = resolveOperands(mm, op, dataLen, pfxLen, idx);
+  const bool destIsFloat = !isCtl && isFloatOp(directOp);
+  const uint8_t resErr = resolveOperands(mm, op, dataLen, pfxLen, idx, destIsFloat);
   if (resErr != Moic::OK) {
     vmctx.exitCode = resErr;
     return false;
@@ -96,49 +97,62 @@ bool tick(Moic::ManagedMotor& mm) {
 
 }
 
-uint8_t resolveOperands(Moic::ManagedMotor& mm, const uint8_t op, const uint8_t dataLen, const uint8_t pfxLen, const uint8_t idx) {
+uint8_t resolveOperands(Moic::ManagedMotor& mm, const uint8_t op, const uint8_t dataLen, const uint8_t pfxLen, const uint8_t idx, const bool destIsFloat) {
   auto& vmctx = *(mm.vmctx);
   volatile uint8_t* script = vmctx.scripts[vmctx.page];
   const bool isFar = op & Moic::FARPTR_OPCODE_FLAG;
   const bool isInd = op & Moic::INDIRECT_OPCODE_FLAG;
+  if (!isFar && !isInd) {
+    // Base case, literal operands.
+    for (uint8_t i = 0; i < dataLen; i++) {
+      vmctx.writeBuf[i] = script[idx + i + 1];
+    }
+    return Moic::OK;
+  }
+  const uint8_t targetLen = dataLen - pfxLen;
   if (isFar) {
     const uint8_t farPage = script[idx + 1 + pfxLen];
     const uint8_t ptrOffset = script[idx + 2 + pfxLen];
-    if (farPage >= Moic::NUM_SCRIPT_PAGES || (uint16_t)ptrOffset + (dataLen - pfxLen) > Moic::SCRIPT_PAGE_SIZE) {
+    if (farPage >= Moic::NUM_SCRIPT_PAGES || (uint16_t)ptrOffset + targetLen > Moic::SCRIPT_PAGE_SIZE) {
       return Moic::OVERFLOW;
     }
     // We still resolve the FULL dataLen into writeBuf. 
     // For SET_VAR, dataLen is 5. We want writeBuf[0] to be RegIdx, 
     // and writeBuf[1..4] to be the resolved data.
-    vmctx.writeBuf[0] = script[idx + 1]; // Store the RegIdx
-    for (uint8_t i = 0; i < (dataLen - pfxLen); i++) {
+    vmctx.writeBuf[0] = script[idx + 1];
+    for (uint8_t i = 0; i < targetLen; i++) {
       vmctx.writeBuf[i + pfxLen] = vmctx.scripts[farPage][ptrOffset + i];
     }
-  } else if (isInd) {
-    const uint8_t ptrOffset = script[idx + 1 + pfxLen];
-    if (ptrOffset >= Moic::VARPTR_START) {
-      const uint8_t varIdx = ptrOffset - Moic::VARPTR_START;
-      if (varIdx >= Moic::NUM_SCRIPT_GLOBAL_VARS) {
-        return Moic::OVERFLOW;
-      }
-      const uint8_t* varPtr = (uint8_t*)&(vmctx.vars[varIdx]);
-      vmctx.writeBuf[0] = script[idx + 1];
-      for (uint8_t i = 0; i < (dataLen - pfxLen); i++) {
-        vmctx.writeBuf[i + pfxLen] = varPtr[i];
-      }
-    } else {
-      if ((uint16_t)ptrOffset + (dataLen - pfxLen) >= Moic::INDPTR_END) {
-        return Moic::UNINVITED_POINTER;
-      }
-      vmctx.writeBuf[0] = script[idx + 1];
-      for (uint8_t i = 0; i < (dataLen - pfxLen); i++) {
-        vmctx.writeBuf[i + pfxLen] = ((uint8_t*)mm.mregs)[ptrOffset + i];
-      }
+    return Moic::OK;
+  }
+  // isInd: var ptr or mregs ptr
+  int32_t iVal = 0;
+  const uint8_t ptrOffset = script[idx + 1 + pfxLen];
+  if (ptrOffset >= Moic::VARPTR_START) {
+    const uint8_t varIdx = ptrOffset - Moic::VARPTR_START;
+    if (varIdx >= Moic::NUM_SCRIPT_GLOBAL_VARS) {
+      return Moic::OVERFLOW;
     }
+    iVal = vmctx.vars[varIdx];
   } else {
-    for (uint8_t i = 0; i < dataLen; i++) {
-      vmctx.writeBuf[i] = script[idx + i + 1];
+    if ((uint16_t)ptrOffset + targetLen > Moic::INDPTR_END) {
+      return Moic::UNINVITED_POINTER;
     }
+    const bool sourceIsFloat = isFloatOp(ptrOffset);
+    if (sourceIsFloat) {
+      float fVal;
+      memcpy(&fVal, (void*)&((uint8_t*)mm.mregs)[ptrOffset], 4);
+      iVal = (int32_t)fVal;
+    } else {
+      memcpy(&iVal, (void*)&((uint8_t*)mm.mregs)[ptrOffset], targetLen);
+    }
+  }
+  vmctx.writeBuf[0] = script[idx + 1];
+  if (destIsFloat) {
+    const float fVal = (float)iVal;
+    memcpy((void*)&vmctx.writeBuf[pfxLen], &fVal, 4);
+  } else {
+    memcpy((void*)&vmctx.writeBuf[pfxLen], &iVal, targetLen);
   }
   return Moic::OK;
 }
@@ -344,5 +358,15 @@ uint8_t getOpCodeDataLength(const uint8_t offset, const bool isCtl) {
       default:
         return 0;
     }
+  }
+}
+
+bool isFloatOp(const uint8_t op) {
+  switch (op) {
+    case offsetof(Moic::MotorInterface, maxSpeed):
+    case offsetof(Moic::MotorInterface, acceleration):
+      return true;
+    default:
+      return false;
   }
 }
