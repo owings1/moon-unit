@@ -287,9 +287,9 @@ class Motor(DeviceComponent):
     return PerfTestRoutine(self)
 
 class MotorScripts:
-  perflib_page = 1
   fixlib_page = 2
   moicdb_page = 3
+  perflib_page = 4
   moicdb_slcinfo = MotorAttr.sliceinfo(Motor.ATTRMAP, 10, 10+6)
 
   def __init__(self, motor: Motor):
@@ -350,7 +350,7 @@ class MotorScripts:
       script = self.download(script)
     sq = deque((), 8)
     for x in range(8):
-      it = (f'{hex(script[x*31+i])[2:]:0>2}' for i in range(31))
+      it = (f'0x{script[x*31+i]:02X}' for i in range(31))
       sq.append(' '.join(it))
     return '\n'.join(sq)
 
@@ -365,7 +365,8 @@ class MotorScripts:
     content = self.download(page)
     label = moic.codes[code]
     value = content[idx]
-    opobj = moic.ctlopsmap.get(value) or moic.revops.get(value)
+    opdirect = value & ~(moic.FARPTR_OPCODE_FLAG | moic.INDIRECT_OPCODE_FLAG)
+    opobj = moic.ctlopsmap.get(opdirect) or moic.revops.get(opdirect)
     size = 1
     if isinstance(opobj, dict) and idx < len(content):
       opobj = opobj[content[idx+1]]

@@ -24,12 +24,12 @@ uint8_t onSleepTimeout(Moic::ManagedMotor& mm) {
   return Moic::OK;
 }
 uint8_t onMaxSpeed(Moic::ManagedMotor& mm) {
-  mm.m->setMaxSpeed(mm.mregs->maxSpeed);
+  mm.m->setMaxSpeed(abs(mm.mregs->maxSpeed));
   mm.mregs->maxSpeed = mm.m->maxSpeed();
   return Moic::OK;
 }
 uint8_t onAcceleration(Moic::ManagedMotor& mm) {
-  mm.m->setAcceleration(mm.mregs->acceleration);
+  mm.m->setAcceleration(abs(mm.mregs->acceleration));
   mm.mregs->acceleration = mm.m->acceleration();
   return Moic::OK;
 }

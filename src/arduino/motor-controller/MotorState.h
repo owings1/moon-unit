@@ -47,23 +47,23 @@ struct MotorInterface {
   uint8_t _pad0[0x0C];
 };
 struct VMStack {
-  volatile uint8_t page;
-  volatile uint8_t idx;
-  volatile uint8_t rhsArg;
-  volatile uint8_t callArg;
+  uint8_t page;
+  uint8_t idx;
+  uint8_t rhsArg;
+  uint8_t callArg;
 };
 struct VMContext {
   volatile uint8_t page;
   volatile uint8_t idx;
   volatile uint8_t rhsArg;
   volatile uint8_t callArg;
-  volatile uint8_t sp;      // Stack Pointer
-  volatile uint8_t offset;  // offset for write() callback
-  volatile uint8_t count;   // byte count stored in writeBuf for write() callback
-  volatile uint8_t exitCode;
+  uint8_t sp;      // Stack Pointer
+  uint8_t offset;  // offset for write() callback
+  uint8_t count;   // byte count stored in writeBuf for write() callback
+  uint8_t exitCode;
   volatile uint8_t scripts[NUM_SCRIPT_PAGES][SCRIPT_PAGE_SIZE];
-  volatile VMStack stack[SCRIPT_STACK_SIZE];
-  volatile uint8_t writeBuf[SCRIPT_WRITEBUF_SIZE];
+  VMStack stack[SCRIPT_STACK_SIZE];
+  uint8_t writeBuf[SCRIPT_WRITEBUF_SIZE];
   int32_t vars[NUM_SCRIPT_GLOBAL_VARS];
 };
 #pragma pack(pop)
