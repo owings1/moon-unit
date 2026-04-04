@@ -51,9 +51,9 @@ bool tick(Moic::ManagedMotor& mm) {
     return false;
   }
   const uint8_t directOp = op & ~(Moic::INDIRECT_OPCODE_FLAG | Moic::FARPTR_OPCODE_FLAG);
-  // Safety: Only SET_VAR is allowed to use Pointer Modes.
+  // Safety: Only SET_VAR and VAR_MATH2 are allowed to use Pointer Modes.
   // CALL, JUMP, etc. MUST be literals.
-  if (isCtl && (isFar || isInd) && directOp != Moic::SET_VAR) {
+  if (isCtl && (isFar || isInd) && directOp != Moic::SET_VAR && directOp != Moic::VAR_MATH2) {
     vmctx.exitCode = Moic::INVALID_OPFLAG;
     return false;
   }
@@ -159,16 +159,39 @@ uint8_t resolveOperands(Moic::ManagedMotor& mm, const uint8_t op, const uint8_t 
 
 uint8_t setVar(Moic::ManagedMotor& mm, volatile uint8_t* cmdBuf) {
   auto& vmctx = *(mm.vmctx);
-  uint8_t regIdx = cmdBuf[0];
-  if (regIdx >= Moic::NUM_SCRIPT_GLOBAL_VARS) {
+  const uint8_t varIdx = cmdBuf[0];
+  if (varIdx >= Moic::NUM_SCRIPT_GLOBAL_VARS) {
     return Moic::OVERFLOW;
   }
   // Get the address of the target register and treat it as 4 bytes
-  uint8_t* dest = (uint8_t*)&(vmctx.vars[regIdx]);
+  uint8_t* dest = (uint8_t*)&(vmctx.vars[varIdx]);
   for (uint8_t i = 0; i < 4; ++i) {
     dest[i] = cmdBuf[i + 1];
   }
   return Moic::OK;
+}
+
+uint8_t varMath1(Moic::ManagedMotor& mm, volatile uint8_t* cmdBuf) {
+  auto& vmctx = *(mm.vmctx);
+  const uint8_t varIdx = cmdBuf[0];
+  if (varIdx >= Moic::NUM_SCRIPT_GLOBAL_VARS) {
+    return Moic::OVERFLOW;
+  }
+  return applyMath1(cmdBuf[1], vmctx.vars[varIdx]);
+}
+
+uint8_t varMath2(Moic::ManagedMotor& mm, volatile uint8_t* cmdBuf) {
+  auto& vmctx = *(mm.vmctx);
+  const uint8_t varIdx = cmdBuf[0];
+  if (varIdx >= Moic::NUM_SCRIPT_GLOBAL_VARS) {
+    return Moic::OVERFLOW;
+  }
+  int32_t rhs;
+  uint8_t* rhsBytes = (uint8_t*)&rhs;
+  for (uint8_t i = 0; i < 4; ++i) {
+    rhsBytes[i] = cmdBuf[i + 2];
+  }
+  return applyMath2(cmdBuf[1], vmctx.vars[varIdx], rhs);
 }
 
 uint8_t jump(Moic::ManagedMotor& mm, volatile uint8_t* cmdBuf) {
@@ -225,6 +248,10 @@ uint8_t processControl(Moic::ManagedMotor& mm, const uint8_t ctlop) {
   switch (ctlop) {
     case Moic::SET_VAR:
       return setVar(mm, mm.vmctx->writeBuf);
+    case Moic::VAR_MATH1:
+      return varMath1(mm, mm.vmctx->writeBuf);
+    case Moic::VAR_MATH2:
+      return varMath2(mm, mm.vmctx->writeBuf);
     case Moic::CALL:
       return call(mm, mm.vmctx->writeBuf);
     case Moic::COND_CALL:
@@ -237,14 +264,18 @@ uint8_t processControl(Moic::ManagedMotor& mm, const uint8_t ctlop) {
       return Moic::UNKNOWN_CTLOP;
   }
 }
+
 uint8_t getCtlPfxLen(const uint8_t ctlop) {
   switch (ctlop) {
+    case Moic::VAR_MATH2:
+      return 2;
     case Moic::SET_VAR:
       return 1;
     default:
       return 0;
   }
 }
+
 void popStack(Moic::ManagedMotor& mm, const uint8_t code) {
   auto& vmctx = *(mm.vmctx);
   if (vmctx.sp <= 0) {
@@ -325,9 +356,12 @@ int8_t condition(Moic::ManagedMotor& mm, const uint8_t func, const uint8_t rhs) 
   }
   return result ^ negate;
 }
+
 uint8_t getOpCodeDataLength(const uint8_t offset, const bool isCtl) {
   if (isCtl) {
     switch (offset) {
+      case Moic::VAR_MATH2:
+        return 6;
       case Moic::SET_VAR:
         return 5;
       case Moic::COND_CALL:
@@ -335,6 +369,7 @@ uint8_t getOpCodeDataLength(const uint8_t offset, const bool isCtl) {
         return 4;
       case Moic::CALL:
       case Moic::JUMP:
+      case Moic::VAR_MATH1:
         return 2;
       default:
         return 0;
@@ -369,4 +404,38 @@ bool isFloatOp(const uint8_t op) {
     default:
       return false;
   }
+}
+
+uint8_t applyMath1(const uint8_t mathOper, volatile int32_t &value) {
+  switch (mathOper) {
+    case Moic::MATH1_INC:
+      value += 1;
+      break;
+    case Moic::MATH1_DEC:
+      value -= 1;
+      break;
+    case Moic::MATH1_NEG:
+      value *= -1;
+      break;
+    default:
+      return Moic::INVALID_MATHOPER;
+  }
+  return Moic::OK;
+}
+
+uint8_t applyMath2(const uint8_t mathOper, volatile int32_t &value, const int32_t rhs) {
+  switch (mathOper) {
+    case Moic::MATH2_ADD:
+      value += rhs;
+      break;
+    case Moic::MATH2_SUB:
+      value -= rhs;
+      break;
+    case Moic::MATH2_MUL:
+      value *= rhs;
+      break;
+    default:
+      return Moic::INVALID_MATHOPER;
+  }
+  return Moic::OK;
 }

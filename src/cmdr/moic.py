@@ -172,6 +172,8 @@ class CtlOp(namedtuple('CtlOp', ('esc', 'code', 'fmt', 'size', 'prefix_size'))):
   
 class CtlOps:
   set_var = CtlOp(CONTROL_EXCODE, 0x01, b'Bl', 5, 1)
+  var_math1 = CtlOp(CONTROL_EXCODE, 0x02, b'2B', 2, None)
+  var_math2 = CtlOp(CONTROL_EXCODE, 0x03, b'2Bl', 6, 2)
   call = CtlOp(CONTROL_EXCODE, 0x30, b'2B', 2, None)
   cond_call = CtlOp(CONTROL_EXCODE, 0x32, b'4B', 4, None)
   cond_jump = CtlOp(CONTROL_EXCODE, 0x36, b'4B', 4, None)
@@ -210,6 +212,16 @@ class FunId:
   AND_CALLARG_RHS = CtlOps.call.code + 1
   ALWAYS_TRUE = 0xFF >> 1
 
+class Math1Oper:
+  MATH1_INC = 0x01
+  MATH1_DEC = 0x02
+  MATH1_NEG = 0x03
+
+class Math2Oper:
+  MATH2_ADD = 0x01
+  MATH2_SUB = 0x02
+  MATH2_MUL = 0x03
+
 class Code:
   OK = 0x00
   OTHER_ERROR = 0x07
@@ -224,6 +236,7 @@ class Code:
   UNKNOWN_CTLOP = 0x32
   INVALID_OPFLAG = 0x33
   INVALID_FUNID = 0x34
+  INVALID_MATHOPER = 0x35
   USR1 = 0xFA
   USR2 = 0xFB
   USR3 = 0xFC

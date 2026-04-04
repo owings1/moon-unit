@@ -12,6 +12,8 @@ bool tick(Moic::ManagedMotor& mm);
 }
 uint8_t resolveOperands(Moic::ManagedMotor& mm, const uint8_t op, const uint8_t dataLen, const uint8_t pfxLen, const uint8_t idx, const bool isFloat);
 uint8_t setVar(Moic::ManagedMotor& mm, volatile uint8_t* cmdBuf);
+uint8_t varMath1(Moic::ManagedMotor& mm, volatile uint8_t* cmdBuf);
+uint8_t varMath2(Moic::ManagedMotor& mm, volatile uint8_t* cmdBuf);
 uint8_t jump(Moic::ManagedMotor& mm, volatile uint8_t* cmdBuf);
 uint8_t call(Moic::ManagedMotor& mm, volatile uint8_t* cmdBuf);
 uint8_t condCall(Moic::ManagedMotor& mm, volatile uint8_t* cmdBuf);
@@ -23,4 +25,6 @@ uint8_t getOpCodeDataLength(const uint8_t offset, const bool isCtl);
 uint8_t processControl(Moic::ManagedMotor& mm, const uint8_t ctlop);
 uint8_t getCtlPfxLen(const uint8_t ctlop);
 bool isFloatOp(const uint8_t op);
+uint8_t applyMath1(const uint8_t mathOper, volatile int32_t &value);
+uint8_t applyMath2(const uint8_t mathOper, volatile int32_t &value, const int32_t rhs);
 #endif

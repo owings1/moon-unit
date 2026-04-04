@@ -19,6 +19,7 @@ enum ResCode : uint8_t {
   UNKNOWN_CTLOP = 0x32,
   INVALID_OPFLAG = 0x33,
   INVALID_FUNID = 0x34,
+  INVALID_MATHOPER = 0x35,
   USR1 = 0xFA,
   USR2 = 0xFB,
   USR3 = 0xFC,
@@ -40,10 +41,23 @@ enum FunId : uint8_t {
 
 enum Ctrl : uint8_t {
   SET_VAR = 0x01,
+  VAR_MATH1 = 0x02,
+  VAR_MATH2 = 0x03,
   CALL = 0x30,
   COND_CALL = 0x32,
   COND_JUMP = 0x36,
   JUMP = 0x3A,
+};
+
+enum Math1Oper : uint8_t {
+  MATH1_INC = 0x01, // Increment, x + 1
+  MATH1_DEC = 0x02, // Decrement, x - 1
+  MATH1_NEG = 0x03, // Negative, x * -1
+};
+enum Math2Oper : uint8_t {
+  MATH2_ADD = 0x01,
+  MATH2_SUB = 0x02,
+  MATH2_MUL = 0x03,
 };
 enum WriteSource : uint8_t {
   VMEXC = 0x00,
