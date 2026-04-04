@@ -359,7 +359,7 @@ class MotorScripts:
 
   def trace(self):
     def snipfmt(snipt):
-      return ' '.join(f'0x{x:<02X}' for x in snipt)
+      return ' '.join(f'0x{x:02X}' for x in snipt)
     m = self.motor
     page, idx, code = m['script_page'], m['script_index'], m['script_repcode']
     content = self.download(page)
@@ -375,9 +375,9 @@ class MotorScripts:
     prev = content[max(0, idx - 5):idx]
     return dict(
       page=str(page),
-      index=f'0x{idx:<02X}',
+      index=f'0x{idx:02X}',
       code=f'0x{code:02X} {label}',
-      value=f'0x{value:<02X}',
+      value=f'0x{value:02X}',
       instruction=snipfmt(instr),
       opname=str(opname),
       previous=snipfmt(prev))

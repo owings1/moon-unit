@@ -19,7 +19,7 @@ MAX_MOTORS = const(0x02)
 MOTOR_BLOCK_SIZE = const(0x40)
 SCRIPT_PAGE_SIZE = const(0xF8)
 NUM_SCRIPT_PAGES = const(0x08)
-NUM_SCRIPT_GLOBAL_REGS = const(0x04)
+NUM_SCRIPT_GLOBAL_VARS = const(0x04)
 SCRIPT_STACK_SIZE = const(0x08)
 BUSY_EXEMPT_MASK = const(0x80)
 
@@ -28,10 +28,14 @@ FARPTR_OPCODE_FLAG = const(0x80)
 CONTROL_EXCODE = const(0x40|0x80)
 FUNC_NEGATED_FLAG = const(0x80)
 FUNC_NEGATED_BIT = const(7)
+INDPTR_END = const(0x1C)
+VARPTR_START = const(0x60)
 
 PAGE_REGISTER = const(0x04)
 SCRIPT_PAGE_START = const(0x10)
 MOTOR_BASE_ADDR = const(0x08)
+
+VarPtr = range(VARPTR_START, VARPTR_START + NUM_SCRIPT_GLOBAL_VARS)
 
 class WriteSource:
   VMEXC = 0x00
@@ -167,7 +171,7 @@ class CtlOp(namedtuple('CtlOp', ('esc', 'code', 'fmt', 'size', 'prefix_size'))):
     return revctls[self.code]
   
 class CtlOps:
-  set_reg = CtlOp(CONTROL_EXCODE, 0x01, b'Bl', 5, 1)
+  set_var = CtlOp(CONTROL_EXCODE, 0x01, b'Bl', 5, 1)
   call = CtlOp(CONTROL_EXCODE, 0x30, b'2B', 2, None)
   cond_call = CtlOp(CONTROL_EXCODE, 0x32, b'4B', 4, None)
   cond_jump = CtlOp(CONTROL_EXCODE, 0x36, b'4B', 4, None)

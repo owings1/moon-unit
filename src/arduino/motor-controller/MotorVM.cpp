@@ -29,9 +29,9 @@ bool tick(Moic::ManagedMotor& mm) {
     }
   }
   // 2. Control Escape Handling
-  const bool isCtl = (op == CONTROL_EXCODE);
+  const bool isCtl = (op == Moic::CONTROL_EXCODE);
   if (isCtl) {
-    if (idx + 1 >= Moic::SCRIPT_PAGE_SIZE) {
+    if ((uint16_t)idx + 1 >= Moic::SCRIPT_PAGE_SIZE) {
       vmctx.exitCode = Moic::OVERFLOW;
       return false;
     }
@@ -40,8 +40,8 @@ bool tick(Moic::ManagedMotor& mm) {
     op = vmctx.scripts[vmctx.page][idx];
   }
   // 3. Decoding & Flag Validation
-  const bool isFar = op & FARPTR_OPCODE_FLAG;
-  const bool isInd = op & INDIRECT_OPCODE_FLAG;
+  const bool isFar = op & Moic::FARPTR_OPCODE_FLAG;
+  const bool isInd = op & Moic::INDIRECT_OPCODE_FLAG;
   if (isFar && isInd) {
     // Behavior undefined when both flags are set, because the upper range
     // overlaps with USR return codes, and the 0xC0 case would reduce to 0x00 OK.
@@ -50,10 +50,10 @@ bool tick(Moic::ManagedMotor& mm) {
     vmctx.exitCode = Moic::INVALID_OPFLAG;
     return false;
   }
-  const uint8_t directOp = op & ~(INDIRECT_OPCODE_FLAG | FARPTR_OPCODE_FLAG);
-  // Safety: Only SET_REG is allowed to use Pointer Modes.
+  const uint8_t directOp = op & ~(Moic::INDIRECT_OPCODE_FLAG | Moic::FARPTR_OPCODE_FLAG);
+  // Safety: Only SET_VAR is allowed to use Pointer Modes.
   // CALL, JUMP, etc. MUST be literals.
-  if (isCtl && (isFar || isInd) && directOp != Moic::SET_REG) {
+  if (isCtl && (isFar || isInd) && directOp != Moic::SET_VAR) {
     vmctx.exitCode = Moic::INVALID_OPFLAG;
     return false;
   }
@@ -63,12 +63,13 @@ bool tick(Moic::ManagedMotor& mm) {
     return false;
   }
   // 4. Operand Resolution
-  const uint8_t operandSize = isFar ? 2 : (isInd ? 1 : dataLen);
+  // For Literal, operandSize is just the 4-byte value (dataLen - pfxLen)
+  const uint8_t pfxLen = isCtl ? getCtlPfxLen(directOp) : 0;
+  const uint8_t operandSize = isFar ? 2 : (isInd ? 1 : (dataLen - pfxLen));
   if ((uint16_t)idx + 1 + operandSize >= Moic::SCRIPT_PAGE_SIZE) {
     vmctx.exitCode = Moic::OVERFLOW;
     return false;
   }
-  const uint8_t pfxLen = isCtl ? getCtlPfxLen(directOp) : 0;
   const uint8_t resErr = resolveOperands(mm, op, dataLen, pfxLen, idx);
   if (resErr != Moic::OK) {
     vmctx.exitCode = resErr;
@@ -76,12 +77,12 @@ bool tick(Moic::ManagedMotor& mm) {
   }
   // 5. PC Advancement
   // If we used a control escape, we must skip the escape byte too
-  const uint8_t instructionSize = isCtl ? (2 + operandSize) : (1 + operandSize);
+  const uint8_t instructionSize = 1 + operandSize + isCtl + pfxLen;
   vmctx.idx += instructionSize;
   // 6. Execution
   if (isCtl) {
     vmctx.count = 0;
-    const uint8_t ctlErr = processControl(mm, op);
+    const uint8_t ctlErr = processControl(mm, directOp);
     if (ctlErr != Moic::OK) {
       vmctx.exitCode = ctlErr;
       return false;
@@ -98,8 +99,8 @@ bool tick(Moic::ManagedMotor& mm) {
 uint8_t resolveOperands(Moic::ManagedMotor& mm, const uint8_t op, const uint8_t dataLen, const uint8_t pfxLen, const uint8_t idx) {
   auto& vmctx = *(mm.vmctx);
   volatile uint8_t* script = vmctx.scripts[vmctx.page];
-  const bool isFar = op & MotorVM::FARPTR_OPCODE_FLAG;
-  const bool isInd = op & MotorVM::INDIRECT_OPCODE_FLAG;
+  const bool isFar = op & Moic::FARPTR_OPCODE_FLAG;
+  const bool isInd = op & Moic::INDIRECT_OPCODE_FLAG;
   if (isFar) {
     const uint8_t farPage = script[idx + 1 + pfxLen];
     const uint8_t ptrOffset = script[idx + 2 + pfxLen];
@@ -107,7 +108,7 @@ uint8_t resolveOperands(Moic::ManagedMotor& mm, const uint8_t op, const uint8_t 
       return Moic::OVERFLOW;
     }
     // We still resolve the FULL dataLen into writeBuf. 
-    // For SET_REG, dataLen is 5. We want writeBuf[0] to be RegIdx, 
+    // For SET_VAR, dataLen is 5. We want writeBuf[0] to be RegIdx, 
     // and writeBuf[1..4] to be the resolved data.
     vmctx.writeBuf[0] = script[idx + 1]; // Store the RegIdx
     for (uint8_t i = 0; i < (dataLen - pfxLen); i++) {
@@ -115,12 +116,24 @@ uint8_t resolveOperands(Moic::ManagedMotor& mm, const uint8_t op, const uint8_t 
     }
   } else if (isInd) {
     const uint8_t ptrOffset = script[idx + 1 + pfxLen];
-    if ((uint16_t)ptrOffset + (dataLen - pfxLen) > 0x1B) {
-      return Moic::UNINVITED_POINTER;
-    }
-    vmctx.writeBuf[0] = script[idx + 1];
-    for (uint8_t i = 0; i < (dataLen - pfxLen); i++) {
-      vmctx.writeBuf[i + pfxLen] = ((uint8_t*)mm.mregs)[ptrOffset + i];
+    if (ptrOffset >= Moic::VARPTR_START) {
+      const uint8_t varIdx = ptrOffset - Moic::VARPTR_START;
+      if (varIdx >= Moic::NUM_SCRIPT_GLOBAL_VARS) {
+        return Moic::OVERFLOW;
+      }
+      const uint8_t* varPtr = (uint8_t*)&(vmctx.vars[varIdx]);
+      vmctx.writeBuf[0] = script[idx + 1];
+      for (uint8_t i = 0; i < (dataLen - pfxLen); i++) {
+        vmctx.writeBuf[i + pfxLen] = varPtr[i];
+      }
+    } else {
+      if ((uint16_t)ptrOffset + (dataLen - pfxLen) >= Moic::INDPTR_END) {
+        return Moic::UNINVITED_POINTER;
+      }
+      vmctx.writeBuf[0] = script[idx + 1];
+      for (uint8_t i = 0; i < (dataLen - pfxLen); i++) {
+        vmctx.writeBuf[i + pfxLen] = ((uint8_t*)mm.mregs)[ptrOffset + i];
+      }
     }
   } else {
     for (uint8_t i = 0; i < dataLen; i++) {
@@ -130,14 +143,14 @@ uint8_t resolveOperands(Moic::ManagedMotor& mm, const uint8_t op, const uint8_t 
   return Moic::OK;
 }
 
-uint8_t setReg(Moic::ManagedMotor& mm, volatile uint8_t* cmdBuf) {
+uint8_t setVar(Moic::ManagedMotor& mm, volatile uint8_t* cmdBuf) {
   auto& vmctx = *(mm.vmctx);
   uint8_t regIdx = cmdBuf[0];
-  if (regIdx >= Moic::NUM_SCRIPT_GLOBAL_REGS) {
+  if (regIdx >= Moic::NUM_SCRIPT_GLOBAL_VARS) {
     return Moic::OVERFLOW;
   }
   // Get the address of the target register and treat it as 4 bytes
-  uint8_t* dest = (uint8_t*)&(vmctx.regs[regIdx]);
+  uint8_t* dest = (uint8_t*)&(vmctx.vars[regIdx]);
   for (uint8_t i = 0; i < 4; ++i) {
     dest[i] = cmdBuf[i + 1];
   }
@@ -196,8 +209,8 @@ uint8_t condJump(Moic::ManagedMotor& mm, volatile uint8_t* cmdBuf) {
 
 uint8_t processControl(Moic::ManagedMotor& mm, const uint8_t ctlop) {
   switch (ctlop) {
-    case Moic::SET_REG:
-      return setReg(mm, mm.vmctx->writeBuf);
+    case Moic::SET_VAR:
+      return setVar(mm, mm.vmctx->writeBuf);
     case Moic::CALL:
       return call(mm, mm.vmctx->writeBuf);
     case Moic::COND_CALL:
@@ -212,7 +225,7 @@ uint8_t processControl(Moic::ManagedMotor& mm, const uint8_t ctlop) {
 }
 uint8_t getCtlPfxLen(const uint8_t ctlop) {
   switch (ctlop) {
-    case Moic::SET_REG:
+    case Moic::SET_VAR:
       return 1;
     default:
       return 0;
@@ -301,7 +314,7 @@ int8_t condition(Moic::ManagedMotor& mm, const uint8_t func, const uint8_t rhs) 
 uint8_t getOpCodeDataLength(const uint8_t offset, const bool isCtl) {
   if (isCtl) {
     switch (offset) {
-      case Moic::SET_REG:
+      case Moic::SET_VAR:
         return 5;
       case Moic::COND_CALL:
       case Moic::COND_JUMP:

@@ -10,10 +10,15 @@ namespace Moic {
 static const uint8_t MOTOR_BLOCK_SIZE = 0x40;
 static const uint8_t SCRIPT_PAGE_SIZE = 0xF8;
 static const uint8_t NUM_SCRIPT_PAGES = 0x08;
-static const uint8_t NUM_SCRIPT_GLOBAL_REGS = 0x04;
+static const uint8_t NUM_SCRIPT_GLOBAL_VARS = 0x04;
 static const uint8_t SCRIPT_STACK_SIZE = 0x08;
 static const uint8_t SCRIPT_WRITEBUF_SIZE = 8;
 static const uint8_t BUSY_EXEMPT_MASK = 0x80;
+static const uint8_t INDIRECT_OPCODE_FLAG = 0x40;
+static const uint8_t FARPTR_OPCODE_FLAG = 0x80;
+static const uint8_t CONTROL_EXCODE = 0xC0;
+static const uint8_t INDPTR_END = 0x1C;
+static const uint8_t VARPTR_START = 0x60;
 #pragma pack(push, 1)
 struct MotorInterface {
   // 0x00 - Telemetry (Aligned)
@@ -59,7 +64,7 @@ struct VMContext {
   volatile uint8_t scripts[NUM_SCRIPT_PAGES][SCRIPT_PAGE_SIZE];
   volatile VMStack stack[SCRIPT_STACK_SIZE];
   volatile uint8_t writeBuf[SCRIPT_WRITEBUF_SIZE];
-  int32_t regs[NUM_SCRIPT_GLOBAL_REGS];
+  int32_t vars[NUM_SCRIPT_GLOBAL_VARS];
 };
 #pragma pack(pop)
 

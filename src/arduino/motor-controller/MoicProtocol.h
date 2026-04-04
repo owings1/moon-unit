@@ -39,7 +39,7 @@ enum FunId : uint8_t {
 };
 
 enum Ctrl : uint8_t {
-  SET_REG = 0x01,
+  SET_VAR = 0x01,
   CALL = 0x30,
   COND_CALL = 0x32,
   COND_JUMP = 0x36,
