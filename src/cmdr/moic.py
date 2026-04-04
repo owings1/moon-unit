@@ -18,7 +18,8 @@ except ImportError:
 MAX_MOTORS = const(0x02)
 MOTOR_BLOCK_SIZE = const(0x40)
 SCRIPT_PAGE_SIZE = const(0xF8)
-NUM_SCRIPT_PAGES = const(0x04)
+NUM_SCRIPT_PAGES = const(0x08)
+NUM_SCRIPT_GLOBAL_REGS = const(0x04)
 SCRIPT_STACK_SIZE = const(0x08)
 BUSY_EXEMPT_MASK = const(0x80)
 
@@ -155,20 +156,22 @@ revops: dict[int, Attribute] = {
 
 opsmap: dict[str, Attribute] = {attr.name: attr for attr in revops.values()}
 
-class CtlOp(namedtuple('CtlOp', ('esc', 'code', 'fmt', 'size'))):
+class CtlOp(namedtuple('CtlOp', ('esc', 'code', 'fmt', 'size', 'prefix_size'))):
   esc: int
   code: int
   fmt: bytes
   size: int
+  prefix_size: int|None
   @property
   def name(self) -> str:
     return revctls[self.code]
   
 class CtlOps:
-  call = CtlOp(CONTROL_EXCODE, 0x30, b'2B', 2)
-  cond_call = CtlOp(CONTROL_EXCODE, 0x32, b'4B', 4)
-  cond_jump = CtlOp(CONTROL_EXCODE, 0x36, b'4B', 4)
-  jump = CtlOp(CONTROL_EXCODE, 0x3A, b'2B', 2)
+  set_reg = CtlOp(CONTROL_EXCODE, 0x01, b'Bl', 5, 1)
+  call = CtlOp(CONTROL_EXCODE, 0x30, b'2B', 2, None)
+  cond_call = CtlOp(CONTROL_EXCODE, 0x32, b'4B', 4, None)
+  cond_jump = CtlOp(CONTROL_EXCODE, 0x36, b'4B', 4, None)
+  jump = CtlOp(CONTROL_EXCODE, 0x3A, b'2B', 2, None)
 
 ctlopsmap: dict[str, CtlOp] = {
   f':{name}': ctlop for (name, ctlop) in
@@ -282,23 +285,43 @@ class Script:
     else:
       self.instructions.append((op, args))
       if isinstance(op, int):
+        oplen = 0
         if op == CONTROL_EXCODE:
-          oplen = revops[op][args[0]].size + 1
-        elif op & FARPTR_OPCODE_FLAG:
-          oplen = 2
-        elif op & INDIRECT_OPCODE_FLAG:
-          oplen = 1
+          ctlop: CtlOp = revops[op][args[0]]
+          basesize = ctlop.size
+          baseop = ctlop.code
+          oplen += 1
+          pfxsize = ctlop.prefix_size
         else:
-          oplen = revops[op].size
+          basesize = revops[op].size
+          baseop = op
+          pfxsize = 0
+        if baseop & FARPTR_OPCODE_FLAG:
+          if pfxsize is None:
+            raise ValueError(f'Pointers not supported for {op=} {baseop=}')
+          oplen += 2 + pfxsize
+        elif baseop & INDIRECT_OPCODE_FLAG:
+          if pfxsize is None:
+            raise ValueError(f'Pointers not supported for {op=} {baseop=}')
+          oplen += 1 + pfxsize
+        else:
+          oplen += basesize
       else:
         if op.endswith('**'):
-          oplen = 2
+          baseop, modesize = op[:-2], 2
         elif op.endswith('*'):
-          oplen = 1
+          baseop, modesize = op[:-1], 1
         else:
-          oplen = opsmap[op].size
-          if op.startswith(':'):
-            oplen += 1
+          baseop, modesize = op, None
+        if baseop in ctlopsmap:
+          ctlop = ctlopsmap[baseop]
+          if modesize:
+            if ctlop.prefix_size is None:
+              raise ValueError(f'Pointers not supported for {ctlop}')
+            modesize += ctlop.prefix_size
+          oplen = 1 + (modesize or ctlop.size)
+        else:
+          oplen = modesize or opsmap[baseop].size
       self._size += 1 + oplen
 
   def compile(self, resolver: Callable|None = None) -> bytes:
@@ -386,7 +409,8 @@ class Compiler:
       self.i = i
       self.instruction = instruction
       try:
-        self.last_compiled = self.executable.extend(self.compile_instruction(instruction))
+        self.last_compiled = self.compile_instruction(instruction)
+        self.executable.extend(self.last_compiled)
       except Exception as err:
         print(f'{err!r} {i=} {instruction=}')
         raise
@@ -399,36 +423,67 @@ class Compiler:
     self.buf = bytearray()
     self.op, self.args = self.instruction
     if self.resolver:
-      self.args = map(self.resolver, self.args)
+      self.args = tuple(map(self.resolver, self.args))
     if isinstance(self.op, int):
       if self.op == CONTROL_EXCODE:
-        self.args = tuple(self.args)
-        self.ctlop = revops[self.op][self.args[0]]
-        self.fmt = b'B' + self.ctlop.fmt
+        # For Control, args[0] is the sub-opcode (e.g., 0x01, 0x41, 0x81)
+        sub_op, *self.args = self.args
+        
+        # Mask out flags to find the base CtlOp definition
+        base_sub_op = sub_op & ~(INDIRECT_OPCODE_FLAG | FARPTR_OPCODE_FLAG)
+        self.ctlop: CtlOp = revops[self.op][base_sub_op]
+        
+        # Prepend 0xC0 to the buffer immediately
+        self.buf.append(self.op) 
+        self.opcode = sub_op
+
+        # Determine the format based on bitmask
+        if sub_op & FARPTR_OPCODE_FLAG:
+          # RegIdx (B) + Page (B) + Ptr (B)
+          self.fmt = b'B' * (self.ctlop.prefix_size or 0) + b'BB'
+        elif sub_op & INDIRECT_OPCODE_FLAG:
+          # RegIdx (B) + Ptr (B)
+          self.fmt = b'B' * (self.ctlop.prefix_size or 0) + b'B'
+        else:
+          # Literal format defined in CtlOp (e.g., 'Bl')
+          self.fmt = self.ctlop.fmt
+          
       elif self.op & FARPTR_OPCODE_FLAG:
         self.fmt = b'BB'
+        self.opcode = self.op
       elif self.op & INDIRECT_OPCODE_FLAG:
         self.fmt = b'B'
+        self.opcode = self.op
       else:
         self.fmt = revops[self.op].fmt
-      self.opcode = self.op
+        self.opcode = self.op
     else:
+      # Handling named opcodes (e.g. 'move*', ':set_reg')
       if self.op.endswith('**'):
-        self.fmt = b'BB'
-        self.opcode = opsmap[self.op[:-2]].offset | FARPTR_OPCODE_FLAG
+        base_name, mask, ptr_fmt = self.op[:-2], FARPTR_OPCODE_FLAG, b'BB'
       elif self.op.endswith('*'):
-        self.fmt = b'B'
-        self.opcode = opsmap[self.op[:-1]].offset | INDIRECT_OPCODE_FLAG
+        base_name, mask, ptr_fmt = self.op[:-1], INDIRECT_OPCODE_FLAG, b'B'
       else:
-        if self.op in ctlopsmap:
-          self.ctlop = ctlopsmap[self.op]
-          self.buf.append(self.ctlop.esc)
-          self.fmt = self.ctlop.fmt
-          self.opcode = self.ctlop.code
+        base_name, mask, ptr_fmt = self.op, 0, None
+
+      if base_name in ctlopsmap:
+        self.ctlop = ctlopsmap[base_name]
+        self.buf.append(self.ctlop.esc) # Prepend 0xC0
+        self.opcode = self.ctlop.code | mask
+        
+        if ptr_fmt:
+          if self.ctlop.prefix_size is None:
+            raise ValueError(f"Addressing modes not supported for {base_name}")
+          # Pointer mode: RegIdx (B) + Pointer (B or BB)
+          self.fmt = b'B' * self.ctlop.prefix_size + ptr_fmt
         else:
-          self.attr = opsmap[self.op]
-          self.fmt = self.attr.fmt
-          self.opcode = self.attr.offset
+          # Literal mode: Use default format (e.g. 'Bl')
+          self.fmt = self.ctlop.fmt
+      else:
+        # Standard Attribute (move, speed, etc)
+        self.attr = opsmap[base_name]
+        self.opcode = self.attr.offset | mask
+        self.fmt = ptr_fmt or self.attr.fmt
     self.buf.append(self.opcode)
     self.buf.extend(struct.pack(b'<'+self.fmt, *self.args))
     return bytes(self.buf)

@@ -39,10 +39,11 @@ enum FunId : uint8_t {
 };
 
 enum Ctrl : uint8_t {
-  CALL=0x30,
-  COND_CALL=0x32,
-  COND_JUMP=0x36,
-  JUMP=0x3A,
+  SET_REG = 0x01,
+  CALL = 0x30,
+  COND_CALL = 0x32,
+  COND_JUMP = 0x36,
+  JUMP = 0x3A,
 };
 enum WriteSource : uint8_t {
   VMEXC = 0x00,

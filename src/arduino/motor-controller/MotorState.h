@@ -9,9 +9,10 @@
 namespace Moic {
 static const uint8_t MOTOR_BLOCK_SIZE = 0x40;
 static const uint8_t SCRIPT_PAGE_SIZE = 0xF8;
-static const uint8_t NUM_SCRIPT_PAGES = 0x04;
+static const uint8_t NUM_SCRIPT_PAGES = 0x08;
+static const uint8_t NUM_SCRIPT_GLOBAL_REGS = 0x04;
 static const uint8_t SCRIPT_STACK_SIZE = 0x08;
-static const uint8_t SCRIPT_WRITEBUF_SIZE = 4;
+static const uint8_t SCRIPT_WRITEBUF_SIZE = 8;
 static const uint8_t BUSY_EXEMPT_MASK = 0x80;
 #pragma pack(push, 1)
 struct MotorInterface {
@@ -58,6 +59,7 @@ struct VMContext {
   volatile uint8_t scripts[NUM_SCRIPT_PAGES][SCRIPT_PAGE_SIZE];
   volatile VMStack stack[SCRIPT_STACK_SIZE];
   volatile uint8_t writeBuf[SCRIPT_WRITEBUF_SIZE];
+  int32_t regs[NUM_SCRIPT_GLOBAL_REGS];
 };
 #pragma pack(pop)
 
