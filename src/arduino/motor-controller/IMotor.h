@@ -1,7 +1,7 @@
 #include <sys/_stdint.h>
 #ifndef IMOTOR_h
 #define IMOTOR_h
-
+typedef void (*MotorNotifyCallback)(void* context);
 class IMotor {
 public:
   virtual ~IMotor() {}
@@ -16,6 +16,7 @@ public:
   virtual void setDelayActive(bool) = 0;
   virtual void setSleepTimeoutMs(uint16_t) = 0;
   virtual void setEnableDelayMs(uint8_t) = 0;
+  virtual void setNotify(MotorNotifyCallback, void*) = 0;
   virtual uint8_t stateFlags() = 0;
   virtual int32_t currentPosition() = 0;
   virtual int32_t targetPosition() = 0;

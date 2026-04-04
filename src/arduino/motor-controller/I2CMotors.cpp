@@ -8,11 +8,6 @@ I2CMotors::I2CMotors(TwoWire& wire, Moic::ManagedMotor** mms, uint8_t count)
   memset((void*)&regs, 0, sizeof(regs));
   memset((void*)&perf, 0, sizeof(perf));
   setBootId((uint16_t)millis());
-
-  for (uint8_t mIdx = 0; mIdx < numMotors; ++mIdx) {
-    mms[mIdx]->syncMotorState();
-    mms[mIdx]->syncMotorSettings();
-  }
 }
 void I2CMotors::observeDelta(const uint32_t delta) {
   if (perfOn) {
@@ -38,10 +33,6 @@ void I2CMotors::setBootId(uint16_t id) {
   regs.bootId = id;
 }
 
-void I2CMotors::update() {
-  memSyncInterval();
-}
-
 void I2CMotors::handleRead() {
   wire.write(read(currentPage, ptr++));
 }
@@ -50,12 +41,16 @@ void I2CMotors::handleWrite(int howMany) {
   if (howMany < 1) {
     return;
   }
-  masterWriting = true;
+  for (uint8_t mIdx = 0; mIdx < numMotors; ++mIdx) {
+    mms[mIdx]->syncLockInc();
+  }
   ptr = wire.read();
   while (--howMany > 0) {
     regs.repCode = write(ptr++, wire.read());
   }
-  masterWriting = false;
+  for (uint8_t mIdx = 0; mIdx < numMotors; ++mIdx) {
+    mms[mIdx]->syncLockDec();
+  }
 }
 
 uint8_t I2CMotors::read(const uint8_t page, const uint8_t ptr) {
@@ -125,27 +120,6 @@ uint8_t I2CMotors::write(const uint8_t ptr, const uint8_t incoming) {
     return Moic::OK;
   }
   return Moic::UNKNOWN_COMMAND;
-}
-
-void I2CMotors::memSyncInterval() {
-  if (masterWriting) {
-    return;
-  }
-  const uint32_t now = millis();
-  // 1. Fast Sync (High-priority telemetry)
-  if (now - lastFastSync >= FAST_SYNC_MS) {
-    lastFastSync = now;
-    for (uint8_t mIdx = 0; mIdx < numMotors; ++mIdx) {
-      mms[mIdx]->syncMotorState();
-    }
-  }
-  // 2. Slow Sync (Settings/Config) - Every 500ms
-  if (now - lastSlowSync >= SLOW_SYNC_MS) {
-    lastSlowSync = now;
-    for (uint8_t mIdx = 0; mIdx < numMotors; ++mIdx) {
-      mms[mIdx]->syncMotorSettings();
-    }
-  }
 }
 
 uint8_t I2CMotors::getMidx(const uint8_t page, const uint8_t ptr) {

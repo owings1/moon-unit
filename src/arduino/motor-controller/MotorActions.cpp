@@ -49,12 +49,20 @@ uint8_t onMoveTo(Moic::ManagedMotor& mm) {
   return code;
 }
 uint8_t onDelay(Moic::ManagedMotor& mm) {
-  if (mm.mregs->cmdDelay > 0) {
-    mm.mregs->waitEndTime = millis() + mm.mregs->cmdDelay;
+  const uint32_t delay = mm.mregs->cmdDelay;
+  uint32_t forceAt;
+  if (delay > 0) {
+    const uint32_t endTime = millis() + delay;
+    forceAt = endTime + 1;
+    mm.mregs->waitEndTime = endTime;
     mm.m->setDelayActive(true);
   } else {
+    forceAt = millis() + 1;
     mm.mregs->waitEndTime = 0;
     mm.m->setDelayActive(false);
+  }
+  if (delay <= Moic::ManagedMotor::FAST_SYNC_MS) {
+    mm.setForceStateSyncAt(forceAt);
   }
   mm.mregs->cmdDelay = 0;
   return Moic::OK;

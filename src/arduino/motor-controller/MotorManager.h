@@ -12,6 +12,8 @@ namespace Moic {
 
 class ManagedMotor {
 public:
+  static const uint16_t FAST_SYNC_MS = 20;
+  static const uint16_t SLOW_SYNC_MS = 500;
   ManagedMotor(IMotor* m);
   uint8_t write(const uint8_t offset, const uint8_t incoming, const uint8_t source);
   void tick();
@@ -23,14 +25,21 @@ public:
   IMotor* m;
   volatile MotorInterface* mregs;
   volatile VMContext* vmctx;
-  // TODO: Make private?
-  void syncMotorSettings();
-  // TODO: Make private?
-  void syncMotorState();
+  void syncLockInc();
+  void syncLockDec();
+  void setForceStateSyncAt(const uint32_t);
 private:
-  volatile MotorInterface _mregs;
-  volatile VMContext _vmctx;
+  MotorInterface _mregs;
+  VMContext _vmctx;
   bool _scriptActive = false;
+  bool _isBusyFast = false;
+  uint32_t lastFastSync = 0;
+  uint32_t lastSlowSync = 0;
+  uint32_t forceStateSyncAt = 0;
+  uint8_t syncLockout = 0;
+  void memSyncInterval();
+  void syncMotorState();
+  void syncMotorSettings();
   void syncScriptState();
 };
 

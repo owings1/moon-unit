@@ -141,6 +141,9 @@ void Motor::_updateIdle() {
   }
   _stateFlags &= ~((1 << BitIsMoving) | (1 << BitIsStopping));
   _checkSleep();
+  if (_notify) {
+    _notify(_notifyCtx);
+  }
 }
 
 void Motor::_enable() {

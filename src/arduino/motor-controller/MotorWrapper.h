@@ -18,6 +18,7 @@ public:
   void setDelayActive(bool value) override { }
   void setSleepTimeoutMs(uint16_t value) override { _sleepTimeoutMs = value; }
   void setEnableDelayMs(uint8_t value) override { _enableDelayMs = value; }
+  void setNotify(MotorNotifyCallback cb, void* ctx) override { _notify = cb; _notifyCtx = ctx; }
   uint8_t stateFlags() override { return _stateFlags; }
   uint8_t settingsFlags() override { return _settingsFlags; }
   int32_t currentPosition() override { return stepper.currentPosition(); }
@@ -35,7 +36,8 @@ protected:
   uint8_t _stateFlags = 0;
   uint16_t _sleepTimeoutMs = 2000;
   uint8_t _enableDelayMs = 2;
-
+  MotorNotifyCallback _notify = nullptr;
+  void* _notifyCtx = nullptr;
 };
 
 #endif

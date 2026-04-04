@@ -2,6 +2,9 @@
 #include "MotorManager.h"
 #include "MotorActions.h"
 
+void onMotorNotify(void* ctx) {
+  static_cast<Moic::ManagedMotor*>(ctx)->setForceStateSyncAt(millis());
+}
 namespace Moic {
 ManagedMotor::ManagedMotor(IMotor* m)
   : m(m), mregs(&_mregs), vmctx(&_vmctx) {
@@ -13,14 +16,28 @@ ManagedMotor::ManagedMotor(IMotor* m)
   }();
   memset((void*)&_mregs, 0, sizeof(MotorInterface));
   memset((void*)&_vmctx, 0, sizeof(VMContext));
+  syncMotorState();
+  syncMotorSettings();
+  m->setNotify(onMotorNotify, this);
 }
 
 bool ManagedMotor::scriptActive() {
   return _scriptActive;
 }
-
+void ManagedMotor::syncLockInc() {
+  syncLockout++;
+}
+void ManagedMotor::syncLockDec() {
+  if (syncLockout) {
+    syncLockout--;
+  }
+}
+void ManagedMotor::setForceStateSyncAt(const uint32_t when) {
+  forceStateSyncAt = when;
+}
 void ManagedMotor::tick() {
-  if (!scriptActive() || busy()) {
+  memSyncInterval();
+  if (!scriptActive() || _isBusyFast) {
     return;
   }
   if (!MotorVM::tick(*(this))) {
@@ -119,7 +136,25 @@ bool ManagedMotor::isPageInStack(const uint8_t page) {
 bool ManagedMotor::busy() {
   return mregs->waitEndTime != 0 && millis() < mregs->waitEndTime || m->busy();
 }
-
+void ManagedMotor::memSyncInterval() {
+  if (syncLockout) {
+    return;
+  }
+  const uint32_t now = millis();
+  // 1. Fast Sync (High-priority telemetry)
+  if (now - lastFastSync >= FAST_SYNC_MS || forceStateSyncAt && now >= forceStateSyncAt) {
+    lastFastSync = now;
+    if (now >= forceStateSyncAt) {
+      forceStateSyncAt = 0;
+    }
+    syncMotorState();
+  }
+  // 2. Slow Sync (Settings/Config) - Every 500ms
+  if (now - lastSlowSync >= SLOW_SYNC_MS) {
+    lastSlowSync = now;
+    syncMotorSettings();
+  }
+}
 void ManagedMotor::syncMotorSettings() {
   if (mregs->settingsFlags != m->settingsFlags()) {
     mregs->settingsFlags = m->settingsFlags();
@@ -148,6 +183,7 @@ void ManagedMotor::syncMotorState() {
       m->setDelayActive(false);
     }
   }
+  _isBusyFast = busy();
 }
 void ManagedMotor::syncScriptState() {
   mregs->scriptPage = vmctx->page;

@@ -68,7 +68,6 @@ void setup1() {
 #include "MotorActions.h"
 
 void loop1() {
-  mainI2cMotors.update();
   // delay(0x01);
   // 2. THE PROTO-MANAGER (Orchestration)
   // We only run this every 1ms to keep Core 0 happy
@@ -79,9 +78,7 @@ void loop1() {
     lastVM = now;
 
     for (uint8_t i = 0; i < 2; ++i) {
-      if (mms[i]->scriptActive()) {
-        mms[i]->tick();
-      }
+      mms[i]->tick();
     }
   }
   if (now - lastPerfSync >= 500) {

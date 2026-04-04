@@ -464,27 +464,28 @@ class MotorScripts:
     __ = Code.UNSET
     lib = moic.Script()
     lib.add('max_speed**', dbpg, ptr('homing_speed'))
-    for _ in range(2):
-      lib.add(':call', __, 'subroutine:pulse512')
+    lib.add(':call', __, 'subroutine:pulse9')
     lib.add('max_speed**', dbpg, ptr('default_speed'))
     lib.add(Code.UNSET)
-    lib.label('subroutine:pulse512')
-    for _ in range(8):
-      lib.add(':call', __, 'subroutine:pulse64')
+    lib.label('subroutine:pulse9')
+    for _ in range(3):
+      lib.add(':call', __, 'subroutine:pulse3')
     lib.add(Code.UNSET)
-    lib.label('subroutine:pulse64')
-    for _ in range(8):
-      lib.add(':call', __, 'subroutine:pulse8')
-    lib.add(Code.UNSET)
-    lib.label('subroutine:pulse8')
-    for _ in range(8):
+    lib.label('subroutine:pulse3')
+    for _ in range(3):
       lib.add(':call', __, 'subroutine:pulse1')
     lib.add(Code.UNSET)
     lib.label('subroutine:pulse1')
-    lib.add('move', 100)
-    lib.add('delay', 5)
-    lib.add('move_rev', 100)
-    lib.add('delay', 5)
+    for x in (1, 10):
+      for _ in range(4):
+        lib.add('move', x*1)
+      for _ in range(4):
+        lib.add('move_rev', x*1)
+      for d in (1, 2, 5):
+        lib.add('move', x*100)
+        lib.add('delay', x*d)
+        lib.add('move_rev', x*100)
+        lib.add('delay', x*d)
     lib.add(Code.UNSET)
     return lib.compile()
 

@@ -24,8 +24,6 @@ public:
 
   // Writable: 0x01 (sysFlags), 0x04 (PageReg)
   static const uint8_t DEVICE_WRITE_MASK = 0x12;
-  static const uint16_t FAST_SYNC_MS = 20;
-  static const uint16_t SLOW_SYNC_MS = 500;
 
   enum SysFlagBit : uint8_t {
     BitPerfEnabled = 4,
@@ -50,7 +48,6 @@ public:
   I2CMotors(TwoWire& wire, Moic::ManagedMotor** mms, uint8_t count);
 
   void setBootId(uint16_t id);
-  void update();
 
   void handleRead();
   void handleWrite(int howMany);
@@ -68,10 +65,6 @@ private:
   TwoWire& wire;
   volatile uint8_t currentPage = 0;
   volatile uint8_t ptr = 0;
-  volatile bool masterWriting = false;
-  uint32_t lastFastSync = 0;
-  uint32_t lastSlowSync = 0;
-  void memSyncInterval();
   uint8_t read(const uint8_t page, const uint8_t ptr);
   uint8_t write(const uint8_t ptr, const uint8_t incoming);
   static bool isWriteable(const uint8_t page, const uint8_t ptr);
