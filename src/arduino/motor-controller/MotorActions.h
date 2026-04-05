@@ -45,7 +45,7 @@ const RegMapping ACTION_TABLE[] = {
   { offsetof(Moic::MotorInterface, cmdMoveRev), 4, onMoveRev },
 };
 
-// Array of 64 pointers (one for every possible struct offset)
+// Initialized in MotorManager constructor
 static const RegMapping* ACTION_LOOKUP[Moic::MOTOR_BLOCK_SIZE] = { nullptr };
 }
 void clearTrigger(volatile uint8_t* buf, uint8_t size);

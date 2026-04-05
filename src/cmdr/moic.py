@@ -140,13 +140,16 @@ class Attributes:
     for attr in attrsmap.values():
       for offset in attr.offsets():
         masks[offset] = attr.writewhen
-    numstrs = [f'0x{x:02X},' for x in masks]
-    chunks = [numstrs[i:i+8] for i in range(0, 0x40, 8)]
-    varname = 'OFFSET_WRITEMASKS'
-    decl = f'static const uint8_t {varname}[0x40] = {{%s}};'
-    body = '\n'.join((f'  {" ".join(chunk)}' for chunk in chunks))
-    return decl % body.join(2*'\n')
-    
+    return _cpp_x40map('OFFSET_WRITEMASKS', masks)
+
+  @classmethod
+  def datalens(cls) -> str:
+    arr = array.array('B', (0 for _ in range(0x40)))
+    for attr in attrsmap.values():
+      if attr.writewhen & WriteWhen.SRC_VMEXC:
+        arr[attr.offset] = attr.size
+    return _cpp_x40map('ATTR_DATALENGTHS', arr)
+  
 attrsmap: dict[str, Attribute] = {
   name: attr for (name, attr) in
   ((name, getattr(Attributes, name)) for name in dir(Attributes))
@@ -179,6 +182,13 @@ class CtlOps:
   cond_jump = CtlOp(CONTROL_EXCODE, 0x36, b'4B', 4, None)
   jump = CtlOp(CONTROL_EXCODE, 0x3A, b'2B', 2, None)
 
+  @classmethod
+  def datalens(cls):
+    arr = array.array('B', (0 for _ in range(0x40)))
+    for ctlop in ctlopsmap.values():
+      arr[ctlop.code] = ctlop.size
+    return _cpp_x40map('CTLOP_DATALENGTHS', arr)
+    
 ctlopsmap: dict[str, CtlOp] = {
   f':{name}': ctlop for (name, ctlop) in
   ((name, getattr(CtlOps, name)) for name in dir(CtlOps))
@@ -504,3 +514,10 @@ class Compiler:
     self.buf.append(self.opcode)
     self.buf.extend(struct.pack(b'<'+self.fmt, *self.args))
     return bytes(self.buf)
+
+def _cpp_x40map(name: str, arr: list[int]) -> str:
+    numstrs = [f'0x{x:02X},' for x in arr]
+    chunks = [numstrs[i:i+8] for i in range(0, 0x40, 8)]
+    decl = f'static const uint8_t {name}[0x40] = {{%s}};'
+    body: str = '\n'.join((f'  {" ".join(chunk)}' for chunk in chunks))
+    return decl % body.join(2*'\n')

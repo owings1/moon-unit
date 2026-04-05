@@ -1,6 +1,7 @@
 #include <sys/_stdint.h>
 #include "MotorManager.h"
 #include "MotorActions.h"
+#include "MotorVM.h"
 
 void onMotorNotify(void* ctx) {
   static_cast<Moic::ManagedMotor*>(ctx)->setForceStateSyncAt(millis());
@@ -10,8 +11,10 @@ ManagedMotor::ManagedMotor(IMotor* m)
   : m(m), mregs(&_mregs), vmctx(&_vmctx) {
   static bool initialized = []() {
     for (const auto& entry : MotorActions::ACTION_TABLE) {
-      MotorActions::ACTION_LOOKUP[entry.offset + entry.size - 1] = &entry;
+      uint8_t tableIdx = &entry - MotorActions::ACTION_TABLE;
+      MotorActions::ACTION_LOOKUP[entry.offset + entry.size - 1] = &MotorActions::ACTION_TABLE[tableIdx];
     }
+    MotorVM::initStaticTables();
     return true;
   }();
   memset((void*)&_mregs, 0, sizeof(MotorInterface));

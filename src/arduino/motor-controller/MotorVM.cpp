@@ -3,6 +3,12 @@
 
 namespace MotorVM {
 
+void initStaticTables() {
+  for (auto& entry : CTLOP_TABLE) {
+    CONTROL_LOOKUP[entry.ctlop] = entry.handler;
+  }
+}
+
 bool tick(Moic::ManagedMotor& mm) {
   auto& vmctx = *(mm.vmctx);
   if (vmctx.page >= Moic::NUM_SCRIPT_PAGES || vmctx.idx >= Moic::SCRIPT_PAGE_SIZE) {
@@ -57,7 +63,7 @@ bool tick(Moic::ManagedMotor& mm) {
     vmctx.exitCode = Moic::INVALID_OPFLAG;
     return false;
   }
-  const uint8_t dataLen = getOpCodeDataLength(directOp, isCtl);
+  const uint8_t dataLen = isCtl ? CTLOP_DATALENGTHS[directOp] : ATTR_DATALENGTHS[directOp];
   if (dataLen == 0 || dataLen > Moic::SCRIPT_WRITEBUF_SIZE) {
     vmctx.exitCode = isCtl ? Moic::UNKNOWN_CTLOP : Moic::UNKNOWN_COMMAND;
     return false;
@@ -83,7 +89,8 @@ bool tick(Moic::ManagedMotor& mm) {
   // 6. Execution
   if (isCtl) {
     vmctx.count = 0;
-    const uint8_t ctlErr = processControl(mm, directOp);
+    const auto handler = CONTROL_LOOKUP[directOp];
+    const uint8_t ctlErr = handler ? handler(mm, vmctx.writeBuf) : Moic::UNKNOWN_CTLOP;
     if (ctlErr != Moic::OK) {
       vmctx.exitCode = ctlErr;
       return false;
@@ -116,8 +123,8 @@ uint8_t resolveOperands(Moic::ManagedMotor& mm, const uint8_t op, const uint8_t 
     if (farPage >= Moic::NUM_SCRIPT_PAGES || (uint16_t)ptrOffset + targetLen > Moic::SCRIPT_PAGE_SIZE) {
       return Moic::OVERFLOW;
     }
-    // We still resolve the FULL dataLen into writeBuf. 
-    // For SET_VAR, dataLen is 5. We want writeBuf[0] to be RegIdx, 
+    // We still resolve the FULL dataLen into writeBuf.
+    // For SET_VAR, dataLen is 5. We want writeBuf[0] to be RegIdx,
     // and writeBuf[1..4] to be the resolved data.
     vmctx.writeBuf[0] = script[idx + 1];
     for (uint8_t i = 0; i < targetLen; i++) {
@@ -244,7 +251,7 @@ uint8_t condJump(Moic::ManagedMotor& mm, volatile uint8_t* cmdBuf) {
   return Moic::OK;
 }
 
-uint8_t applyMath1(const uint8_t mathOper, volatile int32_t &value) {
+uint8_t applyMath1(const uint8_t mathOper, volatile int32_t& value) {
   switch (mathOper) {
     case Moic::MATH1_INC:
       value += 1;
@@ -261,7 +268,7 @@ uint8_t applyMath1(const uint8_t mathOper, volatile int32_t &value) {
   return Moic::OK;
 }
 
-uint8_t applyMath2(const uint8_t mathOper, volatile int32_t &value, const int32_t rhs) {
+uint8_t applyMath2(const uint8_t mathOper, volatile int32_t& value, const int32_t rhs) {
   switch (mathOper) {
     case Moic::MATH2_ADD:
       value += rhs;
@@ -323,66 +330,6 @@ int8_t condition(Moic::ManagedMotor& mm, const uint8_t func, const uint8_t rhs) 
     vmctx.rhsArg = rhs;
   }
   return result ^ negate;
-}
-
-uint8_t processControl(Moic::ManagedMotor& mm, const uint8_t ctlop) {
-  switch (ctlop) {
-    case Moic::SET_VAR:
-      return setVar(mm, mm.vmctx->writeBuf);
-    case Moic::VAR_MATH1:
-      return varMath1(mm, mm.vmctx->writeBuf);
-    case Moic::VAR_MATH2:
-      return varMath2(mm, mm.vmctx->writeBuf);
-    case Moic::CALL:
-      return call(mm, mm.vmctx->writeBuf);
-    case Moic::COND_CALL:
-      return condCall(mm, mm.vmctx->writeBuf);
-    case Moic::COND_JUMP:
-      return condJump(mm, mm.vmctx->writeBuf);
-    case Moic::JUMP:
-      return jump(mm, mm.vmctx->writeBuf);
-    default:
-      return Moic::UNKNOWN_CTLOP;
-  }
-}
-
-uint8_t getOpCodeDataLength(const uint8_t offset, const bool isCtl) {
-  if (isCtl) {
-    switch (offset) {
-      case Moic::VAR_MATH2:
-        return 6;
-      case Moic::SET_VAR:
-        return 5;
-      case Moic::COND_CALL:
-      case Moic::COND_JUMP:
-        return 4;
-      case Moic::CALL:
-      case Moic::JUMP:
-      case Moic::VAR_MATH1:
-        return 2;
-      default:
-        return 0;
-    }
-  } else {
-    switch (offset) {
-      case offsetof(Moic::MotorInterface, currentPosition):
-      case offsetof(Moic::MotorInterface, maxSpeed):
-      case offsetof(Moic::MotorInterface, acceleration):
-      case offsetof(Moic::MotorInterface, cmdMove):
-      case offsetof(Moic::MotorInterface, cmdMoveRev):
-      case offsetof(Moic::MotorInterface, cmdMoveTo):
-      case offsetof(Moic::MotorInterface, cmdDelay):
-        return 4;
-      case offsetof(Moic::MotorInterface, sleepTimeoutMs):
-        return 2;
-      case offsetof(Moic::MotorInterface, settingsFlags):
-      case offsetof(Moic::MotorInterface, enableDelayMs):
-      case offsetof(Moic::MotorInterface, cmdStop):
-        return 1;
-      default:
-        return 0;
-    }
-  }
 }
 
 uint8_t getCtlPfxLen(const uint8_t ctlop) {
