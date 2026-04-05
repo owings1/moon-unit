@@ -19,6 +19,11 @@ static const uint8_t NUM_SCRIPT_GLOBAL_VARS = 0x04;
 //             var ptr references with INDIRECT_OPCODE_FLAG 0x40 but
 //             without FARPTR_OPCODE_FLAG 0x80.
 static const uint8_t NUM_SCRIPT_LOCAL_VARS = 0x04;
+// Constraint: Must be greater than NUM_SCRIPT_GLOBAL_VARS and less than
+//             (0x20 - NUM_SCRIPT_LOCAL_VARS).
+// Determines direct index reference & indirect VARPTR pattern for global
+// vs local variables.
+static const uint8_t SCRIPT_LOCAL_VAR_OFFSET = 0x10;
 static const uint8_t SCRIPT_STACK_SIZE = 0x08;
 // Constraint: Must be greater than max value of both ATTR_DATALENGTHS and CTLOP_DATALENGTHS
 static const uint8_t SCRIPT_WRITEBUF_SIZE = 8;
@@ -32,7 +37,7 @@ static const uint8_t INDPTR_END = 0x1C;
 static const uint8_t GLOBAL_VARPTR_START = 0x60;
 // Constraint: Must be greater than (GLOBAL_VARPTR_START + NUM_SCRIPT_GLOBAL_VARS)
 //             and less than (0x80 - NUM_SCRIPT_LOCAL_VARS)
-static const uint8_t LOCAL_VARPTR_START = 0x70;
+static const uint8_t LOCAL_VARPTR_START = GLOBAL_VARPTR_START + SCRIPT_LOCAL_VAR_OFFSET;
 #pragma pack(push, 1)
 struct MotorInterface {
   // 0x00 - Telemetry (Aligned)

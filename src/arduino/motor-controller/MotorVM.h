@@ -7,16 +7,16 @@
 #include "MotorState.h"
 #include "MotorManager.h"
 
-uint8_t setVar(Moic::ManagedMotor& mm, volatile uint8_t* cmdBuf);
-uint8_t varMath1(Moic::ManagedMotor& mm, volatile uint8_t* cmdBuf);
-uint8_t varMath2(Moic::ManagedMotor& mm, volatile uint8_t* cmdBuf);
-uint8_t jump(Moic::ManagedMotor& mm, volatile uint8_t* cmdBuf);
-uint8_t call(Moic::ManagedMotor& mm, volatile uint8_t* cmdBuf);
-uint8_t condCall(Moic::ManagedMotor& mm, volatile uint8_t* cmdBuf);
-uint8_t condJump(Moic::ManagedMotor& mm, volatile uint8_t* cmdBuf);
+uint8_t setVar(Moic::ManagedMotor& mm, uint8_t* cmdBuf);
+uint8_t varMath1(Moic::ManagedMotor& mm, uint8_t* cmdBuf);
+uint8_t varMath2(Moic::ManagedMotor& mm, uint8_t* cmdBuf);
+uint8_t jump(Moic::ManagedMotor& mm, uint8_t* cmdBuf);
+uint8_t call(Moic::ManagedMotor& mm, uint8_t* cmdBuf);
+uint8_t condCall(Moic::ManagedMotor& mm, uint8_t* cmdBuf);
+uint8_t condJump(Moic::ManagedMotor& mm, uint8_t* cmdBuf);
 
 namespace MotorVM {
-typedef uint8_t (*ControlHandler)(Moic::ManagedMotor& mm, volatile uint8_t* cmdBuf);
+typedef uint8_t (*ControlHandler)(Moic::ManagedMotor& mm, uint8_t* cmdBuf);
 struct CtlMapping {
   uint8_t ctlop;
   ControlHandler handler;
@@ -60,6 +60,6 @@ uint8_t pushStack(Moic::ManagedMotor& mm, uint8_t page, const uint8_t sIdx);
 void popStack(Moic::ManagedMotor& mm, const uint8_t code);
 uint8_t getCtlPfxLen(const uint8_t ctlop);
 bool isFloatOp(const uint8_t op);
-uint8_t applyMath1(const uint8_t mathOper, volatile int32_t &value);
-uint8_t applyMath2(const uint8_t mathOper, volatile int32_t &value, const int32_t rhs);
+uint8_t applyMath1(const uint8_t mathOper, int32_t &value);
+uint8_t applyMath2(const uint8_t mathOper, int32_t &value, const int32_t rhs);
 #endif

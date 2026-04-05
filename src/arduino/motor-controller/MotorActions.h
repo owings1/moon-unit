@@ -2,10 +2,7 @@
 #ifndef MOTOR_ACTIONS_H
 #define MOTOR_ACTIONS_H
 
-#include "MoicProtocol.h"
-#include "IMotor.h"
 #include "MotorState.h"
-#include "MotorVM.h"
 #include "MotorManager.h"
 
 namespace MotorActions {

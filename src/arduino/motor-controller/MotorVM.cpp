@@ -172,34 +172,52 @@ uint8_t resolveOperands(Moic::ManagedMotor& mm, const uint8_t op, const uint8_t 
   return Moic::OK;
 }
 
-uint8_t setVar(Moic::ManagedMotor& mm, volatile uint8_t* cmdBuf) {
+static inline uint8_t getTargetVar(Moic::ManagedMotor& mm, uint8_t varIdx, int32_t* &target) {
   auto& vmctx = *(mm.vmctx);
-  const uint8_t varIdx = cmdBuf[0];
-  if (varIdx >= Moic::NUM_SCRIPT_GLOBAL_VARS) {
-    return Moic::OVERFLOW;
+  if (varIdx >= Moic::SCRIPT_LOCAL_VAR_OFFSET) {
+    varIdx -= Moic::SCRIPT_LOCAL_VAR_OFFSET;
+    if (varIdx >= Moic::NUM_SCRIPT_LOCAL_VARS) {
+      return Moic::OVERFLOW;
+    }
+    target = &vmctx.currentFrame->locals[varIdx];
+  } else {
+    if (varIdx >= Moic::NUM_SCRIPT_GLOBAL_VARS) {
+      return Moic::OVERFLOW;
+    }
+    target = &vmctx.globals[varIdx];
+  }
+  return Moic::OK;
+}
+
+uint8_t setVar(Moic::ManagedMotor& mm, uint8_t* cmdBuf) {
+  int32_t* target;
+  const uint8_t err = getTargetVar(mm, cmdBuf[0], target);
+  if (err != Moic::OK) {
+    return err;
   }
   // Get the address of the target register and treat it as 4 bytes
-  uint8_t* dest = (uint8_t*)&(vmctx.globals[varIdx]);
+  uint8_t* dest = (uint8_t*)target;
   for (uint8_t i = 0; i < 4; ++i) {
     dest[i] = cmdBuf[i + 1];
   }
   return Moic::OK;
 }
 
-uint8_t varMath1(Moic::ManagedMotor& mm, volatile uint8_t* cmdBuf) {
-  auto& vmctx = *(mm.vmctx);
-  const uint8_t varIdx = cmdBuf[0];
-  if (varIdx >= Moic::NUM_SCRIPT_GLOBAL_VARS) {
-    return Moic::OVERFLOW;
+uint8_t varMath1(Moic::ManagedMotor& mm, uint8_t* cmdBuf) {
+  int32_t* target;
+  const uint8_t err = getTargetVar(mm, cmdBuf[0], target);
+  if (err != Moic::OK) {
+    return err;
   }
-  return applyMath1(cmdBuf[1], vmctx.globals[varIdx]);
+  return applyMath1(cmdBuf[1], *target);
 }
 
-uint8_t varMath2(Moic::ManagedMotor& mm, volatile uint8_t* cmdBuf) {
+uint8_t varMath2(Moic::ManagedMotor& mm, uint8_t* cmdBuf) {
   auto& vmctx = *(mm.vmctx);
-  const uint8_t varIdx = cmdBuf[0];
-  if (varIdx >= Moic::NUM_SCRIPT_GLOBAL_VARS) {
-    return Moic::OVERFLOW;
+  int32_t* target;
+  const uint8_t err = getTargetVar(mm, cmdBuf[0], target);
+  if (err != Moic::OK) {
+    return err;
   }
   int32_t rhs;
   uint8_t* rhsBytes = (uint8_t*)&rhs;
@@ -208,13 +226,13 @@ uint8_t varMath2(Moic::ManagedMotor& mm, volatile uint8_t* cmdBuf) {
   }
   const uint8_t oper = cmdBuf[1];
   if (oper == Moic::MATH2_CMP) {
-    vmctx.compArg = vmctx.globals[varIdx] - rhs;
+    vmctx.compArg = (*target) - rhs;
     return Moic::OK;
   }
-  return applyMath2(oper, vmctx.globals[varIdx], rhs);
+  return applyMath2(oper, *target, rhs);
 }
 
-uint8_t jump(Moic::ManagedMotor& mm, volatile uint8_t* cmdBuf) {
+uint8_t jump(Moic::ManagedMotor& mm, uint8_t* cmdBuf) {
   auto& vmctx = *(mm.vmctx);
   auto& frame = *(vmctx.currentFrame);
   uint8_t page = cmdBuf[0];
@@ -230,7 +248,7 @@ uint8_t jump(Moic::ManagedMotor& mm, volatile uint8_t* cmdBuf) {
   return Moic::OK;
 }
 
-uint8_t call(Moic::ManagedMotor& mm, volatile uint8_t* cmdBuf) {
+uint8_t call(Moic::ManagedMotor& mm, uint8_t* cmdBuf) {
   uint8_t page = cmdBuf[0];
   const uint8_t sIdx = cmdBuf[1];
   if (page == Moic::UNSET) {
@@ -239,7 +257,7 @@ uint8_t call(Moic::ManagedMotor& mm, volatile uint8_t* cmdBuf) {
   return pushStack(mm, page, sIdx);
 }
 
-uint8_t condCall(Moic::ManagedMotor& mm, volatile uint8_t* cmdBuf) {
+uint8_t condCall(Moic::ManagedMotor& mm, uint8_t* cmdBuf) {
   const uint8_t func = cmdBuf[0];
   const uint8_t rhs = cmdBuf[1];
   const int8_t result = condition(mm, func, rhs);
@@ -252,7 +270,7 @@ uint8_t condCall(Moic::ManagedMotor& mm, volatile uint8_t* cmdBuf) {
   return Moic::OK;
 }
 
-uint8_t condJump(Moic::ManagedMotor& mm, volatile uint8_t* cmdBuf) {
+uint8_t condJump(Moic::ManagedMotor& mm, uint8_t* cmdBuf) {
   const uint8_t func = cmdBuf[0];
   const uint8_t rhs = cmdBuf[1];
   const int8_t result = condition(mm, func, rhs);
@@ -265,7 +283,7 @@ uint8_t condJump(Moic::ManagedMotor& mm, volatile uint8_t* cmdBuf) {
   return Moic::OK;
 }
 
-uint8_t applyMath1(const uint8_t mathOper, volatile int32_t& value) {
+uint8_t applyMath1(const uint8_t mathOper, int32_t& value) {
   switch (mathOper) {
     case Moic::MATH1_INC:
       value += 1;
@@ -288,7 +306,7 @@ uint8_t applyMath1(const uint8_t mathOper, volatile int32_t& value) {
   return Moic::OK;
 }
 
-uint8_t applyMath2(const uint8_t mathOper, volatile int32_t& value, const int32_t rhs) {
+uint8_t applyMath2(const uint8_t mathOper, int32_t& value, const int32_t rhs) {
   switch (mathOper) {
     case Moic::MATH2_ADD:
       value += rhs;
@@ -412,5 +430,8 @@ uint8_t pushStack(Moic::ManagedMotor& mm, uint8_t page, const uint8_t sIdx) {
   vmctx.currentFrame->page = page;
   vmctx.currentFrame->idx = sIdx;
   vmctx.currentFrame->callArg = vmctx.stack[vmctx.sp - 1].condArg;
+  for (uint8_t i = 0; i < Moic::NUM_SCRIPT_LOCAL_VARS; ++i) {
+    vmctx.currentFrame->locals[i] = 0;
+  }
   return Moic::OK;
 }

@@ -20,6 +20,8 @@ MOTOR_BLOCK_SIZE = const(0x40)
 SCRIPT_PAGE_SIZE = const(0xF8)
 NUM_SCRIPT_PAGES = const(0x08)
 NUM_SCRIPT_GLOBAL_VARS = const(0x04)
+NUM_SCRIPT_LOCAL_VARS = const(0x04)
+SCRIPT_LOCAL_VAR_OFFSET = const(0x10)
 SCRIPT_STACK_SIZE = const(0x08)
 BUSY_EXEMPT_MASK = const(0x80)
 
@@ -29,13 +31,16 @@ CONTROL_EXCODE = const(0x40|0x80)
 FUNC_NEGATED_FLAG = const(0x80)
 FUNC_NEGATED_BIT = const(7)
 INDPTR_END = const(0x1C)
-VARPTR_START = const(0x60)
-
+GLOBAL_VARPTR_START = const(0x60)
+LOCAL_VARPTR_START = const(0x70)
 PAGE_REGISTER = const(0x04)
 SCRIPT_PAGE_START = const(0x10)
 MOTOR_BASE_ADDR = const(0x08)
 
-VarPtr = range(VARPTR_START, VARPTR_START + NUM_SCRIPT_GLOBAL_VARS)
+GlobalVar = range(NUM_SCRIPT_GLOBAL_VARS)
+GlobalVarPtr = range(GLOBAL_VARPTR_START, GLOBAL_VARPTR_START + NUM_SCRIPT_GLOBAL_VARS)
+LocalVar = range(SCRIPT_LOCAL_VAR_OFFSET, SCRIPT_LOCAL_VAR_OFFSET + NUM_SCRIPT_LOCAL_VARS)
+LocalVarPtr = range(LOCAL_VARPTR_START, LOCAL_VARPTR_START + NUM_SCRIPT_LOCAL_VARS)
 
 class WriteSource:
   VMEXC = 0x00
@@ -149,7 +154,7 @@ class Attributes:
       if attr.writewhen & WriteWhen.SRC_VMEXC:
         arr[attr.offset] = attr.size
     return _cpp_x40map('ATTR_DATALENGTHS', arr)
-  
+
 attrsmap: dict[str, Attribute] = {
   name: attr for (name, attr) in
   ((name, getattr(Attributes, name)) for name in dir(Attributes))
@@ -247,6 +252,9 @@ class Math2Oper:
   MATH2_CMP = 0x04
   MATH2_SAFEDIV = 0x05
 
+class MathOper(Math1Oper, Math2Oper):
+  pass
+
 class Code:
   OK = 0x00
   OTHER_ERROR = 0x07
@@ -316,7 +324,7 @@ class Condition(namedtuple('Condition', ('func', 'rhs'))):
 
 class Script:
   def __init__(self) -> None:
-    self.instructions: list[tuple[str, tuple[Any, ...]]|bytes] = []
+    self.instructions: list[tuple[str|int, tuple[Any, ...]]|bytes] = []
     self.labels: dict[str, int] = {}
     self._size = 0
     self.compiler = Compiler()

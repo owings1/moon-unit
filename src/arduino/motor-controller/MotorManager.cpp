@@ -100,10 +100,15 @@ uint8_t ManagedMotor::enterScript(uint8_t page, const uint8_t arg) {
   _scriptActive = true;
   vmctx->sp = 0;
   vmctx->currentFrame = &vmctx->stack[0];
-  auto& frame = *vmctx->currentFrame;
-  frame.page = page;
-  frame.idx = 0;
-  frame.callArg = arg;
+  for (uint8_t i = 0; i < Moic::NUM_SCRIPT_LOCAL_VARS; ++i) {
+    vmctx->currentFrame->locals[i] = 0;
+  }
+  for (uint8_t i = 0; i < Moic::NUM_SCRIPT_GLOBAL_VARS; ++i) {
+    vmctx->globals[i] = 0;
+  }
+  vmctx->currentFrame->page = page;
+  vmctx->currentFrame->idx = 0;
+  vmctx->currentFrame->callArg = arg;
   vmctx->compArg = 0;
   vmctx->exitCode = OK;
   vmctx->count = 0;
