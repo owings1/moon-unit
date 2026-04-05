@@ -312,32 +312,36 @@ int8_t condition(Moic::ManagedMotor& mm, const uint8_t func, const uint8_t rhs) 
     // The CALLARG is set to the last RHS value when the stack is pushed
     // and remains immutable for that context, until it is restored to its
     // previous value when the stack is popped.
-    case Moic::EQL_CALLARG_RHS:
+    case Moic::P_CALLARG_EQL:
       result = vmctx.callArg == rhs;
       break;
-    case Moic::AND_CALLARG_RHS:
+    case Moic::P_CALLARG_AND:
       result = vmctx.callArg & rhs;
       break;
     // The RHS value of the previous condition check can be evaluated
-    // with EQL_LASTCONDARG_RHS 0x30 or AND_LASTCONDARG_RHS 0x31. This
-    // can be used with ALWAYS_TRUE to pass an argument to a subroutine.
-    case Moic::EQL_LASTCONDARG_RHS:
+    // with P_LASTCONDARG. This can be used with ALWAYS_TRUE to pass an
+    // argument to a subroutine.
+    case Moic::P_LASTCONDARG_EQL:
       result = vmctx.condArg == rhs;
       break;
-    case Moic::AND_LASTCONDARG_RHS:
+    case Moic::P_LASTCONDARG_AND:
       result = vmctx.condArg & rhs;
       break;
-    case Moic::EQL_LASTCOMPARG_RHS:
+    case Moic::P_LASTCOMPARG_EQL:
       result = vmctx.compArg == rhs;
       break;
-    case Moic::LT_LASTCOMPARG_RHS:
+    case Moic::P_LASTCOMPARG_LT:
       result = vmctx.compArg < rhs;
+      break;
+    case Moic::P_LASTCOMPARG_LTE:
+      result = vmctx.compArg <= rhs;
       break;
     default:
       return -1;
   }
-  if (funId < Moic::EQL_LASTCONDARG_RHS || funId > Moic::AND_LASTCONDARG_RHS) {
-    // Only update the register if the operation wasn't a 'Read' of the register
+  if (funId < Moic::P_LASTCONDARG_EQL || funId > Moic::P_LASTCOMPARG_LTE) {
+    // Only update the condArg if the operation wasn't a 'Read' of either condArg
+    // or compArg.
     vmctx.condArg = rhs;
   }
   return result ^ negate;

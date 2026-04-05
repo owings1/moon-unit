@@ -29,18 +29,36 @@ enum ResCode : uint8_t {
 };
 
 enum FunId : uint8_t {
+  // Constraint:
+  // This is matched to attribute register stateFlags for auto-flag logic
+  // in the Python compiler.
   AND_STATEFLAGS_RHS = 0x00,
   EQL_RETURNCODE_RHS = 0x03,
+  // Constraint:
+  // This is matched to attribute register settingsFlags for auto-flag logic
+  // in the Python compiler.
   AND_SETTINGSFLAGS_RHS = 0x10,
-  EQL_CALLARG_RHS = 0x14,
-  AND_CALLARG_RHS = 0x15,
-  // Constraint: LASTCONDARG_RHS IDs must be consecutive, and the high & low values
-  //             reflected in MotorVM condition() to be excluded from updating the
-  //             last RHS value.
-  EQL_LASTCONDARG_RHS = 0x18,
-  AND_LASTCONDARG_RHS = 0x19,
-  EQL_LASTCOMPARG_RHS = 0x20,
-  LT_LASTCOMPARG_RHS = 0x21,
+  // 0x20-0x60: Normal Predicates
+  //  Lower Bits:
+  //    0b00 EQL
+  //    0b01 LT
+  //    0b10 AND
+  //    0b11 LTE
+  P_CALLARG_EQL = 0x20,
+  P_CALLARG_AND = 0x22,
+  // -----------------------
+  // Constraint:
+  //
+  // P_LASTCONDARG and P_LASTCOMPARG IDs must occupy a contiguous block,
+  // meaning no other functions must lie between them, and the high & low values
+  // reflected in MotorVM condition() to be excluded from updating the last
+  // condArg RHS value.
+  P_LASTCONDARG_EQL = 0x24,
+  P_LASTCONDARG_AND = 0x26,
+  P_LASTCOMPARG_EQL = 0x28,
+  P_LASTCOMPARG_LT = 0x29,
+  P_LASTCOMPARG_LTE = 0x2B,
+
   ALWAYS_TRUE = 0x7F,
 };
 

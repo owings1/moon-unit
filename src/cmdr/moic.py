@@ -216,12 +216,13 @@ class FunId:
   AND_STATEFLAGS_RHS = 0x00
   EQL_RETURNCODE_RHS = 0x03
   AND_SETTINGSFLAGS_RHS = 0x10
-  EQL_CALLARG_RHS = 0x14
-  AND_CALLARG_RHS = 0x15
-  EQL_LASTCONDARG_RHS = 0x18
-  AND_LASTCONDARG_RHS = 0x19
-  EQL_LASTCOMPARG_RHS = 0x20
-  LT_LASTCOMPARG_RHS = 0x21
+  P_CALLARG_EQL = 0x20
+  P_CALLARG_AND = 0x22
+  P_LASTCONDARG_EQL = 0x24
+  P_LASTCONDARG_AND = 0x26
+  P_LASTCOMPARG_EQL = 0x28
+  P_LASTCOMPARG_LT = 0x29
+  P_LASTCOMPARG_LTE = 0x2B
   ALWAYS_TRUE = 0xFF >> 1
 
 class Math1Oper:
@@ -233,6 +234,7 @@ class Math2Oper:
   MATH2_ADD = 0x01
   MATH2_SUB = 0x02
   MATH2_MUL = 0x03
+  MATH2_CMP = 0x04
 
 class Code:
   OK = 0x00
@@ -275,11 +277,11 @@ class Condition(namedtuple('Condition', ('func', 'rhs'))):
 
   @classmethod
   def argeql(cls, rhs: int, negate: bool = False):
-    return cls(FunId.EQL_CALLARG_RHS ^ (bool(negate) << FUNC_NEGATED_BIT), rhs)
+    return cls(FunId.P_CALLARG_EQL ^ (bool(negate) << FUNC_NEGATED_BIT), rhs)
 
   @classmethod
   def argand(cls, rhs: int, negate: bool = False):
-    return cls(FunId.AND_CALLARG_RHS ^ (bool(negate) << FUNC_NEGATED_BIT), rhs)
+    return cls(FunId.P_CALLARG_AND ^ (bool(negate) << FUNC_NEGATED_BIT), rhs)
 
   @classmethod
   def repeql(cls, rhs: int, negate: bool = False):
