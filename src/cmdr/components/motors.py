@@ -402,6 +402,9 @@ class MotorScripts:
       return self._static.setdefault('perflib', self.perflib_generate())
 
   def fixlib_generate(self):
+    return self.fixlib_build().compile()
+
+  def fixlib_build(self):
     dbpg = self.moicdb_page
     ptr = self.moicdb_ptridx
     lib = moic.Script()
@@ -450,7 +453,7 @@ class MotorScripts:
     lib.add('max_speed**', dbpg, ptr('default_speed'))
     lib.add(Code.UNSET)
 
-    return lib.compile()
+    return lib
 
   def moicdb_ptridx(self, name: str) -> int:
     slcinfo = self.moicdb_slcinfo
@@ -460,6 +463,9 @@ class MotorScripts:
     raise ValueError(f'Not in moicdb slice: {name}')
 
   def perflib_generate(self):
+    return self.perflib_build().compile()
+
+  def perflib_build(self):
     dbpg = self.moicdb_page
     ptr = self.moicdb_ptridx
     __ = Code.UNSET
@@ -488,7 +494,7 @@ class MotorScripts:
         lib.add('move_rev', x*100)
         lib.add('delay', x*d)
     lib.add(Code.UNSET)
-    return lib.compile()
+    return lib
 
 class MotorError(Exception):
   errcode = Code.OTHER_ERROR

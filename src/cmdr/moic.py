@@ -359,6 +359,12 @@ class Script:
     "Resolve labels and pack bytes."
     return self.compiler.compile(self, resolver=resolver or self.resolve)
 
+  def pprintf(self):
+    return self.compiler.pprintf()
+
+  def pprint(self):
+    self.compiler.pprint()
+
   def resolve(self, arg: str|int|float) -> int|float:
     if isinstance(arg, str):
       if arg.startswith(':') and arg in ctlopsmap:
@@ -435,99 +441,155 @@ class CompileError(Exception):
 class Compiler:
   def __init__(self, resolver: Callable|None = None):
     self.resolver = resolver
+    self.executable = None
+
   def compile(self, script: Script, resolver: Callable|None = None):
     self.resolver = resolver or self.resolver
     self.script = script
     self.executable = bytearray()
+    starts = array.array('B')
+    ends = array.array('B')
+    self.opnames = []
+    
     for i, instruction in enumerate(script.instructions):
-      self.i = i
-      self.instruction = instruction
       try:
-        self.last_compiled = self.compile_instruction(instruction)
-        self.executable.extend(self.last_compiled)
+        context = CompilerInstructionContext(self, instruction)
+        context.run()
+        starts.append(len(self.executable))
+        self.executable.extend(context.buf)
+        ends.append(len(self.executable))
+        self.opnames.append(context.opname)
         if len(self.executable) > SCRIPT_PAGE_SIZE:
           raise CompileError(f'{SCRIPT_PAGE_SIZE=} exceeded: {len(self.executable)}')
       except Exception as err:
         print(f'{err!r} {i=} {instruction=}')
         raise
+    mem = memoryview(self.executable)
+    self.lines = tuple(
+      mem[start:end] for start, end in zip(starts, ends))
     return bytes(self.executable)
 
-  def compile_instruction(self, instruction: tuple[str, tuple[Any, ...]]|bytes) -> bytes:
-    self.buf = self.op = self.opcode = self.args = self.fmt = None
+  def _pprintf_line(self, i: int):
+    line = self.lines[i]
+    opname = self.opnames[i] or ''
+    linestr = ' '.join(f'{x:02X}' for x in line)
+    return f'{linestr:<26s} | {opname}'
+
+  def pprintf(self):
+    return '\n'.join(self._pprintf_line(i) for i in range(len(self.lines)))
+
+  def pprint(self):
+    print(self.pprintf())
+
+class CompilerInstructionContext:
+  def __init__(self, compiler: Compiler, instruction: tuple[str|int, tuple[Any, ...]]|bytes):
+    self.compiler = compiler
     self.instruction = instruction
-    if isinstance(instruction, bytes):
-      return instruction
+    self.resolver = compiler.resolver
+    self.opname = None
+
+  def run(self):
     self.buf = bytearray()
+    if isinstance(self.instruction, (bytes, bytearray)):
+      self.buf.extend(self.instruction)
+      return
     self.op, self.args = self.instruction
     if self.resolver:
       self.args = tuple(map(self.resolver, self.args))
     if isinstance(self.op, int):
-      if self.op == CONTROL_EXCODE:
-        # For Control, args[0] is the sub-opcode (e.g., 0x01, 0x41, 0x81)
-        sub_op, *self.args = self.args
-        
-        # Mask out flags to find the base CtlOp definition
-        base_sub_op = sub_op & ~(INDIRECT_OPCODE_FLAG | FARPTR_OPCODE_FLAG)
-        ctlop: CtlOp = revops[self.op][base_sub_op]
-        
-        # Prepend 0xC0 to the buffer immediately
-        self.buf.append(self.op) 
-        self.opcode = sub_op
-
-        # Determine the format based on bitmask
-        if sub_op & FARPTR_OPCODE_FLAG:
-          # RegIdx (B) + Page (B) + Ptr (B)
-          if ctlop.prefix_size is None:
-            raise CompileError(f'Addressing modes not supported for {ctlop.name}')
-          self.fmt = b'B' * ctlop.prefix_size + b'BB'
-        elif sub_op & INDIRECT_OPCODE_FLAG:
-          # RegIdx (B) + Ptr (B)
-          if ctlop.prefix_size is None:
-            raise CompileError(f'Addressing modes not supported for {ctlop.name}')
-          self.fmt = b'B' * ctlop.prefix_size + b'B'
-        else:
-          # Literal format defined in CtlOp (e.g., 'Bl')
-          self.fmt = ctlop.fmt
-          
-      elif self.op & FARPTR_OPCODE_FLAG:
-        self.fmt = b'BB'
-        self.opcode = self.op
-      elif self.op & INDIRECT_OPCODE_FLAG:
-        self.fmt = b'B'
-        self.opcode = self.op
-      else:
-        self.fmt = revops[self.op].fmt
-        self.opcode = self.op
+      self.handle_int_op()
     else:
-      # Handling named opcodes (e.g. 'move*', ':set_var')
-      if self.op.endswith('**'):
-        base_name, mask, ptr_fmt = self.op[:-2], FARPTR_OPCODE_FLAG, b'BB'
-      elif self.op.endswith('*'):
-        base_name, mask, ptr_fmt = self.op[:-1], INDIRECT_OPCODE_FLAG, b'B'
-      else:
-        base_name, mask, ptr_fmt = self.op, 0, None
-
-      if base_name in ctlopsmap:
-        ctlop = ctlopsmap[base_name]
-        self.buf.append(ctlop.esc) # Prepend 0xC0
-        self.opcode = ctlop.code | mask
-        
-        if ptr_fmt:
-          if ctlop.prefix_size is None:
-            raise CompileError(f'Addressing modes not supported for {ctlop.name}')
-          # Pointer mode: RegIdx (B) + Pointer (B or BB)
-          self.fmt = b'B' * ctlop.prefix_size + ptr_fmt
-        else:
-          # Literal mode: Use default format (e.g. 'Bl')
-          self.fmt = ctlop.fmt
-      else:
-        # Standard Attribute (move, speed, etc)
-        attr = opsmap[base_name]
-        self.opcode = attr.offset | mask
-        self.fmt = ptr_fmt or attr.fmt
+      self.handle_str_op()
     self.buf.append(self.opcode)
     self.buf.extend(struct.pack(b'<'+self.fmt, *self.args))
-    return bytes(self.buf)
+
+  def handle_int_op(self):
+    if self.op == CONTROL_EXCODE:
+      # For Control, args[0] is the sub-opcode (e.g., 0x01, 0x41, 0x81)
+      sub_op, *self.args = self.args
+      
+      # Mask out flags to find the base CtlOp definition
+      base_sub_op = sub_op & ~(INDIRECT_OPCODE_FLAG | FARPTR_OPCODE_FLAG)
+      ctlop: CtlOp = revops[self.op][base_sub_op]
+      
+      # Prepend 0xC0 to the buffer immediately
+      self.buf.append(self.op) 
+      self.opcode = sub_op
+      self.opname = ctlop.name
+
+      # Determine the format based on bitmask
+      if sub_op & FARPTR_OPCODE_FLAG:
+        # RegIdx (B) + Page (B) + Ptr (B)
+        if ctlop.prefix_size is None:
+          raise CompileError(f'Addressing modes not supported for {ctlop.name}')
+        self.fmt = b'B' * ctlop.prefix_size + b'BB'
+        self.opname += '**'
+      elif sub_op & INDIRECT_OPCODE_FLAG:
+        # RegIdx (B) + Ptr (B)
+        if ctlop.prefix_size is None:
+          raise CompileError(f'Addressing modes not supported for {ctlop.name}')
+        self.fmt = b'B' * ctlop.prefix_size + b'B'
+        self.opname += '*'
+      else:
+        # Literal format defined in CtlOp (e.g., 'Bl')
+        self.fmt = ctlop.fmt
+        
+    elif self.op & FARPTR_OPCODE_FLAG:
+      self.fmt = b'BB'
+      self.opcode = self.op
+    elif self.op & INDIRECT_OPCODE_FLAG:
+      self.fmt = b'B'
+      self.opcode = self.op
+    else:
+      dop = revops[self.op]
+      self.fmt = dop.fmt
+      self.opcode = self.op
+      self.opname = dop.name
+
+    if not self.opname:
+      directop = self.opcode & ~(FARPTR_OPCODE_FLAG | INDIRECT_OPCODE_FLAG)
+      if directop in revops:
+        dop = revops[directop]
+        if isinstance(dop, Attribute):
+          self.opname = dop.name
+          if self.opcode & FARPTR_OPCODE_FLAG:
+            self.opname += '**'
+          elif self.opcode & INDIRECT_OPCODE_FLAG:
+            self.opname += '*'
+
+  def handle_str_op(self):
+    # Handling named opcodes (e.g. 'move*', ':set_var')
+    if self.op.endswith('**'):
+      base_name, mask, ptr_fmt = self.op[:-2], FARPTR_OPCODE_FLAG, b'BB'
+    elif self.op.endswith('*'):
+      base_name, mask, ptr_fmt = self.op[:-1], INDIRECT_OPCODE_FLAG, b'B'
+    else:
+      base_name, mask, ptr_fmt = self.op, 0, None
+
+    if base_name in ctlopsmap:
+      ctlop = ctlopsmap[base_name]
+      self.buf.append(ctlop.esc) # Prepend 0xC0
+      self.opcode = ctlop.code | mask
+      self.opname = ctlop.name
+      
+      if ptr_fmt:
+        if ctlop.prefix_size is None:
+          raise CompileError(f'Addressing modes not supported for {ctlop.name}')
+        # Pointer mode: RegIdx (B) + Pointer (B or BB)
+        self.fmt = b'B' * ctlop.prefix_size + ptr_fmt
+      else:
+        # Literal mode: Use default format (e.g. 'Bl')
+        self.fmt = ctlop.fmt
+    else:
+      # Standard Attribute (move, speed, etc)
+      attr = opsmap[base_name]
+      self.opcode = attr.offset | mask
+      self.opname = attr.name
+      self.fmt = ptr_fmt or attr.fmt
+    if mask == FARPTR_OPCODE_FLAG:
+      self.opname += '**'
+    elif mask == INDIRECT_OPCODE_FLAG:
+      self.opname += '*'
 
 def _cpp_x40map(name: str, arr: list[int]) -> str:
     numstrs = [f'0x{x:02X},' for x in arr]
