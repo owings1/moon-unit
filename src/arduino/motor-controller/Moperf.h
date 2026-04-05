@@ -1,7 +1,5 @@
 #ifndef MOPERF_H
 #define MOPERF_H
-#include <stddef.h>
-#include <stdint.h>
 #include <Arduino.h>
 class JitterMonitor {
 public:

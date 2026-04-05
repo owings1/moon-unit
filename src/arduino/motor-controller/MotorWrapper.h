@@ -1,4 +1,3 @@
-#include <sys/_stdint.h>
 #ifndef MOTOR_WRAPPER_H
 #define MOTOR_WRAPPER_H
 #include "IMotor.h"

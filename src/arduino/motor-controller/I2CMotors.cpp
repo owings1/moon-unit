@@ -1,12 +1,7 @@
-#include <cstddef>
-#include <sys/_stdint.h>
-#include <stdint.h>
 #include "I2CMotors.h"
 
 I2CMotors::I2CMotors(TwoWire& wire, Moic::ManagedMotor** mms, uint8_t count)
-  : wire(wire), mms(mms), numMotors(min(MAX_MOTORS, count)) {
-  memset((void*)&regs, 0, sizeof(regs));
-  memset((void*)&perf, 0, sizeof(perf));
+  : wire(wire), mms(mms), numMotors(min(MAX_MOTORS, count)), regs{}, perf{} {
   setBootId((uint16_t)millis());
 }
 void I2CMotors::observeDelta(const uint32_t delta) {

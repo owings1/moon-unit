@@ -1,7 +1,5 @@
-#include <sys/_stdint.h>
 #ifndef MOIC_PROTOCOL_H
 #define MOIC_PROTOCOL_H
-#include <stddef.h>
 
 #include <Arduino.h>
 namespace Moic {

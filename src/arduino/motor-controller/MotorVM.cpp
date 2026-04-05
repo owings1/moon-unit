@@ -1,4 +1,3 @@
-#include <sys/_stdint.h>
 #include "MotorVM.h"
 
 namespace MotorVM {
@@ -156,23 +155,35 @@ uint8_t resolveOperands(Moic::ManagedMotor& mm, const uint8_t op, const uint8_t 
     const bool sourceIsFloat = isFloatOp(ptrOffset);
     if (sourceIsFloat) {
       float fVal;
-      memcpy(&fVal, (void*)&((uint8_t*)mm.mregs)[ptrOffset], 4);
+      uint8_t* fValPtr = (uint8_t*)&fVal;
+      for (uint8_t i = 0; i < 4; ++i) {
+        fValPtr[i] = ((uint8_t*)mm.mregs)[ptrOffset + i];
+      }
       iVal = (int32_t)fVal;
     } else {
-      memcpy(&iVal, (void*)&((uint8_t*)mm.mregs)[ptrOffset], targetLen);
+      uint8_t* iValPtr = (uint8_t*)&iVal;
+      for (uint8_t i = 0; i < targetLen; ++i) {
+        iValPtr[i] = ((uint8_t*)mm.mregs)[ptrOffset + i];
+      }
     }
   }
   vmctx.writeBuf[0] = script[idx + 1];
   if (destIsFloat) {
     const float fVal = (float)iVal;
-    memcpy((void*)&vmctx.writeBuf[pfxLen], &fVal, 4);
+    uint8_t* fValPtr = (uint8_t*)&fVal;
+    for (uint8_t i = 0; i < 4; ++i) {
+      vmctx.writeBuf[pfxLen + i] = fValPtr[i];
+    }
   } else {
-    memcpy((void*)&vmctx.writeBuf[pfxLen], &iVal, targetLen);
+    uint8_t* iValPtr = (uint8_t*)&iVal;
+    for (uint8_t i = 0; i < targetLen; ++i) {
+      vmctx.writeBuf[pfxLen + i] = iValPtr[i];
+    }
   }
   return Moic::OK;
 }
 
-static inline uint8_t getTargetVar(Moic::ManagedMotor& mm, uint8_t varIdx, int32_t* &target) {
+static inline uint8_t getTargetVar(Moic::ManagedMotor& mm, uint8_t varIdx, int32_t*& target) {
   auto& vmctx = *(mm.vmctx);
   if (varIdx >= Moic::SCRIPT_LOCAL_VAR_OFFSET) {
     varIdx -= Moic::SCRIPT_LOCAL_VAR_OFFSET;

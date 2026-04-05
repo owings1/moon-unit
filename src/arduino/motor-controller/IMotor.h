@@ -1,4 +1,3 @@
-#include <sys/_stdint.h>
 #ifndef IMOTOR_h
 #define IMOTOR_h
 typedef void (*MotorNotifyCallback)(void* context);

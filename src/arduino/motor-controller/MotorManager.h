@@ -1,7 +1,5 @@
-#include <sys/_stdint.h>
 #ifndef MOTOR_MANAGER_H
 #define MOTOR_MANAGER_H
-#include <stddef.h>
 
 #include <Arduino.h>
 #include "MoicProtocol.h"

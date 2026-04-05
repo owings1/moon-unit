@@ -1,4 +1,3 @@
-#include <sys/_stdint.h>
 #ifndef MOTOR_STATE_H
 #define MOTOR_STATE_H
 

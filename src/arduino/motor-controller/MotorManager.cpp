@@ -1,4 +1,3 @@
-#include <sys/_stdint.h>
 #include "MotorManager.h"
 #include "MotorActions.h"
 #include "MotorVM.h"
@@ -8,7 +7,7 @@ void onMotorNotify(void* ctx) {
 }
 namespace Moic {
 ManagedMotor::ManagedMotor(IMotor* m)
-  : m(m), mregs(&_mregs), vmctx(&_vmctx) {
+  : m(m), _mregs{}, _vmctx{}, mregs(&_mregs), vmctx(&_vmctx) {
   static bool initialized = []() {
     for (const auto& entry : MotorActions::ACTION_TABLE) {
       uint8_t tableIdx = &entry - MotorActions::ACTION_TABLE;
@@ -17,8 +16,6 @@ ManagedMotor::ManagedMotor(IMotor* m)
     MotorVM::initStaticTables();
     return true;
   }();
-  memset((void*)&_mregs, 0, sizeof(MotorInterface));
-  memset((void*)&_vmctx, 0, sizeof(VMContext));
   syncMotorState();
   syncMotorSettings();
   m->setNotify(onMotorNotify, this);

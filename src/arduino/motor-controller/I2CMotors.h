@@ -1,8 +1,5 @@
-#include <sys/_stdint.h>
 #ifndef I2C_MOTORS_H
 #define I2C_MOTORS_H
-#include <stddef.h>
-#include <stdint.h>
 #include <Arduino.h>
 #include <Wire.h>
 #include "IMotor.h"

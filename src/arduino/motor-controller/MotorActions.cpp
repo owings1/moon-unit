@@ -1,5 +1,3 @@
-#include <sys/_stdint.h>
-
 #include "MotorActions.h"
 
 namespace MotorActions {
@@ -84,7 +82,10 @@ uint8_t onScriptClear(Moic::ManagedMotor& mm) {
       // Prevent clearing running script
       code = Moic::MOTOR_BUSY;
     } else {
-      memset((void*)mm.vmctx->scripts[mm.mregs->cmdScriptClear], 0, Moic::SCRIPT_PAGE_SIZE);
+      volatile uint8_t* page = mm.vmctx->scripts[mm.mregs->cmdScriptClear];
+      for (uint16_t i = 0; i < Moic::SCRIPT_PAGE_SIZE; ++i) {
+        page[i] = 0;
+      }
     }
   } else {
     code = Moic::OVERFLOW;

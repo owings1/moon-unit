@@ -1,6 +1,4 @@
 #include "Arduino.h"
-#include <sys/_stdint.h>
-#include <stdint.h>
 #include "Motor.h"
 #include "MotorWrapper.h"
 #include <AccelStepper.h>
