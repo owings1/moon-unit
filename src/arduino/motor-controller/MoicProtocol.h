@@ -39,6 +39,8 @@ enum FunId : uint8_t {
   //             last RHS value.
   EQL_LASTCONDARG_RHS = 0x18,
   AND_LASTCONDARG_RHS = 0x19,
+  EQL_LASTCOMPARG_RHS = 0x20,
+  LT_LASTCOMPARG_RHS = 0x21,
   ALWAYS_TRUE = 0x7F,
 };
 
@@ -61,6 +63,7 @@ enum Math2Oper : uint8_t {
   MATH2_ADD = 0x01,
   MATH2_SUB = 0x02,
   MATH2_MUL = 0x03,
+  MATH2_CMP = 0x04,
 };
 enum WriteSource : uint8_t {
   VMEXC = 0x00,

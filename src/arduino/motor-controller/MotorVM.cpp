@@ -198,7 +198,12 @@ uint8_t varMath2(Moic::ManagedMotor& mm, volatile uint8_t* cmdBuf) {
   for (uint8_t i = 0; i < 4; ++i) {
     rhsBytes[i] = cmdBuf[i + 2];
   }
-  return applyMath2(cmdBuf[1], vmctx.vars[varIdx], rhs);
+  const uint8_t oper = cmdBuf[1];
+  if (oper == Moic::MATH2_CMP) {
+    vmctx.compArg = vmctx.vars[varIdx] - rhs;
+    return Moic::OK;
+  }
+  return applyMath2(oper, vmctx.vars[varIdx], rhs);
 }
 
 uint8_t jump(Moic::ManagedMotor& mm, volatile uint8_t* cmdBuf) {
@@ -321,6 +326,12 @@ int8_t condition(Moic::ManagedMotor& mm, const uint8_t func, const uint8_t rhs) 
       break;
     case Moic::AND_LASTCONDARG_RHS:
       result = vmctx.condArg & rhs;
+      break;
+    case Moic::EQL_LASTCOMPARG_RHS:
+      result = vmctx.compArg == rhs;
+      break;
+    case Moic::LT_LASTCOMPARG_RHS:
+      result = vmctx.compArg < rhs;
       break;
     default:
       return -1;

@@ -104,6 +104,7 @@ uint8_t ManagedMotor::enterScript(uint8_t page, const uint8_t arg) {
   syncScriptState();
   vmctx->callArg = arg;
   vmctx->condArg = 0;
+  vmctx->compArg = 0;
   vmctx->count = 0;
   vmctx->sp = 0;
   m->setScriptActive(true);

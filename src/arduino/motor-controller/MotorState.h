@@ -66,6 +66,7 @@ struct VMContext {
   volatile uint8_t idx;
   volatile uint8_t condArg;
   volatile uint8_t callArg;
+  int32_t compArg;
   uint8_t sp;      // Stack Pointer
   uint8_t offset;  // offset for write() callback
   uint8_t count;   // byte count stored in writeBuf for write() callback
