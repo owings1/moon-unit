@@ -249,13 +249,13 @@ class Code:
   OTHER_ERROR = 0x07
   MOTOR_BUSY = 0x1F
   CANCELED = 0x20
-  UNKNOWN_COMMAND = 0x2C
+  INVALID_COMMAND = 0x2C
   INVALID_MOTOR = 0x2D
   COMMAND_IGNORED = 0x2E
   UNINVITED_POINTER = 0x2F
   READONLY_ATTRIBUTE = 0x30
   OVERFLOW = 0x31
-  UNKNOWN_CTLOP = 0x32
+  INVALID_CTLOP = 0x32
   INVALID_OPFLAG = 0x33
   INVALID_FUNID = 0x34
   INVALID_MATHOPER = 0x35
@@ -379,9 +379,9 @@ class Script:
           oplen = modesize or opsmap[baseop].size
       self._size += 1 + oplen
 
-  def compile(self, resolver: Callable|None = None) -> bytes:
+  def compile(self, resolver: Callable|None = None, **kw) -> bytes:
     "Resolve labels and pack bytes."
-    return self.compiler.compile(self, resolver=resolver or self.resolve)
+    return self.compiler.compile(self, resolver=resolver or self.resolve, **kw)
 
   def pprintf(self):
     return self.compiler.pprintf()

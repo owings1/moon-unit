@@ -65,7 +65,7 @@ bool tick(Moic::ManagedMotor& mm) {
   }
   const uint8_t dataLen = isCtl ? CTLOP_DATALENGTHS[directOp] : ATTR_DATALENGTHS[directOp];
   if (dataLen == 0 || dataLen > Moic::SCRIPT_WRITEBUF_SIZE) {
-    vmctx.exitCode = isCtl ? Moic::UNKNOWN_CTLOP : Moic::UNKNOWN_COMMAND;
+    vmctx.exitCode = isCtl ? Moic::INVALID_CTLOP : Moic::INVALID_COMMAND;
     return false;
   }
   // 4. Operand Resolution
@@ -90,7 +90,7 @@ bool tick(Moic::ManagedMotor& mm) {
   if (isCtl) {
     vmctx.count = 0;
     const auto handler = CONTROL_LOOKUP[directOp];
-    const uint8_t ctlErr = handler ? handler(mm, vmctx.writeBuf) : Moic::UNKNOWN_CTLOP;
+    const uint8_t ctlErr = handler ? handler(mm, vmctx.writeBuf) : Moic::INVALID_CTLOP;
     if (ctlErr != Moic::OK) {
       vmctx.exitCode = ctlErr;
       return false;

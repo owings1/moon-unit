@@ -68,7 +68,7 @@ void ManagedMotor::tick() {
 
 uint8_t ManagedMotor::write(const uint8_t offset, const uint8_t incoming, const uint8_t source) {
   if (offset >= MOTOR_BLOCK_SIZE) {
-    return UNKNOWN_COMMAND;
+    return INVALID_COMMAND;
   }
   const uint8_t perms = OFFSET_WRITEMASKS[offset];
   if (!(perms & (1 << source))) {

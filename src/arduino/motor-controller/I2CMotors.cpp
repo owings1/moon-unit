@@ -119,7 +119,7 @@ uint8_t I2CMotors::write(const uint8_t ptr, const uint8_t incoming) {
     mms[mIdx]->vmctx->scripts[sIdx][ptr - MOTOR_BASE_ADDR] = incoming;
     return Moic::OK;
   }
-  return Moic::UNKNOWN_COMMAND;
+  return Moic::INVALID_COMMAND;
 }
 
 uint8_t I2CMotors::getMidx(const uint8_t page, const uint8_t ptr) {

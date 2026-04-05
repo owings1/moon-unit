@@ -471,28 +471,29 @@ class MotorScripts:
     __ = Code.UNSET
     lib = moic.Script()
     lib.add('max_speed**', dbpg, ptr('homing_speed'))
-    lib.add(':call', __, 'subroutine:pulse9')
+    lib.add(':set_var', 0, 20)
+    with lib.while_vargt(0, 0):
+      lib.add(':set_var*', 2, moic.VarPtr[0])                 #   20,  16,  12,   8,  4
+      lib.add(':var_math2', 2, moic.Math2Oper.MATH2_MUL, 50)  # 1000, 320, 240, 160, 80
+      lib.add(':set_var', 1, 8)
+      with lib.while_vargt(1, 0):
+        lib.add('move*', moic.VarPtr[2])
+        lib.add('move_rev*', moic.VarPtr[2])
+        lib.add('delay*', moic.VarPtr[0])
+        lib.add('move*', moic.VarPtr[2])
+        lib.add('move_rev*', moic.VarPtr[2])
+        lib.add('move*', moic.VarPtr[0])
+        lib.add('move_rev*', moic.VarPtr[0])
+        lib.add('delay*', moic.VarPtr[0])
+        lib.add('move*', moic.VarPtr[0])
+        lib.add('move_rev*', moic.VarPtr[0])
+        lib.add('move*', moic.VarPtr[1])
+        lib.add('delay*', moic.VarPtr[1])
+        lib.add('move_rev*', moic.VarPtr[1])
+        # lib.add(':var_math1', 2, moic.Math1Oper.MATH1_HLF)
+        lib.add(':var_math1', 1, moic.Math1Oper.MATH1_DEC)
+      lib.add(':var_math2', 0, moic.Math2Oper.MATH2_SUB, 4)
     lib.add('max_speed**', dbpg, ptr('default_speed'))
-    lib.add(Code.UNSET)
-    lib.label('subroutine:pulse9')
-    for _ in range(3):
-      lib.add(':call', __, 'subroutine:pulse3')
-    lib.add(Code.UNSET)
-    lib.label('subroutine:pulse3')
-    for _ in range(3):
-      lib.add(':call', __, 'subroutine:pulse1')
-    lib.add(Code.UNSET)
-    lib.label('subroutine:pulse1')
-    for x in (1, 10):
-      for _ in range(4):
-        lib.add('move', x*1)
-      for _ in range(4):
-        lib.add('move_rev', x*1)
-      for d in (1, 2, 5):
-        lib.add('move', x*100)
-        lib.add('delay', x*d)
-        lib.add('move_rev', x*100)
-        lib.add('delay', x*d)
     lib.add(Code.UNSET)
     return lib
 
