@@ -490,7 +490,7 @@ class MotorScripts:
         lib.add('move*', moic.VarPtr[1])
         lib.add('delay*', moic.VarPtr[1])
         lib.add('move_rev*', moic.VarPtr[1])
-        # lib.add(':var_math1', 2, moic.Math1Oper.MATH1_HLF)
+        lib.add(':var_math1', 2, moic.Math1Oper.MATH1_HLF)
         lib.add(':var_math1', 1, moic.Math1Oper.MATH1_DEC)
       lib.add(':var_math2', 0, moic.Math2Oper.MATH2_SUB, 4)
     lib.add('max_speed**', dbpg, ptr('default_speed'))

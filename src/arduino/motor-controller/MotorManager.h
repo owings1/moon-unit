@@ -24,7 +24,7 @@ public:
   bool isPageInStack(const uint8_t page);
   IMotor* m;
   volatile MotorInterface* mregs;
-  volatile VMContext* vmctx;
+  VMContext* vmctx;
   void syncLockInc();
   void syncLockDec();
   void setForceStateSyncAt(const uint32_t);

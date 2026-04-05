@@ -13,12 +13,14 @@ static const uint8_t MOTOR_BLOCK_SIZE = 0x40;
 static const uint8_t SCRIPT_PAGE_SIZE = 0xF8;
 // Constraint: Needs to be no more than 0x0D for I2C paging logic.
 static const uint8_t NUM_SCRIPT_PAGES = 0x08;
-// Constraint: Needs to be less than (0x80 - VARPTR_START) to support
+// Constraint: Needs to be less than (LOCAL_VARPTR_START - GLOBAL_VARPTR_START)
+static const uint8_t NUM_SCRIPT_GLOBAL_VARS = 0x04;
+// Constraint: Needs to be less than (0x80 - LOCAL_VARPTR_START) to support
 //             var ptr references with INDIRECT_OPCODE_FLAG 0x40 but
 //             without FARPTR_OPCODE_FLAG 0x80.
-static const uint8_t NUM_SCRIPT_GLOBAL_VARS = 0x04;
+static const uint8_t NUM_SCRIPT_LOCAL_VARS = 0x04;
 static const uint8_t SCRIPT_STACK_SIZE = 0x08;
-// Constraint: Must be greater than max return value of getOpCodeDataLength()
+// Constraint: Must be greater than max value of both ATTR_DATALENGTHS and CTLOP_DATALENGTHS
 static const uint8_t SCRIPT_WRITEBUF_SIZE = 8;
 static const uint8_t BUSY_EXEMPT_MASK = 0x80;
 static const uint8_t INDIRECT_OPCODE_FLAG = 0x40;
@@ -27,7 +29,10 @@ static const uint8_t CONTROL_EXCODE = 0xC0;
 // Constraint: Must be less than VARPTR_START
 static const uint8_t INDPTR_END = 0x1C;
 // Constraint: Must be greater than INDPTR_END
-static const uint8_t VARPTR_START = 0x60;
+static const uint8_t GLOBAL_VARPTR_START = 0x60;
+// Constraint: Must be greater than (GLOBAL_VARPTR_START + NUM_SCRIPT_GLOBAL_VARS)
+//             and less than (0x80 - NUM_SCRIPT_LOCAL_VARS)
+static const uint8_t LOCAL_VARPTR_START = 0x70;
 #pragma pack(push, 1)
 struct MotorInterface {
   // 0x00 - Telemetry (Aligned)
@@ -55,26 +60,24 @@ struct MotorInterface {
   volatile int32_t cmdMoveRev;      // +0x30
   uint8_t _pad0[0x0C];
 };
-struct VMStack {
+struct VMFrame {
   uint8_t page;
   uint8_t idx;
   uint8_t condArg;
   uint8_t callArg;
+  int32_t locals[NUM_SCRIPT_LOCAL_VARS];
 };
 struct VMContext {
-  volatile uint8_t page;
-  volatile uint8_t idx;
-  volatile uint8_t condArg;
-  volatile uint8_t callArg;
+  VMFrame* currentFrame;
   int32_t compArg;
   uint8_t sp;      // Stack Pointer
   uint8_t offset;  // offset for write() callback
   uint8_t count;   // byte count stored in writeBuf for write() callback
   uint8_t exitCode;
   volatile uint8_t scripts[NUM_SCRIPT_PAGES][SCRIPT_PAGE_SIZE];
-  VMStack stack[SCRIPT_STACK_SIZE];
+  VMFrame stack[SCRIPT_STACK_SIZE];
   uint8_t writeBuf[SCRIPT_WRITEBUF_SIZE];
-  int32_t vars[NUM_SCRIPT_GLOBAL_VARS];
+  int32_t globals[NUM_SCRIPT_GLOBAL_VARS];
 };
 #pragma pack(pop)
 
