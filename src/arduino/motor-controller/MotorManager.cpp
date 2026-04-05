@@ -103,7 +103,7 @@ uint8_t ManagedMotor::enterScript(uint8_t page, const uint8_t arg) {
   vmctx->exitCode = OK;
   syncScriptState();
   vmctx->callArg = arg;
-  vmctx->rhsArg = 0;
+  vmctx->condArg = 0;
   vmctx->count = 0;
   vmctx->sp = 0;
   m->setScriptActive(true);

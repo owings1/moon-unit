@@ -317,17 +317,17 @@ int8_t condition(Moic::ManagedMotor& mm, const uint8_t func, const uint8_t rhs) 
     // with EQL_LASTCONDARG_RHS 0x30 or AND_LASTCONDARG_RHS 0x31. This
     // can be used with ALWAYS_TRUE to pass an argument to a subroutine.
     case Moic::EQL_LASTCONDARG_RHS:
-      result = vmctx.rhsArg == rhs;
+      result = vmctx.condArg == rhs;
       break;
     case Moic::AND_LASTCONDARG_RHS:
-      result = vmctx.rhsArg & rhs;
+      result = vmctx.condArg & rhs;
       break;
     default:
       return -1;
   }
   if (funId < Moic::EQL_LASTCONDARG_RHS || funId > Moic::AND_LASTCONDARG_RHS) {
     // Only update the register if the operation wasn't a 'Read' of the register
-    vmctx.rhsArg = rhs;
+    vmctx.condArg = rhs;
   }
   return result ^ negate;
 }
@@ -363,7 +363,7 @@ void popStack(Moic::ManagedMotor& mm, const uint8_t code) {
   auto& stack = vmctx.stack[vmctx.sp];
   vmctx.page = stack.page;
   vmctx.idx = stack.idx;
-  vmctx.rhsArg = stack.rhsArg;
+  vmctx.condArg = stack.condArg;
   vmctx.callArg = stack.callArg;
 }
 
@@ -378,11 +378,11 @@ uint8_t pushStack(Moic::ManagedMotor& mm, uint8_t page, const uint8_t sIdx) {
   auto& stack = vmctx.stack[vmctx.sp];
   stack.page = vmctx.page;
   stack.idx = vmctx.idx;
-  stack.rhsArg = vmctx.rhsArg;
+  stack.condArg = vmctx.condArg;
   stack.callArg = vmctx.callArg;
   vmctx.sp++;
   vmctx.page = page;
   vmctx.idx = sIdx;
-  vmctx.callArg = vmctx.rhsArg;
+  vmctx.callArg = vmctx.condArg;
   return Moic::OK;
 }

@@ -58,13 +58,13 @@ struct MotorInterface {
 struct VMStack {
   uint8_t page;
   uint8_t idx;
-  uint8_t rhsArg;
+  uint8_t condArg;
   uint8_t callArg;
 };
 struct VMContext {
   volatile uint8_t page;
   volatile uint8_t idx;
-  volatile uint8_t rhsArg;
+  volatile uint8_t condArg;
   volatile uint8_t callArg;
   uint8_t sp;      // Stack Pointer
   uint8_t offset;  // offset for write() callback
