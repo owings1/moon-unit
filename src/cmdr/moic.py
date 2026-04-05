@@ -212,17 +212,25 @@ class Flags:
   limits_enabled = Flag(0, Attributes.settings_flags)
   sleep_enabled = Flag(1, Attributes.settings_flags)
 
+P_EQL = const(0b00)
+P_LT = const(0b01)
+P_AND = const(0b10)
+P_LTE = const(0b11)
+
 class FunId:
   AND_STATEFLAGS_RHS = 0x00
   EQL_RETURNCODE_RHS = 0x03
   AND_SETTINGSFLAGS_RHS = 0x10
-  P_CALLARG_EQL = 0x20
-  P_CALLARG_AND = 0x22
-  P_LASTCONDARG_EQL = 0x24
-  P_LASTCONDARG_AND = 0x26
-  P_LASTCOMPARG_EQL = 0x28
-  P_LASTCOMPARG_LT = 0x29
-  P_LASTCOMPARG_LTE = 0x2B
+  P_CALLARG = 0x20
+  P_CALLARG_EQL = P_CALLARG|P_EQL
+  P_CALLARG_AND = P_CALLARG|P_AND
+  P_LASTCONDARG = 0x24
+  P_LASTCONDARG_EQL = P_LASTCONDARG|P_EQL
+  P_LASTCONDARG_AND = P_LASTCONDARG|P_AND
+  P_LASTCOMPARG = 0x28
+  P_LASTCOMPARG_EQL = P_LASTCOMPARG|P_EQL
+  P_LASTCOMPARG_LT = P_LASTCOMPARG|P_LT
+  P_LASTCOMPARG_LTE = P_LASTCOMPARG|P_LTE
   ALWAYS_TRUE = 0xFF >> 1
 
 class Math1Oper:
@@ -286,6 +294,22 @@ class Condition(namedtuple('Condition', ('func', 'rhs'))):
   @classmethod
   def repeql(cls, rhs: int, negate: bool = False):
     return cls(FunId.EQL_RETURNCODE_RHS ^ (bool(negate) << FUNC_NEGATED_BIT), rhs)
+
+  @classmethod
+  def cmpeql(cls, rhs: int = 0, negate: bool = False):
+    return cls(FunId.P_LASTCOMPARG_EQL ^ (bool(negate) << FUNC_NEGATED_BIT), rhs)
+
+  @classmethod
+  def cmplt(cls, rhs: int = 0, negate: bool = False):
+    return cls(FunId.P_LASTCOMPARG_LT ^ (bool(negate) << FUNC_NEGATED_BIT), rhs)
+
+  @classmethod
+  def cmplte(cls, rhs: int = 0, negate: bool = False):
+    return cls(FunId.P_LASTCOMPARG_LTE ^ (bool(negate) << FUNC_NEGATED_BIT), rhs)
+
+  @classmethod
+  def cmpgt(cls, rhs: int = 0, negate: bool = False):
+    return cls(FunId.P_LASTCOMPARG_LTE ^ ((not negate) << FUNC_NEGATED_BIT), rhs)
 
 class Script:
   def __init__(self) -> None:
@@ -388,6 +412,18 @@ class Script:
   def while_flag(self, name: str, negate: bool = False):
     return While(self, Condition.forflag(name, negate=negate))
 
+  def while_vareql(self, varid: int, threshold: int, negate: bool = False):
+    return WhileCompare(self, Condition.cmpeql(negate=negate), varid, threshold)
+
+  def while_varlt(self, varid: int, threshold: int, negate: bool = False):
+    return WhileCompare(self, Condition.cmplt(negate=negate), varid, threshold)
+
+  def while_varlte(self, varid: int, threshold: int, negate: bool = False):
+    return WhileCompare(self, Condition.cmplte(negate=negate), varid, threshold)
+
+  def while_vargt(self, varid: int, threshold: int, negate: bool = False):
+    return WhileCompare(self, Condition.cmpgt(negate=negate), varid, threshold)
+
 class If:
   def __init__(self, script: Script, condition: Condition) -> None:
     self.script = script
@@ -434,6 +470,28 @@ class While:
     self.script.add(*CtlOps.jump[:2], Code.UNSET, self.start_label)
     self.script.label(self.exit_label)
 
+class WhileCompare:
+  def __init__(self, script: Script, condition: Condition, varid: int, threshold: int) -> None:
+    self.script = script
+    self.condition = condition
+    self.varid = varid
+    self.threshold = threshold
+    self.id = len(script.instructions)
+    self.start_label = f'w_s_{self.id}'
+    self.exit_label = f'w_e_{self.id}'
+
+  def __enter__(self):
+    self.script.label(self.start_label)
+    # 1. Update compArg: (Var - Threshold)
+    self.script.add(*CtlOps.var_math2[:2], self.varid, Math2Oper.MATH2_CMP, self.threshold)
+    # 2. If NOT (Condition), Jump to Exit
+    self.script.add(*CtlOps.cond_jump[:2], *~self.condition, Code.UNSET, self.exit_label)
+    return self
+
+  def __exit__(self, exc_type, exc_val, exc_tb):
+    # 3. Jump back and close
+    self.script.add(*CtlOps.jump[:2], Code.UNSET, self.start_label)
+    self.script.label(self.exit_label)
 
 class CompileError(Exception):
   pass
