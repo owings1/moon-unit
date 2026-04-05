@@ -304,15 +304,6 @@ int8_t condition(Moic::ManagedMotor& mm, const uint8_t func, const uint8_t rhs) 
     case Moic::EQL_RETURNCODE_RHS:
       result = vmctx.exitCode == rhs;
       break;
-    // The RHS value of the previous condition check can be evaluated
-    // with EQL_LASTCONDARG_RHS 0x30 or AND_LASTCONDARG_RHS 0x31. This
-    // can be used with ALWAYS_TRUE to pass an argument to a subroutine.
-    case Moic::EQL_LASTCONDARG_RHS:
-      result = vmctx.rhsArg == rhs;
-      break;
-    case Moic::AND_LASTCONDARG_RHS:
-      result = vmctx.rhsArg & rhs;
-      break;
     // The CALLARG is set to the last RHS value when the stack is pushed
     // and remains immutable for that context, until it is restored to its
     // previous value when the stack is popped.
@@ -321,6 +312,15 @@ int8_t condition(Moic::ManagedMotor& mm, const uint8_t func, const uint8_t rhs) 
       break;
     case Moic::AND_CALLARG_RHS:
       result = vmctx.callArg & rhs;
+      break;
+    // The RHS value of the previous condition check can be evaluated
+    // with EQL_LASTCONDARG_RHS 0x30 or AND_LASTCONDARG_RHS 0x31. This
+    // can be used with ALWAYS_TRUE to pass an argument to a subroutine.
+    case Moic::EQL_LASTCONDARG_RHS:
+      result = vmctx.rhsArg == rhs;
+      break;
+    case Moic::AND_LASTCONDARG_RHS:
+      result = vmctx.rhsArg & rhs;
       break;
     default:
       return -1;

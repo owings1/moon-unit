@@ -32,10 +32,13 @@ enum FunId : uint8_t {
   AND_STATEFLAGS_RHS = 0x00,
   EQL_RETURNCODE_RHS = 0x03,
   AND_SETTINGSFLAGS_RHS = 0x10,
-  EQL_CALLARG_RHS = 0x30,
-  AND_CALLARG_RHS = 0x30 + 1,
-  EQL_LASTCONDARG_RHS = 0x32,
-  AND_LASTCONDARG_RHS = 0x32 + 1,
+  EQL_CALLARG_RHS = 0x14,
+  AND_CALLARG_RHS = 0x15,
+  // Constraint: LASTCONDARG_RHS IDs must be consecutive, and the high & low values
+  //             reflected in MotorVM condition() to be excluded from updating the
+  //             last RHS value.
+  EQL_LASTCONDARG_RHS = 0x18,
+  AND_LASTCONDARG_RHS = 0x19,
   ALWAYS_TRUE = 0x7F,
 };
 
@@ -43,10 +46,10 @@ enum Ctrl : uint8_t {
   SET_VAR = 0x01,
   VAR_MATH1 = 0x02,
   VAR_MATH2 = 0x03,
-  CALL = 0x30,
-  COND_CALL = 0x32,
-  COND_JUMP = 0x36,
-  JUMP = 0x3A,
+  CALL = 0x08,
+  JUMP = 0x09,
+  COND_CALL = 0x0A,
+  COND_JUMP = 0x0B,
 };
 
 enum Math1Oper : uint8_t {
