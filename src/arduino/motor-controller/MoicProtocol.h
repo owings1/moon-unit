@@ -76,12 +76,17 @@ enum Math1Oper : uint8_t {
   MATH1_INC = 0x01, // Increment, x + 1
   MATH1_DEC = 0x02, // Decrement, x - 1
   MATH1_NEG = 0x03, // Negative, x * -1
+  MATH1_HLF = 0x04, // Half, x/2
+  MATH1_DBL = 0x05, // Double x * 2
 };
 enum Math2Oper : uint8_t {
   MATH2_ADD = 0x01,
   MATH2_SUB = 0x02,
   MATH2_MUL = 0x03,
   MATH2_CMP = 0x04,
+  // SAFEDIV returns 0 when divide by zero is attempted, because C++ makes it
+  // too expensive to add a conditional branch to return the error.
+  MATH2_SAFEDIV = 0x05,
 };
 enum WriteSource : uint8_t {
   VMEXC = 0x00,

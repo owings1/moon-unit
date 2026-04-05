@@ -237,12 +237,15 @@ class Math1Oper:
   MATH1_INC = 0x01
   MATH1_DEC = 0x02
   MATH1_NEG = 0x03
+  MATH1_HLF = 0x04
+  MATH1_DBL = 0x05
 
 class Math2Oper:
   MATH2_ADD = 0x01
   MATH2_SUB = 0x02
   MATH2_MUL = 0x03
   MATH2_CMP = 0x04
+  MATH2_SAFEDIV = 0x05
 
 class Code:
   OK = 0x00

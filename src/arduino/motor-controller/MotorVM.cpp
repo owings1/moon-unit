@@ -267,6 +267,12 @@ uint8_t applyMath1(const uint8_t mathOper, volatile int32_t& value) {
     case Moic::MATH1_NEG:
       value *= -1;
       break;
+    case Moic::MATH1_HLF:
+      value /= 2;
+      break;
+    case Moic::MATH1_DBL:
+      value *= 2;
+      break;
     default:
       return Moic::INVALID_MATHOPER;
   }
@@ -283,6 +289,9 @@ uint8_t applyMath2(const uint8_t mathOper, volatile int32_t& value, const int32_
       break;
     case Moic::MATH2_MUL:
       value *= rhs;
+      break;
+    case Moic::MATH2_SAFEDIV:
+      value = rhs ? (value / rhs) : 0;
       break;
     default:
       return Moic::INVALID_MATHOPER;
